@@ -66,4 +66,12 @@ interface HostState {
   paused: boolean;
   playbackRate: number;
   loop: boolean;
+  /** Room-wide subtitle offset in seconds (positive = later). Missing from older servers. */
+  subtitleOffset?: number;
+}
+
+/** Who sent a room-wide playback change (REC:play / REC:pause / REC:subtitleOffset) */
+interface PlaybackActor {
+  id: string;
+  name?: string;
 }

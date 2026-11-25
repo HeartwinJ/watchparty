@@ -1,0 +1,190 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--wp-border);
+  border-radius: var(--wp-r-full);
+  background: var(--wp-surface-2);
+  color: var(--wp-text-2);
+  font: 600 var(--wp-fs-sm) var(--wp-font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--wp-dur-fast) var(--wp-ease);
+}
+
+.pill:hover {
+  background: var(--wp-surface-3);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--wp-accent-text);
+  outline-offset: 2px;
+}
+
+/* In the player's control bar (fullscreen / sidebar collapsed): glass on video */
+.mini {
+  height: 28px;
+  padding: 0 10px;
+  margin-right: 6px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--wp-on-video);
+  font-size: 12px;
+}
+
+.mini:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wp-success);
+}
+
+.dot[data-tone="warning"] {
+  background: var(--wp-warning);
+  animation: wpPulse 1.4s var(--wp-ease) infinite;
+}
+
+.dot[data-tone="danger"] {
+  background: var(--wp-danger);
+}
+
+.rate {
+  font: 700 11px var(--wp-font-mono);
+  color: var(--wp-warning);
+}
+
+@keyframes wpPulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Tablet: the top-bar pill collapses to its dot */
+@media (max-width: 60em) {
+  .pill:not(.mini) .label {
+    display: none;
+  }
+  .pill:not(.mini) {
+    padding: 0 10px;
+  }
+}
+
+.dropdown {
+  width: 300px;
+  padding: var(--wp-sp-3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--wp-r-lg);
+  background: rgba(22, 23, 29, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--wp-sh-2);
+  color: var(--wp-text);
+}
+
+.title {
+  margin: 0 0 var(--wp-sp-2);
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--wp-text-3);
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+}
+
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--wp-on-video);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.info {
+  min-width: 0;
+  flex: 1;
+}
+
+.name {
+  font-size: var(--wp-fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name small {
+  color: var(--wp-text-3);
+  font-weight: 400;
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--wp-text-2);
+}
+
+.state .dot {
+  width: 6px;
+  height: 6px;
+}
+
+.sep {
+  height: 1px;
+  margin: var(--wp-sp-2) 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--wp-r-sm);
+  background: transparent;
+  color: var(--wp-text);
+  font: 500 var(--wp-fs-sm) var(--wp-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--wp-accent-text);
+}
+
+.note {
+  padding: 4px 8px 2px;
+  font-size: 12px;
+  color: var(--wp-text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot[data-tone="warning"] {
+    animation: none;
+  }
+}

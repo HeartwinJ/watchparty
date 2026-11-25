@@ -31,6 +31,7 @@ import { createShareSession, useShare } from "./useShare";
 import { useChat } from "./useChat";
 import { usePlaylist } from "./usePlaylist";
 import { useSubtitles } from "./useSubtitles";
+import { toast } from "../ui/toast";
 
 declare global {
   interface Window {
@@ -93,7 +94,7 @@ export function useRoom(roomId: string) {
   });
   const chat = useChat({ store, chatRef });
   const playlist = usePlaylist({ store, cmd });
-  const subtitles = useSubtitles({ store, player, clientId });
+  const subtitles = useSubtitles({ store, player, clientId, cmd });
 
   const actions = useMemo(() => {
     const updateName = (name: string) => {
@@ -106,6 +107,17 @@ export function useRoom(roomId: string) {
       getMediaDisplayName(input, store.get());
 
     const setLoadingFalse = () => store.set({ loading: false });
+
+    /** "Alex paused": a toast, plus the player's on-screen display (toasts aren't visible in fullscreen) */
+    const announce = (actor: PlaybackActor | undefined, verb: string) => {
+      if (!actor || actor.id === clientId) {
+        return;
+      }
+      const name = actor.name || store.get().nameMap[actor.id] || "Someone";
+      const text = `${name} ${verb}`;
+      toast(text, { id: "wp-playback-actor" });
+      store.set({ playerNotice: { text, at: Date.now() } });
+    };
 
     // REC:host: the room's media changed (or we just joined). Stop what's playing and load the new media.
     const onHost = async (data: HostState) => {
@@ -147,6 +159,7 @@ export function useRoom(roomId: string) {
       if (!shareSession.isFile) {
         player.current().clearState();
       }
+      subtitles.onHostOffset(data.subtitleOffset);
       if (data.subtitle) {
         player.current().loadSubtitles(data.subtitle);
       }
@@ -243,6 +256,7 @@ export function useRoom(roomId: string) {
           successMessage: "",
           warningMessage: "",
         });
+        player.setSocketConnected(true);
         // Use the name in our state, generate one if empty
         updateName(store.get().myName || (await generateName()));
       },
@@ -258,6 +272,7 @@ export function useRoom(roomId: string) {
         }
       },
       disconnect: (reason) => {
+        player.setSocketConnected(false);
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
           store.set({ overlayMsg: "Disconnected from server." });
@@ -270,8 +285,19 @@ export function useRoom(roomId: string) {
       errorMessage: (err) => showMessage("errorMessage", err),
       successMessage: (msg) => showMessage("successMessage", msg),
       kicked: () => window.location.assign("/"),
-      "REC:play": () => player.localPlay(),
-      "REC:pause": () => player.localPause(),
+      "REC:play": (_video, actor) => {
+        player.localPlay();
+        announce(actor, "played");
+      },
+      "REC:pause": (actor) => {
+        player.localPause();
+        announce(actor, "paused");
+      },
+      "REC:subtitleOffset": (data) => {
+        if (data && typeof data.offset === "number") {
+          subtitles.onRemoteOffset(data.offset);
+        }
+      },
       "REC:seek": (time) => player.localSeek(time),
       "REC:playbackRate": (rate) => {
         store.set({ roomPlaybackRate: rate });
@@ -287,8 +313,8 @@ export function useRoom(roomId: string) {
       "REC:removeReaction": chat.onRemoveReaction,
       "REC:tsMap": (tsMap) => {
         store.set({ tsMap });
-        // Dynamic playback rate based on timestamps
-        player.autoSyncRate(tsMap);
+        // Drift correction (playback rate nudges / seeks) and the sync indicator
+        player.onTsMap(tsMap);
         subtitles.syncToSharer();
       },
       "REC:nameMap": (nameMap) => store.set({ nameMap }),
@@ -304,6 +330,7 @@ export function useRoom(roomId: string) {
 
     return { updateName, displayName, handlers };
   }, [
+    clientId,
     store,
     cmd,
     player,

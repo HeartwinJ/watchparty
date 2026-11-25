@@ -221,6 +221,11 @@ app.get("/downloadSubtitles", requireAuth, async (req, res) => {
   }
 });
 
+// Whether OpenSubtitles search is available (the player's subtitle menu hides it otherwise)
+app.get("/searchSubtitles/status", requireAuth, (_req, res) => {
+  res.json({ configured: Boolean(config.OPENSUBTITLES_KEY) });
+});
+
 app.get("/searchSubtitles", requireAuth, async (req, res) => {
   if (!config.OPENSUBTITLES_KEY) {
     res.status(503).json({ error: "opensubtitles_not_configured" });

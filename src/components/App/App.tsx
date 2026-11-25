@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
 import { useRoom, type Room } from "./hooks/useRoom";
 import { RoomMessages } from "./RoomMessages";
-import { PlayerArea, PlayerControls } from "./PlayerArea";
+import { PlayerArea } from "./PlayerArea";
 import { RoomUiProvider, useRoomUi } from "./ui/RoomUi";
 import { RoomTopBar } from "./shell/RoomTopBar";
 import { SidePanels } from "./shell/SidePanels";
@@ -71,12 +71,6 @@ const RoomLayout = ({ room, roomId }: { room: Room; roomId: string }) => {
         <div className={styles.player}>
           {/* The player (agent B) fills this box; fullscreen is handled inside it */}
           <PlayerArea room={room} />
-          {/* TEMP: the classic control bar until agent B's overlay controls replace it */}
-          {state.roomMedia && (
-            <div className={styles.controls}>
-              <PlayerControls room={room} />
-            </div>
-          )}
         </div>
       </main>
       {isPhone && <NowPlayingStrip room={room} ref={nowStripRef} />}

@@ -185,7 +185,7 @@ describe("useRoom", () => {
     expect(result.current.state.roomLoop).toBe(true);
   });
 
-  it("speeds up to catch up with the leader on REC:tsMap", async () => {
+  it("corrects drift on REC:tsMap and reports the sync status", async () => {
     const { result, socket } = await setup();
     const video = document.getElementById("leftVideo") as HTMLVideoElement;
     video.play = vi.fn(async () => {});
@@ -200,10 +200,88 @@ describe("useRoom", () => {
       }),
     );
     const me = result.current.clientId;
+    act(() => {
+      result.current.store.set({ loading: false });
+      socket.receive("connect");
+    });
+    // 1 s behind: nudge to 1.05x and show "catching up"
     act(() => socket.receive("REC:tsMap", { [me]: 10, other: 11 }));
-    expect(video.playbackRate).toBe(1.1);
+    expect(video.playbackRate).toBe(1.05);
+    expect(result.current.state.syncStatus).toEqual({
+      kind: "catching-up",
+      behind: 1,
+    });
     act(() => socket.receive("REC:tsMap", { [me]: 11, other: 11 }));
     expect(video.playbackRate).toBe(1);
+    expect(result.current.state.syncStatus).toEqual({ kind: "in-sync" });
+    // Far behind: seek to the room instead
+    act(() => socket.receive("REC:tsMap", { [me]: 11, other: 20 }));
+    expect(video.currentTime).toBe(20);
+    expect(video.playbackRate).toBe(1);
+    act(() => socket.receive("disconnect", "transport close"));
+    expect(result.current.state.syncStatus).toEqual({ kind: "reconnecting" });
+  });
+
+  it("announces who played/paused and applies remote subtitle offsets", async () => {
+    const { result, socket } = await setup();
+    const video = document.getElementById("leftVideo") as HTMLVideoElement;
+    video.play = vi.fn(async () => {});
+    video.pause = vi.fn();
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: "https://example.com/movie.mp4",
+        videoTS: 0,
+        subtitle: "",
+        paused: false,
+        playbackRate: 1,
+        loop: false,
+        subtitleOffset: 0.5,
+      }),
+    );
+    expect(result.current.state.roomSubtitleOffset).toBe(0.5);
+    act(() => socket.receive("REC:nameMap", { a: "Alex" }));
+    act(() => socket.receive("REC:pause", { id: "a" }));
+    expect(result.current.state.roomPaused).toBe(true);
+    expect(result.current.state.playerNotice?.text).toBe("Alex paused");
+    await act(async () =>
+      socket.receive("REC:play", "https://example.com/movie.mp4", {
+        id: "b",
+        name: "Sam",
+      }),
+    );
+    expect(result.current.state.playerNotice?.text).toBe("Sam played");
+    // Our own echo (or an old server without an actor) doesn't announce anything
+    const before = result.current.state.playerNotice;
+    act(() => socket.receive("REC:pause", { id: result.current.clientId }));
+    act(() => socket.receive("REC:pause"));
+    expect(result.current.state.playerNotice).toBe(before);
+
+    act(() =>
+      socket.receive("REC:subtitleOffset", {
+        offset: -1.2,
+        actor: { id: "a" },
+      }),
+    );
+    expect(result.current.state.roomSubtitleOffset).toBe(-1.2);
+  });
+
+  it("sends subtitle offsets for everyone, keeps 'just me' local", async () => {
+    const { result, socket } = await setup();
+    act(() => {
+      result.current.subtitles.nudgeOffset(0.1);
+      result.current.subtitles.nudgeOffset(0.1);
+    });
+    expect(socket.emits("CMD:subtitleOffset")).toEqual([[0.1], [0.2]]);
+    expect(result.current.state.roomSubtitleOffset).toBe(0.2);
+    act(() => {
+      result.current.subtitles.setScope("me");
+      result.current.subtitles.nudgeOffset(-0.5);
+    });
+    expect(result.current.state.localSubtitleOffset).toBeCloseTo(-0.3);
+    expect(result.current.subtitles.getOffset()).toBeCloseTo(-0.3);
+    expect(socket.emits("CMD:subtitleOffset")).toHaveLength(2);
+    act(() => result.current.subtitles.resetOffset());
+    expect(result.current.subtitles.getOffset()).toBe(0.2);
   });
 
   it("sends typed commands", async () => {

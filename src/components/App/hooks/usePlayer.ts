@@ -9,12 +9,16 @@ import type { ShareSession } from "./useShare";
 import { hasDuration, isWebRTCShare, usesYouTube } from "../logic/media";
 import { isScreenShare } from "../../../utils/utils";
 import {
-  getCatchUpPlaybackRate,
   getEffectiveDuration,
   getLeaderTime,
   getLocalSeekTarget,
+  getSyncStatus,
+  initialDriftState,
+  isSameSyncStatus,
+  nextDriftAction,
   shouldAutoSyncRate,
   toRoomTime,
+  type DriftState,
 } from "../logic/sync";
 import { decideOnVideoEnded } from "../logic/playlist";
 
@@ -40,6 +44,11 @@ export function usePlayer(opts: {
   const youtubeRef = useRef(new YouTube(null));
   const htmlRef = useRef(new HTML(VIDEO_ELEMENT_ID));
   const ytDebounce = useRef(true);
+  /** The player container (video + controls + overlays) that goes fullscreen; set by the player view */
+  const containerRef = useRef<HTMLElement | null>(null);
+  const driftRef = useRef<DriftState>(initialDriftState());
+  /** Last drift seen by the controller (leader minus us, seconds) */
+  const driftValueRef = useRef(0);
 
   const api = useMemo(() => {
     const current = (): Player =>
@@ -48,7 +57,6 @@ export function usePlayer(opts: {
     const usingNative = () => !usingYoutube();
     const roomHasDuration = () => hasDuration(store.get().roomMedia);
     const isPauseDisabled = () => isScreenShare(store.get().roomMedia);
-    const refreshControls = () => store.set({ controlsTimestamp: Date.now() });
 
     const getDuration = () =>
       getEffectiveDuration(
@@ -79,12 +87,14 @@ export function usePlayer(opts: {
 
     const localSetMute = (muted: boolean) => {
       current().setMute(muted);
-      refreshControls();
     };
 
     const localSetVolume = (volume: number) => {
-      current().setVolume(volume);
-      refreshControls();
+      const v = Math.min(1, Math.max(0, volume));
+      current().setVolume(v);
+      if (v > 0 && current().isMuted()) {
+        current().setMute(false);
+      }
     };
 
     const localToggleMute = () => localSetMute(!current().isMuted());
@@ -116,32 +126,53 @@ export function usePlayer(opts: {
       current().pauseVideo();
     };
 
-    const localFullScreen = async (videoOnly: boolean) => {
-      // Default: fullscreen the body (theater mode)
-      let container = document.body as HTMLElement;
-      if (videoOnly || isMobile()) {
-        // fullscreen just the video
-        container = current().getVideoEl();
-      }
-      if (
-        !container.requestFullscreen &&
-        //@ts-expect-error
-        container.webkitEnterFullScreen
-      ) {
-        // e.g. iPhone doesn't allow requestFullscreen
-        //@ts-expect-error
-        container.webkitEnterFullscreen();
-        return;
-      }
-      if (!document.fullscreenElement) {
-        await container.requestFullscreen();
-      } else {
-        // e.g. switching from video fullscreen to theater mode
-        const changeElements = document.fullscreenElement !== container;
-        await document.exitFullscreen();
-        if (changeElements) {
-          await container.requestFullscreen();
+    const fullscreenElement = (): Element | null =>
+      document.fullscreenElement ??
+      // Safari < 16.4
+      (document as any).webkitFullscreenElement ??
+      null;
+
+    /** Whether the player container is fullscreen */
+    const isFullscreen = () =>
+      Boolean(
+        containerRef.current && fullscreenElement() === containerRef.current,
+      );
+
+    /**
+     * Toggles fullscreen on the player container (video + controls + chat overlay + menus), not the bare <video>, so
+     * the custom controls keep working. iOS Safari has no element fullscreen: fall back to the video's native one.
+     * Phones also lock to landscape where the browser allows it.
+     */
+    const toggleFullscreen = async () => {
+      const el = containerRef.current as any;
+      const video = htmlRef.current.getVideoEl() as any;
+      try {
+        if (fullscreenElement()) {
+          if (document.exitFullscreen) {
+            await document.exitFullscreen();
+          } else {
+            await (document as any).webkitExitFullscreen?.();
+          }
+          (screen.orientation as any)?.unlock?.();
+          return;
         }
+        if (el?.requestFullscreen) {
+          await el.requestFullscreen({ navigationUI: "hide" });
+        } else if (el?.webkitRequestFullscreen) {
+          await el.webkitRequestFullscreen();
+        } else if (usingNative() && video?.webkitEnterFullscreen) {
+          video.webkitEnterFullscreen();
+          return;
+        } else {
+          return;
+        }
+        if (isMobile() || window.matchMedia?.("(pointer: coarse)").matches) {
+          await (screen.orientation as any)
+            ?.lock?.("landscape")
+            ?.catch?.(() => {});
+        }
+      } catch (e) {
+        console.warn("fullscreen failed", e);
       }
     };
 
@@ -162,6 +193,55 @@ export function usePlayer(opts: {
       const target = Math.max(time, 0);
       current().seekVideo(target);
       cmd.seek(roomTime(target));
+      // Our own reported time is stale for a moment; don't let the drift controller fight the seek
+      driftRef.current = initialDriftState();
+    };
+
+    /** ±seconds for everyone, clamped to the media */
+    const roomSeekBy = (seconds: number) => {
+      const duration = getDuration();
+      let target = current().getCurrentTime() + seconds;
+      if (Number.isFinite(duration) && duration > 0) {
+        target = Math.min(target, duration - 0.1);
+      }
+      roomSeek(target);
+    };
+
+    const roomRate = () => store.get().roomPlaybackRate || 1;
+
+    /** Recomputes the sync indicator state and stores it if it changed */
+    const updateSyncStatus = () => {
+      const s = store.get();
+      const status = getSyncStatus({
+        connected: s.socketConnected,
+        buffering: s.buffering && !s.roomPaused,
+        correcting: driftRef.current.correcting,
+        drift: driftValueRef.current,
+      });
+      if (!isSameSyncStatus(status, s.syncStatus)) {
+        store.set({ syncStatus: status });
+      }
+    };
+
+    const setBuffering = (buffering: boolean) => {
+      if (store.get().buffering !== buffering) {
+        store.set({ buffering });
+        updateSyncStatus();
+      }
+    };
+
+    const setSocketConnected = (socketConnected: boolean) => {
+      store.set({ socketConnected });
+      updateSyncStatus();
+    };
+
+    /** "Resync me": jump to the room's position and start the controller fresh */
+    const resync = () => {
+      driftRef.current = initialDriftState();
+      driftValueRef.current = 0;
+      current().setPlaybackRate(roomRate());
+      localSeek();
+      updateSyncStatus();
     };
 
     const onVideoEnded = (endedUrl: string) => {
@@ -189,22 +269,52 @@ export function usePlayer(opts: {
       }
     };
 
-    /** Nudges the playback rate to catch up with the leader (called on every REC:tsMap) */
-    const autoSyncRate = (tsMap: NumberDict) => {
+    /**
+     * Drift correction, run on every REC:tsMap (~1 s): small drift nudges the playback rate (0.95–1.05× the room
+     * speed), large drift seeks (see logic/sync.ts nextDriftAction). Updates the sync indicator.
+     */
+    const onTsMap = (tsMap: NumberDict) => {
       const s = store.get();
-      if (
+      const active =
         shouldAutoSyncRate({
           roomPaused: s.roomPaused,
           isLiveStream: s.isLiveStream,
           hasDuration: roomHasDuration(),
-          roomPlaybackRate: s.roomPlaybackRate,
-        })
-      ) {
-        const rate = getCatchUpPlaybackRate(leaderTime(), tsMap[clientId]);
-        if (current().getPlaybackRate() !== rate) {
-          current().setPlaybackRate(rate);
+        }) &&
+        !s.loading &&
+        !s.buffering &&
+        tsMap[clientId] !== undefined;
+      if (!active) {
+        if (driftRef.current.correcting) {
+          current().setPlaybackRate(roomRate());
         }
+        driftRef.current = {
+          ...driftRef.current,
+          correcting: false,
+        };
+        driftValueRef.current = 0;
+        updateSyncStatus();
+        return;
       }
+      const drift = leaderTime() - tsMap[clientId];
+      driftValueRef.current = drift;
+      const { state, action } = nextDriftAction(driftRef.current, {
+        drift,
+        baseRate: roomRate(),
+        now: Date.now(),
+        allowedRates: usingYoutube()
+          ? youtubeRef.current.getAvailablePlaybackRates()
+          : undefined,
+      });
+      driftRef.current = state;
+      if (Math.abs(current().getPlaybackRate() - action.rate) > 0.001) {
+        current().setPlaybackRate(action.rate);
+      }
+      if (action.type === "seek") {
+        console.log("drift %ss: seeking to the room", drift.toFixed(2));
+        localSeek();
+      }
+      updateSyncStatus();
     };
 
     // Loads the YouTube IFrame API, which creates the player in the iframe once ready
@@ -228,6 +338,9 @@ export function usePlayer(opts: {
             },
             onStateChange: (e) => {
               const states = window.YT?.PlayerState;
+              if (usingYoutube()) {
+                setBuffering(e.data === states?.BUFFERING);
+              }
               if (usingYoutube() && e.data === states?.CUED) {
                 store.set({ loading: false });
               }
@@ -258,28 +371,6 @@ export function usePlayer(opts: {
       };
     };
 
-    const onKeydown = (e: KeyboardEvent) => {
-      if (
-        !document.activeElement ||
-        document.activeElement.tagName === "BODY"
-      ) {
-        if (e.key === " ") {
-          e.preventDefault();
-          roomTogglePlay();
-        } else if (e.key === "ArrowRight") {
-          roomSeek(current().getCurrentTime() + 10);
-        } else if (e.key === "ArrowLeft") {
-          roomSeek(current().getCurrentTime() - 10);
-        } else if (e.key === "t") {
-          localFullScreen(false);
-        } else if (e.key === "f") {
-          localFullScreen(true);
-        } else if (e.key === "m") {
-          localToggleMute();
-        }
-      }
-    };
-
     return {
       /** The active player implementation for the room's media */
       current,
@@ -293,32 +384,33 @@ export function usePlayer(opts: {
       getDuration,
       getLeaderTime: leaderTime,
       toRoomTime: roomTime,
-      refreshControls,
       localSeek,
       localPlay,
       localPause,
       localSetMute,
       localSetVolume,
       localToggleMute,
-      localFullScreen,
+      toggleFullscreen,
+      isFullscreen,
+      /** The player view registers its container element here (fullscreen target) */
+      setContainer: (el: HTMLElement | null) => {
+        containerRef.current = el;
+      },
+      getContainer: () => containerRef.current,
       roomTogglePlay,
       roomSeek,
+      roomSeekBy,
+      setBuffering,
+      setSocketConnected,
+      updateSyncStatus,
+      resync,
+      onTsMap,
       roomSetPlaybackRate: (rate: number) => cmd.setPlaybackRate(rate),
       roomSetLoop: (loop: boolean) => cmd.setLoop(loop),
       onVideoEnded,
-      autoSyncRate,
       loadYouTube,
-      onKeydown,
     };
   }, [store, cmd, clientId, share]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    document.onkeydown = api.onKeydown;
-    return () => {
-      document.onkeydown = null;
-    };
-  }, [api]);
 
   // Report our position to the room every second
   useEffect(() => {
