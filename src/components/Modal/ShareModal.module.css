@@ -1,0 +1,78 @@
+/* Share screen / Share a file modals (redesign look: dark surface, copper primary) */
+.content {
+  background: var(--wp-surface-1);
+  border: 1px solid var(--wp-border);
+  border-radius: var(--wp-r-xl);
+  box-shadow: var(--wp-sh-3);
+}
+
+.header {
+  background: var(--wp-surface-1);
+  padding: var(--wp-sp-4) var(--wp-sp-5) var(--wp-sp-2);
+}
+
+.title {
+  font-size: var(--wp-fs-xl);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--wp-sp-3);
+}
+
+.titleIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--wp-r-md);
+  display: grid;
+  place-items: center;
+  background: var(--wp-accent-soft);
+  color: var(--wp-accent-text);
+  flex: none;
+}
+
+.body {
+  padding: var(--wp-sp-2) var(--wp-sp-5) var(--wp-sp-5);
+}
+
+.lead {
+  color: var(--wp-text-2);
+  font-size: var(--wp-fs-md);
+  margin: 0 0 var(--wp-sp-3);
+}
+
+.notes {
+  list-style: none;
+  margin: 0 0 var(--wp-sp-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wp-sp-2);
+}
+
+.notes li {
+  display: flex;
+  gap: var(--wp-sp-2);
+  align-items: flex-start;
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text-2);
+}
+
+.notes svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--wp-text-3);
+}
+
+.option {
+  padding: var(--wp-sp-3);
+  border-radius: var(--wp-r-md);
+  border: 1px solid var(--wp-border);
+  background: var(--wp-surface-2);
+  margin-bottom: var(--wp-sp-4);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wp-sp-2);
+}

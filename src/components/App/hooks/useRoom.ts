@@ -19,14 +19,13 @@ import {
   isScreenShare,
   testAutoplay,
 } from "../../../utils/utils";
-import { isClientTranscodeSupported } from "../../../utils/clientTranscode";
 import type { Chat } from "../../Chat/Chat";
 import { createInitialRoomState } from "../roomState";
 import { getMediaDisplayName } from "../logic/media";
 import { useStore } from "./useStore";
 import { useRoomSocket, type RoomSocketHandlers } from "./useRoomSocket";
 import { usePlayer } from "./usePlayer";
-import { useConvert } from "./useConvert";
+import { getConvertStatus, useConvert } from "./useConvert";
 import { createShareSession, useShare } from "./useShare";
 import { useChat } from "./useChat";
 import { usePlaylist } from "./usePlaylist";
@@ -47,6 +46,15 @@ declare global {
 window.watchparty = window.watchparty ?? {};
 
 const MESSAGE_DURATION_MS = 3000;
+
+/** One quiet toast when this device starts converting the room's video (replaces the previous one) */
+const notifyConvertStart = (reason: string, heavy: boolean) =>
+  toast(
+    heavy
+      ? `Converting the video on this device (${reason}). This can be heavy on phones and older laptops.`
+      : `Converting for this browser: ${reason}`,
+    { id: "wp-convert", title: "Auto-convert" },
+  );
 
 /**
  * Everything the room page needs: composes the store, socket, player, conversion, sharing, chat, playlist and
@@ -82,13 +90,19 @@ export function useRoom(roomId: string) {
     share: shareSession,
     connected: Boolean(socket),
   });
-  const convert = useConvert({ store, player, showError });
+  const convertApi = useConvert({
+    store,
+    player,
+    showError,
+    reportIssue: cmd.reportPlaybackIssue,
+    onConvertStart: notifyConvertStart,
+  });
   const share = useShare({
     store,
     cmd,
     clientId,
     player,
-    convert,
+    convert: convertApi,
     session: shareSession,
     showError,
   });
@@ -151,7 +165,7 @@ export function useRoom(roomId: string) {
       // Stop all players
       // Unless the user is sharing a file, because we play it in our <video> and capture the stream
       if (!shareSession.isFile) {
-        convert.stopConvert();
+        convertApi.stopConvert();
         player.html().pauseVideo();
       }
       player.youtube().stopVideo();
@@ -212,12 +226,9 @@ export function useRoom(roomId: string) {
         }
         window.watchparty.hls.loadSource(src);
         window.watchparty.hls.attachMedia(video);
-      } else if (
-        store.get().convertEnabled &&
-        isClientTranscodeSupported() &&
-        isDirectVideoUrl(src)
-      ) {
-        await convert.convertAndPlay(src, time);
+      } else if (isDirectVideoUrl(src)) {
+        // Probes the file and plays it directly, converts it, or reports that it can't (see useConvert)
+        await convertApi.playUrl(src, time);
       } else {
         await player.current().setSrcAndTime(src, time);
       }
@@ -325,6 +336,9 @@ export function useRoom(roomId: string) {
       },
       chatinit: chat.onInit,
       playlist: (items) => store.set({ playlist: items }),
+      "REC:videoMeta": (videoMeta) => store.set({ videoMeta }),
+      "REC:playbackIssue": (issue) =>
+        store.set({ playbackIssue: { ...issue, at: Date.now() } }),
       signalSS: share.handleSignal,
     };
 
@@ -334,7 +348,7 @@ export function useRoom(roomId: string) {
     store,
     cmd,
     player,
-    convert,
+    convertApi,
     share,
     chat,
     subtitles,
@@ -385,6 +399,18 @@ export function useRoom(roomId: string) {
       document.onfullscreenchange = null;
     };
   }, [store]);
+
+  // room.convert also carries the live "Converting · 34% buffered" status for the player/top bar
+  const convertStatus = getConvertStatus(state);
+  const convertStatusKey = convertStatus
+    ? `${convertStatus.label}|${convertStatus.heavy}|${convertStatus.reason}`
+    : "";
+  const convert = useMemo(
+    () => ({ ...convertApi, status: convertStatus }),
+    // convertStatus is derived from the key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [convertApi, convertStatusKey],
+  );
 
   return {
     state,

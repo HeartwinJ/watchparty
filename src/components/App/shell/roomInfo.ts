@@ -1,6 +1,10 @@
 // Pure helpers for what the shell shows about the room: a short now-playing title and each person's state.
 import { formatTimestamp } from "../../../utils/utils";
-import { classifyMedia, type MediaKind } from "../logic/media";
+import {
+  classifyMedia,
+  getAttachedDisplayName,
+  type MediaKind,
+} from "../logic/media";
 
 const KIND_LABEL: Record<MediaKind, string> = {
   none: "",
@@ -20,7 +24,8 @@ export function mediaKindLabel(url: string | undefined): string {
 /**
  * A short title for a media URL: the display name the room already computed (e.g. "Alex's screen", a
  * `displayName` from the proxy) unless it is the raw URL, in which case the file name or the YouTube id.
- * TODO: use real titles once the picker (agent C) stores metadata with the media.
+ * Links hosted from the source picker carry their readable name ("Title · S02E04") in the URL fragment, which
+ * always wins: AIOStreams playback URLs contain a credential and must never be shown.
  */
 export function shortMediaTitle(
   url: string | undefined,
@@ -28,6 +33,10 @@ export function shortMediaTitle(
 ): string {
   if (!url) {
     return "";
+  }
+  const attached = getAttachedDisplayName(url);
+  if (attached) {
+    return attached;
   }
   if (displayName && displayName !== url) {
     return displayName;

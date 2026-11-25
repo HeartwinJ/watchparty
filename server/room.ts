@@ -10,6 +10,12 @@ import {
   subtitleOffsetKey,
 } from "./utils/subtitleOffset.ts";
 import { fetchYoutubeVideo, getYoutubeVideoID } from "./utils/youtube.ts";
+import {
+  createIssueLimiter,
+  parsePlaybackIssue,
+  parsePlaylistAdd,
+  parseVideoMetaCommand,
+} from "./videoMeta.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -68,6 +74,8 @@ export class Room {
   public playlist: PlaylistVideo[] = [];
   /** Room-wide subtitle offset in seconds (positive = later), see setSubtitleOffset */
   public subtitleOffset = 0;
+  /** AIOStreams metadata for the current video (see CMD:videoMeta) */
+  public videoMeta: VideoMeta | null = null;
 
   // Non-serialized state
   public roomId: string;
@@ -83,6 +91,7 @@ export class Room {
   private subtitleOffsetChatTimer: NodeJS.Timeout | undefined = undefined;
   /** How long the subtitle offset has to stay unchanged before it's announced in chat */
   public static SUBTITLE_OFFSET_CHAT_DELAY_MS = 1500;
+  private issueLimiter = createIssueLimiter();
 
   constructor(
     io: Server,
@@ -170,6 +179,7 @@ export class Room {
       socket.emit("REC:tsMap", this.tsMap);
       socket.emit("chatinit", this.chat);
       socket.emit("playlist", this.playlist);
+      socket.emit("REC:videoMeta", this.videoMeta);
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
@@ -235,7 +245,7 @@ export class Room {
         this.playlistNext(data);
       });
       on("CMD:playlistAdd", (data: unknown) => {
-        this.playlistAdd(socket, String(data));
+        this.playlistAddCommand(socket, data);
       });
       on("CMD:playlistMove", (data: unknown) => {
         this.playlistMove(data);
@@ -247,6 +257,11 @@ export class Room {
       on("CMD:kickUser", (data: unknown) => this.kickUser(data));
       on("CMD:deleteChatMessages", (data: unknown) =>
         this.deleteChatMessages(data),
+      );
+
+      on("CMD:videoMeta", (data: unknown) => this.setVideoMeta(data));
+      on("CMD:playbackIssue", (data: unknown) =>
+        this.reportPlaybackIssue(socket, data),
       );
 
       on("signalSS", (data: unknown) => this.sendSignal(socket, data));
@@ -283,6 +298,7 @@ export class Room {
       playlist: this.playlist,
       loop: this.loop,
       subtitleOffset: this.subtitleOffset,
+      videoMeta: this.videoMeta,
     });
   };
 
@@ -315,6 +331,9 @@ export class Room {
       this.loop = roomObj.loop;
     }
     this.subtitleOffset = normalizeSubtitleOffset(roomObj.subtitleOffset) ?? 0;
+    if (roomObj.videoMeta) {
+      this.videoMeta = roomObj.videoMeta;
+    }
   };
 
   public saveRoom = () => {
@@ -370,11 +389,16 @@ export class Room {
     };
   };
 
-  private cmdHost = (socket: Socket | null, data: string) => {
+  private cmdHost = (
+    socket: Socket | null,
+    data: string,
+    meta: VideoMeta | null = null,
+  ) => {
     if (data && data.length > 50000) {
       return;
     }
     this.video = data;
+    this.videoMeta = meta;
     this.videoTS = 0;
     this.paused = false;
     this.subtitle = "";
@@ -386,6 +410,7 @@ export class Room {
     setTimeout(() => (this.preventTSUpdate = false), 1000);
     this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
     this.io.of(this.roomId).emit("REC:host", this.getHostState());
+    this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
     if (socket && data) {
       const chatMsg = { id: socket.clientId, cmd: "host", msg: data };
       this.addChatMessage(socket, chatMsg);
@@ -452,21 +477,27 @@ export class Room {
     const next = this.playlist.shift();
     this.io.of(this.roomId).emit("playlist", this.playlist);
     if (next) {
-      this.cmdHost(null, next.url);
+      this.cmdHost(null, next.url, next.meta ?? null);
     }
   };
 
-  public playlistAdd = async (socket: Socket | null, data: string) => {
+  public playlistAdd = async (
+    socket: Socket | null,
+    data: string,
+    extra?: { name: string | null; img: string | null; meta: VideoMeta | null },
+  ) => {
     if (typeof data !== "string" || !data || data.length > 20000) {
       return;
     }
     const youtubeVideoId = getYoutubeVideoID(data);
-    const item = {
-      name: data,
-      channel: "Video URL",
+    const item: PlaylistVideo = {
+      name: extra?.name || data,
+      channel: extra?.meta ? "Movies & Shows" : "Video URL",
       duration: 0,
       url: data,
       type: "file",
+      ...(extra?.img ? { img: extra.img } : {}),
+      ...(extra?.meta ? { meta: extra.meta } : {}),
     };
     let video: PlaylistVideo | null = null;
     try {
@@ -726,6 +757,39 @@ export class Room {
     );
     const reaction: Reaction = { user: socket.clientId, ...data };
     this.io.of(this.roomId).emit("REC:removeReaction", reaction);
+  };
+
+  // CMD:playlistAdd: a URL string, or {url, name?, img?, meta?} from the source picker
+  private playlistAddCommand = (socket: Socket, raw: unknown) => {
+    const item = parsePlaylistAdd(raw);
+    if (item) {
+      return this.playlistAdd(socket, item.url, item);
+    }
+  };
+
+  // CMD:videoMeta {url, meta}: describes the current video. Ignored unless `url` is still the room's video, so a
+  // late message can't attach metadata to something else. Cleared by cmdHost whenever the video changes.
+  private setVideoMeta = (raw: unknown) => {
+    const data = parseVideoMetaCommand(raw);
+    if (!data || !this.video || data.url !== this.video) {
+      return;
+    }
+    this.videoMeta = data.meta;
+    this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
+  };
+
+  // CMD:playbackIssue {reason}: this viewer's browser can't play the video. Rate limited, then shown to everyone.
+  private reportPlaybackIssue = (socket: Socket, raw: unknown) => {
+    const reason = parsePlaybackIssue(raw);
+    if (!reason || !this.video || !this.issueLimiter.allow(socket.clientId)) {
+      return;
+    }
+    const issue: PlaybackIssue = {
+      userId: socket.clientId,
+      name: this.nameMap[socket.clientId] || "Someone",
+      reason,
+    };
+    this.io.of(this.roomId).emit("REC:playbackIssue", issue);
   };
 
   private joinScreenSharing = (socket: Socket, raw: unknown) => {

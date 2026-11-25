@@ -6,11 +6,33 @@ import React, { createContext, useCallback, useContext, useMemo } from "react";
  * coordinate (e.g. the top bar opens the picker, the player shows chat bubbles when the
  * sidebar is collapsed) without importing each other.
  */
+/** Where the source picker should open (see openPickerAt) */
+export type PickerTarget =
+  /** The search results for a query (e.g. typed on Home) */
+  | { kind: "search"; query: string }
+  /** The stream list of a title/episode, e.g. "Pick another" for the room's current video */
+  | { kind: "streams"; videoMeta: VideoMeta };
+
+export type PickerMode = "play" | "queue";
+export interface OpenPickerOptions {
+  mode?: PickerMode;
+}
+
 export interface RoomUi {
   /** Source picker (command palette) */
   pickerOpen: boolean;
-  openPicker: () => void;
+  /**
+   * Opens the picker at its start screen. `{mode: "queue"}` (e.g. the Queue tab's "Add to queue") makes Enter and
+   * the primary buttons add to the queue instead of playing now.
+   */
+  openPicker: (opts?: OpenPickerOptions | React.SyntheticEvent) => void;
+  /** "queue" while opened with openPicker({mode: "queue"}) */
+  pickerMode: PickerMode;
   closePicker: () => void;
+  /** Opens the picker at a specific place */
+  openPickerAt: (target: PickerTarget) => void;
+  /** Set by openPickerAt until the picker closes or is opened plainly */
+  pickerTarget: PickerTarget | null;
   /** Desktop sidebar (Chat / Queue / People) */
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -46,6 +68,10 @@ function writeBool(key: string, value: boolean) {
 export function RoomUiProvider({ children }: { children: React.ReactNode }) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [pickerTarget, setPickerTarget] = React.useState<PickerTarget | null>(
+    null,
+  );
+  const [pickerMode, setPickerMode] = React.useState<PickerMode>("play");
   const [sidebarCollapsed, setCollapsed] = React.useState(() =>
     readBool("wp-sidebar-collapsed", false),
   );
@@ -67,8 +93,31 @@ export function RoomUiProvider({ children }: { children: React.ReactNode }) {
     setOverlay(enabled);
     writeBool("wp-chat-overlay", enabled);
   }, []);
-  const openPicker = useCallback(() => setPickerOpen(true), []);
-  const closePicker = useCallback(() => setPickerOpen(false), []);
+  // Safe to pass straight to onClick: anything but {mode: "queue"} (e.g. a click event) means "play"
+  const openPicker = useCallback(
+    (opts?: OpenPickerOptions | React.SyntheticEvent) => {
+      const mode =
+        opts &&
+        typeof opts === "object" &&
+        (opts as OpenPickerOptions).mode === "queue"
+          ? "queue"
+          : "play";
+      setPickerTarget(null);
+      setPickerMode(mode);
+      setPickerOpen(true);
+    },
+    [],
+  );
+  const closePicker = useCallback(() => {
+    setPickerOpen(false);
+    setPickerTarget(null);
+    setPickerMode("play");
+  }, []);
+  const openPickerAt = useCallback((target: PickerTarget) => {
+    setPickerTarget(target);
+    setPickerMode("play");
+    setPickerOpen(true);
+  }, []);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -77,6 +126,9 @@ export function RoomUiProvider({ children }: { children: React.ReactNode }) {
       pickerOpen,
       openPicker,
       closePicker,
+      openPickerAt,
+      pickerTarget,
+      pickerMode,
       sidebarCollapsed,
       setSidebarCollapsed,
       toggleSidebar,
@@ -90,6 +142,9 @@ export function RoomUiProvider({ children }: { children: React.ReactNode }) {
       pickerOpen,
       openPicker,
       closePicker,
+      openPickerAt,
+      pickerTarget,
+      pickerMode,
       sidebarCollapsed,
       setSidebarCollapsed,
       toggleSidebar,

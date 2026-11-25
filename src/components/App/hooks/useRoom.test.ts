@@ -53,6 +53,15 @@ vi.mock("../../../utils/utils", async (importOriginal) => ({
   testAutoplay: async () => true,
 }));
 
+// Probing reads the media with mediabunny; tests decide what it "finds" (default: unreadable → play directly)
+const probeMedia = vi.fn(async (_url: string): Promise<unknown> => {
+  throw new Error("not readable in tests");
+});
+vi.mock("../../../utils/clientTranscode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../utils/clientTranscode")>()),
+  probeMedia: (url: string) => probeMedia(url),
+}));
+
 const { useRoom } = await import("./useRoom");
 
 async function setup() {
@@ -321,6 +330,138 @@ describe("useRoom", () => {
     });
     act(() => result.current.player.onVideoEnded("https://h/a.mp4"));
     expect(socket.emits("CMD:playlistNext")).toEqual([["https://h/a.mp4"]]);
+  });
+
+  it("stores REC:videoMeta and REC:playbackIssue", async () => {
+    const { result, socket } = await setup();
+    const meta = {
+      source: "aiostreams",
+      type: "movie",
+      id: "tt1",
+      imdbId: "tt1",
+      season: null,
+      episode: null,
+      title: "Example",
+      episodeTitle: null,
+      poster: null,
+      bingeGroup: null,
+    };
+    act(() => socket.receive("REC:videoMeta", meta));
+    expect(result.current.state.videoMeta).toEqual(meta);
+    act(() =>
+      socket.receive("REC:playbackIssue", {
+        userId: "x",
+        name: "Alex",
+        reason: "HEVC",
+      }),
+    );
+    expect(result.current.state.playbackIssue).toMatchObject({
+      name: "Alex",
+      reason: "HEVC",
+    });
+    act(() => socket.receive("REC:videoMeta", null));
+    expect(result.current.state.videoMeta).toBeNull();
+  });
+
+  it("restores queued metadata when playing a playlist item", async () => {
+    const { result, socket } = await setup();
+    const meta = { source: "aiostreams", type: "movie", id: "tt1", title: "X" };
+    act(() => {
+      result.current.store.set({
+        playlist: [
+          {
+            url: "https://h/1.mkv#wp-name=X",
+            name: "X",
+            duration: 0,
+            type: "file",
+            meta: meta as VideoMeta,
+          },
+        ],
+      });
+    });
+    act(() => result.current.playlist.play(0));
+    expect(socket.emits("CMD:videoMeta")).toEqual([
+      [{ url: "https://h/1.mkv#wp-name=X", meta }],
+    ]);
+  });
+
+  it("probes direct links, and reports a stream this browser can't play", async () => {
+    probeMedia.mockImplementationOnce(async () => ({
+      container: "matroska",
+      containerNative: false,
+      video: {
+        id: 1,
+        codec: "avc",
+        height: 1080,
+        native: true,
+        copy: true,
+        decode: true,
+      },
+      audio: [
+        {
+          id: 2,
+          codec: "dts",
+          language: "eng",
+          name: null,
+          channels: 6,
+          default: true,
+          original: false,
+          commentary: false,
+          native: false,
+          copy: false,
+          decode: false,
+        },
+      ],
+      transcodeSupported: true,
+      encodeVideo: true,
+      encodeAudio: true,
+    }));
+    const { result, socket } = await setup();
+    const video = document.getElementById("leftVideo") as HTMLVideoElement;
+    video.play = vi.fn(async () => {});
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: "https://example.com/movie.mkv",
+        videoTS: 0,
+        subtitle: "",
+        paused: true,
+        playbackRate: 0,
+        loop: false,
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.state.playback).toEqual({
+        mode: "fail",
+        reason: "DTS audio isn't supported in this browser",
+      }),
+    );
+    expect(socket.emits("CMD:playbackIssue")).toEqual([
+      [{ reason: "DTS audio isn't supported in this browser" }],
+    ]);
+    // Still tries (e.g. video without sound)
+    expect(video.src).toBe("https://example.com/movie.mkv");
+  });
+
+  it("plays directly without probing when auto-convert is off", async () => {
+    window.localStorage.setItem("wp-auto-convert", "0");
+    const { result, socket } = await setup();
+    expect(result.current.state.convertEnabled).toBe(false);
+    probeMedia.mockClear();
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: "https://example.com/movie.mkv",
+        videoTS: 0,
+        subtitle: "",
+        paused: true,
+        playbackRate: 0,
+        loop: false,
+      }),
+    );
+    expect(probeMedia).not.toHaveBeenCalled();
+    expect(result.current.state.playback).toEqual({ mode: "direct" });
+    act(() => result.current.convert.setConvertEnabled(true));
+    expect(window.localStorage.getItem("wp-auto-convert")).toBe("1");
+    expect(result.current.state.convertEnabled).toBe(true);
   });
 
   it("disconnects on unmount", async () => {

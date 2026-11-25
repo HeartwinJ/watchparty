@@ -97,27 +97,34 @@ export function useShare(opts: {
       }
     };
 
-    // Shares a file from this device. With convert, the file is first transcoded in this browser (see useConvert),
-    // then shared the same way as an unconverted file.
-    const startFileShare = async (options?: { convert?: boolean }) => {
-      const files = await openFileSelector();
-      if (!files) {
-        return;
-      }
-      const file = files[0];
-      if (options?.convert && !isClientTranscodeSupported()) {
+    // Plays `source` in our own <video> (converted first if asked) and publishes its captureStream() to the room
+    // through the file-share pipeline. Returns false if it didn't start.
+    const publishFromVideo = async (
+      source: File | string,
+      options: { convert: boolean; startTime?: number },
+    ): Promise<boolean> => {
+      if (options.convert && !isClientTranscodeSupported()) {
         showError("Your browser doesn't support converting videos");
-        return;
+        return false;
+      }
+      if (!options.convert && typeof source === "string") {
+        // A cross-origin <video> can't be captured; URL shares always go through the converter
+        return false;
       }
       convert.stopConvert();
       player.current().clearState();
       const video = player.html().getVideoEl();
-      if (options?.convert) {
-        const transcoder = convert.createTranscoder(file, video, 0, (err) => {
-          // Conversion failed mid-share
-          showError(`Conversion failed: ${err.message}`);
-          stopPublishing();
-        });
+      if (options.convert) {
+        const transcoder = convert.createTranscoder(
+          source,
+          video,
+          options.startTime ?? 0,
+          (err) => {
+            // Conversion failed mid-share
+            showError(`Conversion failed: ${err.message}`);
+            stopPublishing();
+          },
+        );
         try {
           await transcoder.start();
         } catch (err) {
@@ -130,24 +137,55 @@ export function useShare(opts: {
                 : "Unable to convert this file",
             );
           }
-          return;
+          return false;
         }
         if (!convert.isCurrent(transcoder)) {
           // Cancelled while starting up
-          return;
+          return false;
         }
       } else {
-        video.src = URL.createObjectURL(file);
+        video.src = URL.createObjectURL(source as File);
       }
       video.play();
       //@ts-expect-error captureStream isn't in the DOM types for HTMLMediaElement
       const stream: MediaStream | undefined = video?.captureStream();
       setLocalStream(stream, true);
-      if (stream) {
-        // Warm the ICE server cache before viewers start connecting
-        await getIceServers();
-        cmd.joinScreenShare(true);
+      if (!stream) {
+        return false;
       }
+      // Warm the ICE server cache before viewers start connecting
+      await getIceServers();
+      cmd.joinScreenShare(true);
+      return true;
+    };
+
+    // Shares a file from this device. With convert, the file is first transcoded in this browser (see useConvert),
+    // then shared the same way as an unconverted file.
+    const startFileShare = async (options?: { convert?: boolean }) => {
+      const files = await openFileSelector();
+      if (!files) {
+        return;
+      }
+      await publishFromVideo(files[0], { convert: Boolean(options?.convert) });
+    };
+
+    /**
+     * "Share converted stream": for viewers whose device can't play or convert the room's video, this device
+     * converts the URL once and streams the result to everyone over the file-share pipeline (limited by this
+     * device's upload). The AIOStreams metadata is re-attached to the new fileshare:// media.
+     */
+    const startUrlShare = async (
+      url: string,
+      options: { startTime?: number; meta?: VideoMeta | null } = {},
+    ) => {
+      const started = await publishFromVideo(url, {
+        convert: true,
+        startTime: options.startTime,
+      });
+      if (started && options.meta) {
+        cmd.setVideoMeta(`fileshare://${clientId}`, options.meta);
+      }
+      return started;
     };
 
     const sendSignal = (to: string, msg: SignalMessage, sharer?: boolean) =>
@@ -279,6 +317,7 @@ export function useShare(opts: {
     return {
       startScreenShare,
       startFileShare,
+      startUrlShare,
       stopPublishing,
       setupRTCConnections,
       handleSignal,

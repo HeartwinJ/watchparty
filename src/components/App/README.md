@@ -11,7 +11,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
  ├ useStore(createInitialRoomState)      one RoomState (roomState.ts), get() is synchronous
  ├ useRoomSocket                         socket.io connection, auth handling, typed CMD:* emitters (cmd)
  ├ usePlayer                             HTML.ts / YouTube.ts, play/pause/seek/rate/loop, drift sync, fullscreen, CMD:ts loop
- ├ useConvert                            clientTranscode.ts (lazy mediabunny), Convert toggle, audio tracks
+ ├ useConvert                            probe → direct/convert/fail per device (auto-convert), audio tracks
  ├ useShare                              screen + file share over WebRTC (/iceServers), signalSS
  ├ useChat / usePlaylist / useSubtitles  REC:* handlers and actions for each feature
  └ handlers                              maps every server event to the hooks above (REC:host loads media)
@@ -81,7 +81,49 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 - Breakpoints: ≤ 1100px hides the avatars, ≤ 960px turns Invite into an icon, ≤ 768px is the phone layout.
 - **Slots for the other workstreams:** `{/* SLOT(B): <SyncIndicator room={room} /> */}` in `RoomTopBar.tsx` (start of
   the right-hand group) and `{/* SLOT(C): <SourcePicker room={room} /> */}` at the end of `RoomLayout` in `App.tsx`.
-  The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change", queue "Add to queue").
+  The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
+  queue" uses `openPicker({ mode: "queue" })`.
+
+## Source picker (`picker/`, Phase 4 + PLAN 6c)
+
+- Mount once inside `RoomUiProvider`: `<SourcePicker room={room} />`. It renders the palette when
+  `useRoomUi().pickerOpen` is true, shows the room-wide playback-issue toasts and fills `state.subtitleTracks`
+  (auto subtitles, `useAutoSubtitles`) from `/addon/subtitles` while `state.videoMeta` is set.
+- `useRoomUi()`: `openPicker(opts?)` (`{mode: "queue"}` makes Enter/primary buttons add to the queue; a click event
+  is ignored, so `onClick={ui.openPicker}` is fine), `openPickerAt({kind: "search", query} | {kind: "streams",
+videoMeta})` ("Pick another"), `pickerTarget`, `pickerMode`.
+- `PickerPalette.tsx` is the testable view (props: `actions: PickerActions`, `target`, `mode`). `SourcePicker.tsx`
+  maps the actions onto the room (`usePickerActions`): links use `cmd.setMedia` / `playlist.add` like the old toolbar,
+  share actions open the existing `ScreenShareModal` / `FileShareModal` via `store.set`.
+- Levels (a frame stack): root (empty state: share actions + recent sources; pasted link: type badge + Play now /
+  Add to queue; text: chips All / Movies & Shows / YouTube, poster grid + YouTube list) → title (movie: header +
+  streams; series/anime: season selector + episodes) → episode (header + subtitles found + streams). Esc goes back one
+  level then closes, Backspace in an empty input goes back, breadcrumbs are buttons.
+- Keyboard model (`options.tsx`): each row registers with `useOption(id, {primary, secondary})`, the input keeps
+  focus with `aria-activedescendant`, ↑/↓ follow DOM order, Enter = primary, Shift+Enter = secondary.
+- `api/addons.ts` is the typed `/addon/*` + `/youtube` client (AbortSignal everywhere, `createDebouncedSearch`
+  250 ms, 503 `aiostreams_not_configured` hides Movies & Shows for the session). `useLoad.ts` caches results 5 min.
+- **Playing a stream** hosts `withDisplayName(stream.url, "Title · S02E04")` (`logic/media.ts`: the name rides in
+  the URL fragment, so `getMediaDisplayName`/`shortMediaTitle` show it and never the credential-bearing URL) and sends
+  `cmd.setVideoMeta(url, meta)`. Queue items carry `{name, img, meta}` and restore the meta when played. Recent
+  sources (`wp-recent-sources`) store AIOStreams picks as title/episode, never the playback URL.
+
+## Auto-convert (PLAN 6c)
+
+- `useConvert.playUrl(src, time)` handles every direct link (`REC:host`): with the per-device **"Auto-convert when
+  needed"** setting on (`state.convertEnabled`, `localStorage` `wp-auto-convert`, default on), it calls
+  `probeMedia(url)` (`utils/clientTranscode.ts`: mediabunny reads the container/tracks via range requests and
+  measures `canPlayType` / `MediaSource.isTypeSupported` / WebCodecs decode+encode per track), then
+  `decidePlayback()` (`logic/playback.ts`, pure) picks **direct**, **convert** (copy what plays, re-encode the rest,
+  with `chooseAudioTrack`: original language, AAC/Opus > AC-3/E-AC-3 > DTS/TrueHD, no commentary) or **fail**.
+  If the probe can't read the URL (no CORS, timeout) it plays directly. A decode error during direct play falls back
+  to conversion when possible. With the setting off it plays directly and only reports failures.
+- `state.playback` is the decision; `room.convert.status` (`getConvertStatus`) is `{label: "Converting · 34%
+buffered", progress, heavy, reason}` or null; `picker/ConvertStatus.tsx` renders it as a pill for the player.
+- Failures send `cmd.reportPlaybackIssue(reason)`; every client toasts "Alex can't play this stream: …" with
+  "Pick another" (opens the picker on the same title's streams via `videoMeta`) and, for viewers whose device can play
+  it, "Share converted stream" (`share.startUrlShare`: converts once and publishes it over the file-share pipeline,
+  then re-attaches the `videoMeta` to the `fileshare://` media).
 
 ## Player (Phase 4 + PLAN 6a/6b/6d)
 

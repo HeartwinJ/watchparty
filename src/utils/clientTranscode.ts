@@ -31,6 +31,11 @@ import type {
   InputAudioTrack,
   InputVideoTrack,
 } from "mediabunny";
+import type {
+  ProbeResult,
+  ProbedAudioTrack,
+  ProbedVideoTrack,
+} from "../components/App/logic/playback";
 
 type Mediabunny = typeof import("mediabunny");
 
@@ -840,6 +845,139 @@ export class ClientTranscoder {
       "This browser can't encode a compatible audio format. Try a different browser.",
     );
   }
+}
+
+/** Give up probing after this long (slow CDN, or a server that ignores range requests) */
+const PROBE_TIMEOUT_MS = 15000;
+
+/**
+ * Reads a media URL's container and track info (a few range requests via mediabunny, loaded lazily) and measures
+ * what this browser can do with each track. Feed the result to decidePlayback() (components/App/logic/playback.ts).
+ * Throws if the URL can't be read (no CORS, not a media file, timeout).
+ */
+export async function probeMedia(url: string): Promise<ProbeResult> {
+  const mb = await import("mediabunny");
+  const input = new mb.Input({
+    source: new mb.UrlSource(url),
+    formats: mb.ALL_FORMATS,
+  });
+  let timer: number | undefined;
+  try {
+    return await Promise.race([
+      probeInput(mb, input),
+      new Promise<never>((_, reject) => {
+        timer = window.setTimeout(
+          () => reject(new Error("Timed out reading the video")),
+          PROBE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    window.clearTimeout(timer);
+    input.dispose();
+  }
+}
+
+async function probeInput(mb: Mediabunny, input: Input): Promise<ProbeResult> {
+  const transcodeSupported = isClientTranscodeSupported();
+  const hasMse = typeof MediaSource !== "undefined";
+  const mseSupports = (type: string) =>
+    hasMse && MediaSource.isTypeSupported(type);
+  const el = document.createElement("video");
+  const format = await input.getFormat();
+  const baseMime = format.mimeType;
+  const fullMime = await input.getMimeType();
+  const mp4Codecs = new mb.Mp4OutputFormat().getSupportedCodecs() as string[];
+  const nativeTrack = (codecString: string | null) =>
+    Boolean(codecString) &&
+    el.canPlayType(`${baseMime}; codecs="${codecString}"`) !== "";
+
+  const v = await input.getPrimaryVideoTrack();
+  let video: ProbedVideoTrack | null = null;
+  if (v) {
+    const cs = await v.getCodecParameterString();
+    const copy = Boolean(
+      v.codec &&
+      cs &&
+      mp4Codecs.includes(v.codec) &&
+      mseSupports(`video/mp4; codecs="${cs}"`),
+    );
+    video = {
+      id: v.id,
+      codec: v.codec,
+      height: v.displayHeight,
+      native: nativeTrack(cs),
+      copy,
+      decode: transcodeSupported && (await v.canDecode().catch(() => false)),
+    };
+  }
+
+  const tracks = await input.getAudioTracks();
+  if (tracks.some((t) => t.codec === "ac3" || t.codec === "eac3")) {
+    // Needed for canDecode() to say yes to Dolby audio
+    await registerAc3();
+  }
+  const audio: ProbedAudioTrack[] = [];
+  for (const t of tracks) {
+    const cs = await t.getCodecParameterString();
+    const disposition = t.disposition;
+    audio.push({
+      id: t.id,
+      codec: t.codec,
+      language: t.languageCode || "und",
+      name: t.name,
+      channels: t.numberOfChannels,
+      default: Boolean(disposition?.default),
+      original: Boolean(disposition?.original),
+      commentary: Boolean(disposition?.commentary),
+      native: nativeTrack(cs),
+      copy: Boolean(
+        t.codec &&
+        cs &&
+        mp4Codecs.includes(t.codec) &&
+        mseSupports(`audio/mp4; codecs="${cs}"`),
+      ),
+      decode: transcodeSupported && (await t.canDecode().catch(() => false)),
+    });
+  }
+
+  // Encoders only matter when something has to be re-encoded
+  let encodeVideo = false;
+  if (transcodeSupported && video && !video.copy && video.decode && v) {
+    const height = Math.min(v.displayHeight, MAX_TRANSCODE_HEIGHT);
+    const width = Math.round((v.displayWidth * height) / v.displayHeight);
+    for (const { codec, probe } of VIDEO_CANDIDATES) {
+      if (
+        mseSupports(`video/mp4; codecs="${probe}"`) &&
+        (await mb.canEncodeVideo(codec, { width, height }))
+      ) {
+        encodeVideo = true;
+        break;
+      }
+    }
+  }
+  let encodeAudio = false;
+  if (transcodeSupported && audio.some((t) => !t.copy && t.decode)) {
+    for (const { codec, probe } of AUDIO_CANDIDATES) {
+      if (
+        mseSupports(`audio/mp4; codecs="${probe}"`) &&
+        (await mb.canEncodeAudio(codec, { numberOfChannels: 2 }))
+      ) {
+        encodeAudio = true;
+        break;
+      }
+    }
+  }
+
+  return {
+    container: format.name.toLowerCase(),
+    containerNative: el.canPlayType(fullMime) !== "",
+    video,
+    audio,
+    transcodeSupported,
+    encodeVideo,
+    encodeAudio,
+  };
 }
 
 const describeDiscardedTracks = (conversion: Conversion): string => {

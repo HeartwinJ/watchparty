@@ -16,7 +16,14 @@ export interface ToastOptions {
   duration?: number;
   /** Stable id so repeated toasts replace each other instead of stacking */
   id?: string;
-  action?: { label: string; onClick: () => void };
+  action?: ToastAction;
+  /** More than one button (shown after `action`) */
+  actions?: ToastAction[];
+}
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
 }
 
 const toneColor: Record<ToastTone, string | undefined> = {
@@ -31,29 +38,44 @@ export function toast(message: React.ReactNode, opts: ToastOptions = {}) {
   if (opts.id) {
     notifications.hide(opts.id);
   }
-  const action = opts.action;
+  const actions = [
+    ...(opts.action ? [opts.action] : []),
+    ...(opts.actions ?? []),
+  ];
+  const button = (action: ToastAction) => (
+    <Button
+      key={action.label}
+      size="compact-sm"
+      variant="light"
+      onClick={() => {
+        notifications.hide(id);
+        action.onClick();
+      }}
+    >
+      {action.label}
+    </Button>
+  );
   return notifications.show({
     id,
     title: opts.title,
     color: toneColor[opts.tone ?? "neutral"],
-    autoClose: opts.duration ?? (action ? 7000 : 4500),
+    autoClose: opts.duration ?? (actions.length ? 7000 : 4500),
     withBorder: true,
-    message: action ? (
-      <Group justify="space-between" wrap="nowrap" gap="sm">
-        <Text size="sm">{message}</Text>
-        <Button
-          size="compact-sm"
-          variant="light"
-          onClick={() => {
-            notifications.hide(id);
-            action.onClick();
-          }}
-        >
-          {action.label}
-        </Button>
-      </Group>
-    ) : (
-      message
-    ),
+    message:
+      actions.length === 1 ? (
+        <Group justify="space-between" wrap="nowrap" gap="sm">
+          <Text size="sm">{message}</Text>
+          {button(actions[0])}
+        </Group>
+      ) : actions.length > 1 ? (
+        <>
+          <Text size="sm">{message}</Text>
+          <Group gap="xs" mt={6}>
+            {actions.map(button)}
+          </Group>
+        </>
+      ) : (
+        message
+      ),
   });
 }

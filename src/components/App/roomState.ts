@@ -47,8 +47,15 @@ export interface RoomState {
   isAutoPlayable: boolean;
   nonPlayableMedia: boolean;
   isLiveStream: boolean;
+  /** AIOStreams metadata of the current video (REC:videoMeta), null for anything else */
+  videoMeta: VideoMeta | null;
+  /** The latest REC:playbackIssue, with a receive timestamp so repeats are distinct */
+  playbackIssue: (PlaybackIssue & { at: number }) | undefined;
   // Client-side conversion (see useConvert)
+  /** Per-device "Auto-convert when needed" (default on). Kept as `convertEnabled` for compatibility. */
   convertEnabled: boolean;
+  /** How this device plays the current direct link (see useConvert.playUrl / logic/playback.ts) */
+  playback: PlaybackState | undefined;
   convertProgress: number | undefined;
   audioTracks: AudioTrackInfo[] | undefined;
   audioTrackId: number | undefined;
@@ -84,6 +91,23 @@ export interface RoomState {
 
 export type RoomStore = Store<RoomState>;
 
+export type PlaybackState =
+  | { mode: "probing" }
+  | { mode: "direct"; note?: string }
+  | { mode: "convert"; heavy: boolean; reason: string }
+  | { mode: "fail"; reason: string };
+
+/** localStorage key of the per-device auto-convert setting ("0" = off) */
+export const AUTO_CONVERT_KEY = "wp-auto-convert";
+
+function readAutoConvert(): boolean {
+  try {
+    return window.localStorage.getItem(AUTO_CONVERT_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 export function createInitialRoomState(): RoomState {
   return {
     connection: "starting",
@@ -107,7 +131,10 @@ export function createInitialRoomState(): RoomState {
     isAutoPlayable: true,
     nonPlayableMedia: false,
     isLiveStream: false,
-    convertEnabled: window.localStorage.getItem("watchparty-convert") === "1",
+    videoMeta: null,
+    playbackIssue: undefined,
+    convertEnabled: readAutoConvert(),
+    playback: undefined,
     convertProgress: undefined,
     audioTracks: undefined,
     audioTrackId: undefined,
