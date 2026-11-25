@@ -11,12 +11,21 @@ import {
 } from "@mantine/core";
 import { openFileSelector, serverPath } from "../../utils/utils";
 import { apiFetch } from "../../utils/api";
+import { toast } from "../App/ui/toast";
 import {
   IconDownload,
   IconSearch,
   IconUpload,
   IconX,
 } from "@tabler/icons-react";
+
+function subtitleErrorMessage(body: unknown): string {
+  const b = body as { error?: string; message?: string } | null;
+  if (b?.error === "opensubtitles_not_configured") {
+    return "Subtitle search isn't set up on this server (OPENSUBTITLES_KEY).";
+  }
+  return `OpenSubtitles: ${b?.message ?? "request failed"}`;
+}
 
 export class SubtitleModal extends React.Component<{
   closeModal: () => void;
@@ -64,9 +73,16 @@ export class SubtitleModal extends React.Component<{
     const resp = await apiFetch(
       "/searchSubtitles?title=" + encodeURIComponent(this.state.titleQuery),
     );
-    const json = await resp.json();
-    this.setState({ searchResults: json });
-    this.setState({ loading: false });
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok || !Array.isArray(json)) {
+      toast(subtitleErrorMessage(json), {
+        tone: "danger",
+        id: "subtitle-search",
+      });
+      this.setState({ searchResults: [], loading: false });
+      return;
+    }
+    this.setState({ searchResults: json, loading: false });
   };
   render() {
     const { closeModal } = this.props;
@@ -146,7 +162,14 @@ export class SubtitleModal extends React.Component<{
                           "/downloadSubtitles?file_id=" +
                             result.attributes.files[0]?.file_id,
                         );
-                        const data = await resp.json();
+                        const data = await resp.json().catch(() => null);
+                        if (!resp.ok || !data?.link) {
+                          toast(subtitleErrorMessage(data), {
+                            tone: "danger",
+                            id: "subtitle-download",
+                          });
+                          return;
+                        }
                         this.props.setRoomSubtitle(serverPath + data.link);
                       }}
                     >
