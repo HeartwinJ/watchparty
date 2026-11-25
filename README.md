@@ -11,7 +11,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 - One shared instance password instead of user accounts
 - Rooms saved in SQLite, so they survive restarts
 
-See [`PLAN.md`](PLAN.md) for the roadmap: UI redesign, fullscreen improvements, subtitle offset, AIOStreams search and single-compose deployment.
+See [`PLAN.md`](PLAN.md) for the roadmap: UI redesign, fullscreen improvements, subtitle offset and AIOStreams search.
 
 ## Development
 
@@ -29,6 +29,10 @@ Checks (the same ones CI runs):
 ```bash
 npm run format:check && npm run check && npx vite build
 ```
+
+## Deployment
+
+One `docker compose up -d` runs the app, a Cloudflare Tunnel and a nightly SQLite backup, with no ports opened on the host. The image is published to `ghcr.io/heartwinj/watchparty` on every push to `master`. See [`DEPLOY.md`](DEPLOY.md) for the step-by-step setup.
 
 ## Configuration
 
