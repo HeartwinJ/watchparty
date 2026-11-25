@@ -80,6 +80,8 @@ Done after Phase 1, so there's less code to migrate:
 
 ### Phase 4: UI redesign
 
+**Status: done (2026-11-26).** Tokens + copper theme (#11), RoomUi/toasts (#12), shell/home/login (#14), player/fullscreen/subtitle offset/smoother sync (#15), wiring (#16, #18), source picker + AIOStreams + per-viewer auto-convert (#17). Wave 2 (next-episode card, ready check, server-side history, room settings) is next.
+
 **Step 1: mockups.** Done (2026-11-26). The clickable HTML mockups and the design spec live only in the owner's local checkout (`design/`, git-ignored on purpose, never committed). Ask the owner for them if you need the exact tokens.
 
 **Design decisions (signed off 2026-11-26):**
