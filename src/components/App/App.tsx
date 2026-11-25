@@ -8,13 +8,14 @@ import { RoomToolbar } from "./RoomToolbar";
 import { PlayerArea, PlayerControls } from "./PlayerArea";
 import { RoomSidebar } from "./RoomSidebar";
 import styles from "./App.module.css";
+import { RoomUiProvider } from "./ui/RoomUi";
 
 /** The room page (/watch/:roomId). State and behavior live in hooks/useRoom.ts; see README.md. */
 export const App = ({ urlRoomId }: { urlRoomId: string }) => {
   const room = useRoom(urlRoomId);
   const { state, store } = room;
   return (
-    <>
+    <RoomUiProvider>
       <RoomMessages room={room} />
       {!state.fullScreen && <TopBar />}
       <div
@@ -66,6 +67,6 @@ export const App = ({ urlRoomId }: { urlRoomId: string }) => {
         </div>
         <RoomSidebar room={room} />
       </div>
-    </>
+    </RoomUiProvider>
   );
 };
