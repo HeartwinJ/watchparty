@@ -11,6 +11,15 @@ export default {
   build: {
     outDir: "build",
     // sourcemap: true,
+    rolldownOptions: {
+      onwarn(warning: { code?: string }, warn: (w: unknown) => void) {
+        // Mantine marks its modules "use client" (for React Server Components); harmless in a client-only app
+        if (warning.code === "MODULE_LEVEL_DIRECTIVE") {
+          return;
+        }
+        warn(warning);
+      },
+    },
   },
   server: {
     https:
@@ -38,6 +47,12 @@ export default {
           name: "client",
           include: ["src/**/*.test.{ts,tsx}"],
           environment: "happy-dom",
+          environmentOptions: {
+            happyDOM: {
+              // Scripts such as the YouTube iframe API aren't loaded in tests; don't log an error for each
+              settings: { handleDisabledFileLoadingAsSuccess: true },
+            },
+          },
         },
       },
     ],

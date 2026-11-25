@@ -1,4 +1,4 @@
-import React, { RefObject } from "react";
+import React, { type RefObject } from "react";
 import {
   ActionIcon,
   Avatar,
@@ -6,11 +6,8 @@ import {
   HoverCard,
   TextInput,
 } from "@mantine/core";
-import Picker from "@emoji-mart/react";
-import { init } from "emoji-mart";
-//@ts-expect-error
-import Linkify from "react-linkify";
-import { SecureLink } from "react-secure-link";
+import { EmojiPicker } from "./EmojiPicker";
+import { Linkify } from "./Linkify";
 import styles from "./Chat.module.css";
 
 import {
@@ -20,12 +17,13 @@ import {
   getOrCreateClientId,
   isEmojiString,
 } from "../../utils/utils";
-import { Socket } from "socket.io-client";
+import type { RoomCommands } from "../App/socketEvents";
 import {
   CSSTransition,
   SwitchTransition,
   TransitionGroup,
 } from "react-transition-group";
+import type { CSSTransitionProps } from "react-transition-group/CSSTransition";
 
 const clientId = getOrCreateClientId();
 const truncateReply = (input?: string, max = 30) =>
@@ -35,12 +33,15 @@ interface ChatProps {
   chat: ChatMessage[];
   nameMap: StringDict;
   pictureMap: StringDict;
-  socket: Socket;
+  cmd: Pick<
+    RoomCommands,
+    "sendChat" | "sendChatV2" | "addReaction" | "removeReaction"
+  >;
   scrollTimestamp: number;
   className?: string;
   getMediaDisplayName: (input?: string) => string;
   hide?: boolean;
-  ref: RefObject<Chat>;
+  ref?: RefObject<Chat | null>;
 }
 
 export class Chat extends React.Component<ChatProps> {
@@ -60,11 +61,16 @@ export class Chat extends React.Component<ChatProps> {
   };
   messagesRef = React.createRef<HTMLDivElement>();
   chatInputRef = React.createRef<HTMLInputElement>();
+  // react-transition-group needs a nodeRef with React 19 (findDOMNode is gone)
+  reactionMenuRef = React.createRef<HTMLDivElement>();
 
   async componentDidMount() {
     this.scrollToBottom();
     this.messagesRef.current?.addEventListener("scroll", this.onScroll);
-    init({});
+  }
+
+  componentWillUnmount() {
+    this.messagesRef.current?.removeEventListener("scroll", this.onScroll);
   }
 
   componentDidUpdate(prevProps: ChatProps) {
@@ -106,9 +112,9 @@ export class Chat extends React.Component<ChatProps> {
       msgTimestamp: timestamp || this.state.reactionMenu.selectedMsgTimestamp,
     };
     if (msg?.reactions?.[value].includes(clientId)) {
-      this.props.socket.emit("CMD:removeReaction", data);
+      this.props.cmd.removeReaction(data);
     } else {
-      this.props.socket.emit("CMD:addReaction", data);
+      this.props.cmd.addReaction(data);
     }
   };
 
@@ -130,12 +136,12 @@ export class Chat extends React.Component<ChatProps> {
         replyToId: this.state.replyTo.id,
         replyToTimestamp: this.state.replyTo.timestamp,
       };
-      this.props.socket.emit("CMD:chatV2", chatPayload);
+      this.props.cmd.sendChatV2(chatPayload);
       this.setState({ chatMsg: "", replyTo: undefined });
       return;
     }
     this.setState({ chatMsg: "", replyTo: undefined });
-    this.props.socket.emit("CMD:chat", this.state.chatMsg);
+    this.props.cmd.sendChat(this.state.chatMsg);
   };
 
   setReplyTo = (id: string, timestamp: string, msg?: string) => {
@@ -265,7 +271,7 @@ export class Chat extends React.Component<ChatProps> {
         </div>
         {this.state.isPickerOpen && (
           <div style={{ position: "absolute", bottom: "60px" }}>
-            <Picker
+            <EmojiPicker
               theme="dark"
               previewPosition="none"
               maxFrequentRows={1}
@@ -275,6 +281,7 @@ export class Chat extends React.Component<ChatProps> {
           </div>
         )}
         <CSSTransition
+          nodeRef={this.reactionMenuRef}
           in={this.state.reactionMenu.isOpen}
           timeout={300}
           classNames={{
@@ -286,6 +293,7 @@ export class Chat extends React.Component<ChatProps> {
           unmountOnExit
         >
           <div
+            ref={this.reactionMenuRef}
             style={{
               position: "fixed",
               top: Math.min(
@@ -295,7 +303,7 @@ export class Chat extends React.Component<ChatProps> {
               left: this.state.reactionMenu.xPosition - 240,
             }}
           >
-            <Picker
+            <EmojiPicker
               theme="dark"
               previewPosition="none"
               maxFrequentRows={1}
@@ -307,12 +315,6 @@ export class Chat extends React.Component<ChatProps> {
               }}
             />
           </div>
-          {/* <ReactionMenu
-            handleReactionClick={this.handleReactionClick}
-            closeMenu={() => this.setReactionMenu(false)}
-            yPosition={this.state.reactionMenu.yPosition}
-            xPosition={this.state.reactionMenu.xPosition}
-          /> */}
         </CSSTransition>
         {this.state.replyTo && (
           <div
@@ -464,25 +466,13 @@ const ChatMessage = ({
             </HoverCard.Dropdown>
           </HoverCard>
         )}
-        <Linkify
-          componentDecorator={(
-            decoratedHref: string,
-            decoratedText: string,
-            key: string,
-          ) => (
-            <SecureLink href={decoratedHref} key={key}>
-              {decoratedText}
-            </SecureLink>
-          )}
+        <div
+          className={`${styles.light} ${
+            isEmojiString(msg) ? styles.emoji : ""
+          }`}
         >
-          <div
-            className={`${styles.light} ${
-              isEmojiString(msg) ? styles.emoji : ""
-            }`}
-          >
-            {!cmd && msg}
-          </div>
-        </Linkify>
+          {!cmd && <Linkify text={msg} />}
+        </div>
         {imageMsg}
         <div className={styles.commentMenu}>
           {id && id !== clientId && (
@@ -542,7 +532,7 @@ const ChatMessage = ({
         <TransitionGroup>
           {Object.keys(reactions ?? []).map((key) =>
             reactions?.[key].length ? (
-              <CSSTransition
+              <NodeTransition
                 key={key}
                 timeout={200}
                 classNames={{
@@ -553,77 +543,120 @@ const ChatMessage = ({
                 }}
                 unmountOnExit
               >
-                <HoverCard>
-                  <HoverCard.Target>
-                    <div
-                      className={`${styles.reactionContainer} ${
-                        reactions[key].includes(clientId)
-                          ? styles.highlighted
-                          : ""
-                      }`}
-                      onClick={() =>
-                        handleReactionClick(key, message.id, message.timestamp)
-                      }
-                    >
-                      <span
-                        style={{
-                          fontSize: 17,
-                          position: "relative",
-                          bottom: 1,
-                        }}
+                {(nodeRef) => (
+                  <HoverCard>
+                    <HoverCard.Target>
+                      <div
+                        ref={nodeRef}
+                        className={`${styles.reactionContainer} ${
+                          reactions[key].includes(clientId)
+                            ? styles.highlighted
+                            : ""
+                        }`}
+                        onClick={() =>
+                          handleReactionClick(
+                            key,
+                            message.id,
+                            message.timestamp,
+                          )
+                        }
                       >
-                        {key}
-                      </span>
-                      <SwitchTransition>
-                        <CSSTransition
-                          key={key + "-" + reactions[key].length}
-                          classNames={{
-                            enter: styles["reactionCounter-enter"],
-                            enterActive: styles["reactionCounter-enter-active"],
-                            exit: styles["reactionCounter-exit"],
-                            exitActive: styles["reactionCounter-exit-active"],
+                        <span
+                          style={{
+                            fontSize: 17,
+                            position: "relative",
+                            bottom: 1,
                           }}
-                          addEndListener={(node, done) =>
-                            node.addEventListener("transitionend", done, false)
-                          }
-                          unmountOnExit
                         >
-                          <span
-                            className={styles.reactionCounter}
-                            style={{
-                              color: "rgba(255, 255, 255, 0.85)",
-                              marginLeft: 3,
+                          {key}
+                        </span>
+                        <SwitchTransition>
+                          <NodeTransition
+                            key={key + "-" + reactions[key].length}
+                            classNames={{
+                              enter: styles["reactionCounter-enter"],
+                              enterActive:
+                                styles["reactionCounter-enter-active"],
+                              exit: styles["reactionCounter-exit"],
+                              exitActive: styles["reactionCounter-exit-active"],
                             }}
+                            endOnTransitionEnd
+                            unmountOnExit
                           >
-                            {reactions[key].length}
-                          </span>
-                        </CSSTransition>
-                      </SwitchTransition>
-                    </div>
-                  </HoverCard.Target>
-                  <HoverCard.Dropdown>
-                    {`${reactions[key]
-                      .slice(0, spellFull)
-                      .map((id) => nameMap[id] || "Unknown")
-                      .concat(
-                        reactions[key].length > spellFull
-                          ? [`${reactions[key].length - spellFull} more`]
-                          : [],
-                      )
-                      .reduce(
-                        (text, value, i, array) =>
-                          text +
-                          (i < array.length - 1 ? ", " : " and ") +
-                          value,
-                      )} reacted.`}
-                  </HoverCard.Dropdown>
-                </HoverCard>
-              </CSSTransition>
+                            {(nodeRef) => (
+                              <span
+                                ref={nodeRef}
+                                className={styles.reactionCounter}
+                                style={{
+                                  color: "rgba(255, 255, 255, 0.85)",
+                                  marginLeft: 3,
+                                }}
+                              >
+                                {reactions[key].length}
+                              </span>
+                            )}
+                          </NodeTransition>
+                        </SwitchTransition>
+                      </div>
+                    </HoverCard.Target>
+                    <HoverCard.Dropdown>
+                      {`${reactions[key]
+                        .slice(0, spellFull)
+                        .map((id) => nameMap[id] || "Unknown")
+                        .concat(
+                          reactions[key].length > spellFull
+                            ? [`${reactions[key].length - spellFull} more`]
+                            : [],
+                        )
+                        .reduce(
+                          (text, value, i, array) =>
+                            text +
+                            (i < array.length - 1 ? ", " : " and ") +
+                            value,
+                        )} reacted.`}
+                    </HoverCard.Dropdown>
+                  </HoverCard>
+                )}
+              </NodeTransition>
             ) : null,
           )}
         </TransitionGroup>
       </div>
     </div>
+  );
+};
+
+type NodeTransitionProps = Omit<
+  CSSTransitionProps<HTMLElement>,
+  "nodeRef" | "children" | "addEndListener"
+> & {
+  /** End the transition on the element's transitionend event instead of a timeout */
+  endOnTransitionEnd?: boolean;
+  children: (nodeRef: React.RefObject<any>) => React.ReactNode;
+};
+
+/**
+ * CSSTransition with its own nodeRef: react-transition-group falls back to findDOMNode without one, which React 19
+ * removed. TransitionGroup/SwitchTransition inject their props (in, onExited, ...) into this wrapper.
+ */
+const NodeTransition = ({
+  children,
+  endOnTransitionEnd,
+  ...props
+}: NodeTransitionProps) => {
+  const nodeRef = React.useRef<HTMLElement>(null);
+  const transitionProps = {
+    ...props,
+    nodeRef,
+    ...(endOnTransitionEnd
+      ? {
+          addEndListener: (done: () => void) =>
+            nodeRef.current?.addEventListener("transitionend", done, false),
+        }
+      : {}),
+  } as CSSTransitionProps<HTMLElement>;
+  return (
+    <CSSTransition {...transitionProps}>{children(nodeRef)}</CSSTransition>
   );
 };
 
