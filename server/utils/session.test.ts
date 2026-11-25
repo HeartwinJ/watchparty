@@ -74,4 +74,15 @@ describe("createRateLimiter", () => {
     // The window resets
     expect(limiter.hit("1.2.3.4", 600_000)).toBe(true);
   });
+
+  it("reports how long until a limited key can retry", () => {
+    const limiter = createRateLimiter({ max: 1, windowMs: 60_000 });
+    expect(limiter.hit("k", 0)).toBe(true);
+    expect(limiter.retryAfterSec("k", 0)).toBe(0);
+    expect(limiter.hit("k", 1000)).toBe(false);
+    expect(limiter.retryAfterSec("k", 1000)).toBe(59);
+    expect(limiter.retryAfterSec("k", 59_500)).toBe(1);
+    expect(limiter.retryAfterSec("k", 60_000)).toBe(0);
+    expect(limiter.retryAfterSec("other", 1000)).toBe(0);
+  });
 });

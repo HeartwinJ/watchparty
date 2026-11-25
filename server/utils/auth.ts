@@ -58,8 +58,12 @@ export function createAuth(opts: {
     });
 
     app.post("/login", (req, res) => {
-      if (!limiter.hit(req.ip ?? "unknown")) {
-        res.status(429).json({ error: "rate_limited" });
+      const key = req.ip ?? "unknown";
+      if (!limiter.hit(key)) {
+        // The login form shows a countdown from this
+        const retryAfter = Math.max(1, limiter.retryAfterSec(key));
+        res.setHeader("Retry-After", String(retryAfter));
+        res.status(429).json({ error: "rate_limited", retryAfter });
         return;
       }
       if (authRequired && !checkPassword(req.body?.password, opts.password)) {
