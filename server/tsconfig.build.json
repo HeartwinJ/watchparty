@@ -1,0 +1,14 @@
+{
+  // Production build: emits plain JS to dist-server/ (npm run buildServer).
+  // Development and typechecking still use tsconfig.json and run the .ts files directly.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "../dist-server",
+    "sourceMap": false
+  },
+  "include": [".", "../global.d.ts"],
+  "exclude": ["**/*.test.ts"]
+}
