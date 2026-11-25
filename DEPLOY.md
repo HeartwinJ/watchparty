@@ -2,11 +2,11 @@
 
 One `compose.yaml` runs the whole stack on a VPS that already has Docker:
 
-| Service       | What it does                                                                                                                        |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `app`         | WatchParty (`ghcr.io/heartwinj/watchparty`): API, Socket.IO and the built client on `:8080`, SQLite in the `watchparty_data` volume |
-| `cloudflared` | Cloudflare Tunnel. Dials out to Cloudflare and forwards your hostname to `http://app:8080`. Provides HTTPS                          |
-| `backup`      | Nightly consistent SQLite backup into `backups/` in the same volume, keeping the last 7 (built locally from `backup/`, ~12 MB)      |
+| Service       | What it does                                                                                                                             |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `app`         | WatchParty, built on the host from this checkout: API, Socket.IO and the built client on `:8080`, SQLite in the `watchparty_data` volume |
+| `cloudflared` | Cloudflare Tunnel. Dials out to Cloudflare and forwards your hostname to `http://app:8080`. Provides HTTPS                               |
+| `backup`      | Nightly consistent SQLite backup into `backups/` in the same volume, keeping the last 7 (built locally from `backup/`, ~12 MB)           |
 
 **No ports are published on the host.** The stack has its own private network (`watchparty_watchparty`), so it doesn't touch your other services. WebRTC media (screen/file share) goes peer-to-peer, or through Cloudflare's TURN relay when P2P fails, so no UDP ports are needed either.
 
@@ -69,40 +69,28 @@ SUBTITLE_LANGS=en              # subtitle languages for AIOStreams titles
 
 `.env` is read by compose (for `TUNNEL_TOKEN`) and passed to the app. Never commit it.
 
-## 5. Log in to GHCR (only while the package is private)
+## 5. Start it
 
-GitHub Container Registry packages are **private by default**. Either:
-
-- make it public once: GitHub → your profile → **Packages → watchparty → Package settings → Change visibility → Public** (the image contains no secrets), or
-- log the VPS in with a personal access token (classic) that has only the **`read:packages`** scope:
-  ```bash
-  echo <PAT> | docker login ghcr.io -u HeartwinJ --password-stdin
-  ```
-
-The image is published by `.github/workflows/docker.yml` on every push to `master` (`latest` and the short commit SHA, for amd64 and arm64).
-
-## 6. Start it
+The app and backup images are **built on the VPS** from this checkout (`pull_policy: build` in `compose.yaml`); no registry is involved. Only `cloudflared` is pulled from Docker Hub.
 
 ```bash
-docker compose pull
-docker compose up -d
+docker compose up -d     # builds app + backup, pulls cloudflared, starts everything
 docker compose ps        # app should become "healthy", then cloudflared starts
 ```
 
-Open `https://watch.example.com` and log in with `APP_PASSWORD`.
+The build needs about **1 GB of free RAM** for a minute or two the first time (the client build alone peaks at ~700 MB; `npm ci` downloads the dependencies once and is cached afterwards). If the VPS is tight on memory, stop the stack's other heavy services or add swap during the first build.
 
-To build the image on the VPS instead of pulling it: `docker compose up -d --build`.
+Open `https://watch.example.com` and log in with `APP_PASSWORD`.
 
 ## Updating
 
 ```bash
-git pull                 # only needed when compose.yaml/backup/ changed
-docker compose pull
-docker compose up -d
+git pull
+docker compose up -d     # rebuilds what changed (layer cache), then recreates the app
 docker image prune -f    # optional: drop old image layers
 ```
 
-`up -d` recreates the app container. It gets SIGTERM, saves every room to SQLite and exits; rooms come back on start. To pin a version, replace `latest` in `compose.yaml` with a short SHA tag.
+`up -d` recreates the app container only if the image changed. It gets SIGTERM, saves every room to SQLite and exits; rooms come back on start. To run a specific version, `git checkout <commit>` before `docker compose up -d`.
 
 ## Logs
 

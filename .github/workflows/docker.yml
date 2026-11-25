@@ -1,8 +1,7 @@
 name: Docker image
 
-# Builds the image on every PR (no push) and publishes it to GHCR on pushes to master,
-# tagged `latest` and the short commit SHA. The VPS then only runs
-# `docker compose pull && docker compose up -d` (see DEPLOY.md).
+# Build-only check so Dockerfile breakage is caught before deploying. Nothing is pushed:
+# the VPS builds the image itself (`pull_policy: build` in compose.yaml, see DEPLOY.md).
 on:
   push:
     branches: [master]
@@ -17,48 +16,22 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  IMAGE: ghcr.io/heartwinj/watchparty
-
 jobs:
   image:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
-
-      # Only the small runtime stage runs under emulation for arm64: the vite/tsc build
-      # and npm installs run natively ($BUILDPLATFORM in the Dockerfile)
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Image tags
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=,format=short
-
-      - name: Build${{ github.event_name != 'pull_request' && ' and push' || '' }}
+      - name: Build app image
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build backup image
+        uses: docker/build-push-action@v7
+        with:
+          context: backup
+          push: false

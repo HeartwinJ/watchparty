@@ -110,13 +110,13 @@ Working concept:
 - [x] **Multi-stage Dockerfile:** build stage (full deps, `vite build`, server compiled to JS with `npm run buildServer` → `dist-server/`) → runtime stage: plain `alpine` + the stripped `node` binary from `node:24-alpine` (the official image alone is ~175 MB), prod deps only, `build/`, `dist-server/`, `words/`. Non-root (uid 1000), tini, healthcheck on `/ping`, `DATA_DIR=/app/data` volume, `NODE_OPTIONS=--max-old-space-size=128 --max-semi-space-size=1`. **Image 140 MB.** Build/deps stages run on `$BUILDPLATFORM`, so arm64 only emulates the tiny runtime stage.
 - [x] **Precompile decision (measured 2026-11-26, Node 24, host RSS idle):** `node server/server.ts` 115 MB, `tsc`-emitted JS 87 MB, plus heap flags 83 MB (with the AIOStreams routes from #6). An esbuild single-file bundle only saved ~2 MB more in an earlier run, not worth a new dep. So: `tsc` emit, run plain JS; `npm run dev` keeps running `.ts`. Most of the rest is Node itself (`node:http` alone is +13 MB over a bare 43 MB process) and Express (+7 MB); lazy-loading `compression` saves nothing because Express already loads `mime-db`. `--lite-mode` would save ~10 MB more but disables the optimizing JIT, so it's not on by default. **In the container (`docker stats`): ~27 MB idle, ~28 MB with one room and two clients**; process RSS reads ~85 MB because ~60 MB of it is the node binary mapped from disk (shared page cache).
 - [x] **`compose.yaml`:**
-  - `app`: `ghcr.io/heartwinj/watchparty:latest` with a `build: .` fallback, no published ports, `./data:/app/data`, `mem_limit: 256m`, `env_file: .env`, healthcheck, `restart: unless-stopped`.
+  - `app`: built on the host (`build: .`, `pull_policy: build`; GHCR publishing was dropped on 2026-11-26), no published ports, named volume `data` → `/app/data`, `mem_limit: 256m`, `env_file: .env`, healthcheck, `restart: unless-stopped`.
   - `cloudflared`: `cloudflare/cloudflared` (pinned tag), `tunnel --no-autoupdate run`, `TUNNEL_TOKEN` from `.env`, starts once the app is healthy. Ingress (public hostname → `http://app:8080`) is set in the Cloudflare dashboard.
   - `backup`: `backup/` (alpine + sqlite3), `sqlite3 .backup` at startup if stale, then nightly at 03:00 UTC, integrity-checked, keeps 7 in `./data/backups`.
   - Project-scoped network, no published ports, small memory limits on the sidecars, `json-file` log rotation.
 - [x] `.env.example` covers `APP_PASSWORD`, `SESSION_SECRET`, `TUNNEL_TOKEN`, `CF_TURN_KEY_ID`, `CF_TURN_API_TOKEN`, `AIOSTREAMS_MANIFEST_URL`, `YOUTUBE_API_KEY` (optional) and `OPENSUBTITLES_KEY` (optional).
-- [x] `DEPLOY.md`: tunnel + public hostname, TURN key, `SESSION_SECRET`, GHCR login, start/update/logs, backups and restore, resource expectations, troubleshooting.
-- [x] `.github/workflows/docker.yml`: builds amd64 + arm64 on PRs (no push) and pushes `latest` + short SHA to GHCR on `master`.
+- [x] `DEPLOY.md`: tunnel + public hostname, TURN key, `SESSION_SECRET`, start/update/logs, backups and restore, resource expectations, troubleshooting.
+- [x] `.github/workflows/docker.yml`: build-only check (amd64, no push) on PRs and `master`. Image publishing to GHCR was removed on 2026-11-26 in favour of building on the host.
 
 ### Phase 6: Personal features
 
