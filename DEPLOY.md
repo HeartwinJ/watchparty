@@ -2,11 +2,11 @@
 
 One `compose.yaml` runs the whole stack on a VPS that already has Docker:
 
-| Service       | What it does                                                                                                      |
-| ------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `app`         | WatchParty (`ghcr.io/heartwinj/watchparty`): API, Socket.IO and the built client on `:8080`, SQLite in `./data`   |
-| `cloudflared` | Cloudflare Tunnel. Dials out to Cloudflare and forwards your hostname to `http://app:8080`. Provides HTTPS        |
-| `backup`      | Nightly consistent SQLite backup into `./data/backups`, keeping the last 7 (built locally from `backup/`, ~12 MB) |
+| Service       | What it does                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `app`         | WatchParty (`ghcr.io/heartwinj/watchparty`): API, Socket.IO and the built client on `:8080`, SQLite in the `watchparty_data` volume |
+| `cloudflared` | Cloudflare Tunnel. Dials out to Cloudflare and forwards your hostname to `http://app:8080`. Provides HTTPS                          |
+| `backup`      | Nightly consistent SQLite backup into `backups/` in the same volume, keeping the last 7 (built locally from `backup/`, ~12 MB)      |
 
 **No ports are published on the host.** The stack has its own private network (`watchparty_watchparty`), so it doesn't touch your other services. WebRTC media (screen/file share) goes peer-to-peer, or through Cloudflare's TURN relay when P2P fails, so no UDP ports are needed either.
 
@@ -18,8 +18,6 @@ You need `compose.yaml`, `backup/` and a `.env`. The easiest way is to clone the
 git clone https://github.com/HeartwinJ/watchparty.git && cd watchparty
 cp .env.example .env
 chmod 600 .env
-# The app runs as uid 1000 inside the container and must be able to write ./data
-mkdir -p data && sudo chown 1000:1000 data
 ```
 
 ## 2. Create the Cloudflare Tunnel
@@ -118,19 +116,24 @@ Logs use the `json-file` driver capped at 3 × 10 MB per container.
 
 ## Backups and restore
 
-The `backup` service uses `sqlite3 .backup` (SQLite's online backup API), which takes a consistent snapshot while the app keeps writing (WAL mode). It runs right away if the newest backup is missing or more than a day old, then every night at 03:00 UTC (`BACKUP_HOUR` in `compose.yaml`), verifies each copy with `PRAGMA integrity_check` and keeps the newest 7 (`BACKUP_KEEP`) as `data/backups/watchparty-YYYYMMDD-HHMMSS.db`.
+The `backup` service uses `sqlite3 .backup` (SQLite's online backup API), which takes a consistent snapshot while the app keeps writing (WAL mode). It runs right away if the newest backup is missing or more than a day old, then every night at 03:00 UTC (`BACKUP_HOUR` in `compose.yaml`), verifies each copy with `PRAGMA integrity_check` and keeps the newest 7 (`BACKUP_KEEP`) as `backups/watchparty-YYYYMMDD-HHMMSS.db` inside the `watchparty_data` volume.
 
 Take one now: `docker compose exec backup backup.sh once`
 
-For off-site copies, sync `data/backups/` with whatever you already use (restic, rclone, ...).
+Copy the backups out of the volume to the host (e.g. from a cron job, then sync them off-site with restic, rclone, ...):
+
+```bash
+docker compose cp backup:/data/backups ./backups
+```
 
 **Restore:**
 
 ```bash
 docker compose stop app backup
-cp data/backups/watchparty-YYYYMMDD-HHMMSS.db data/watchparty.db
-rm -f data/watchparty.db-wal data/watchparty.db-shm   # leftovers belong to the old file
-sudo chown 1000:1000 data/watchparty.db
+# List the backups, then copy the one you want over the live database (runs as uid 1000)
+docker compose run --rm --no-deps --entrypoint sh backup -c 'ls /data/backups'
+docker compose run --rm --no-deps --entrypoint sh backup -c \
+  'cp /data/backups/watchparty-YYYYMMDD-HHMMSS.db /data/watchparty.db && rm -f /data/watchparty.db-wal /data/watchparty.db-shm'
 docker compose start app backup
 ```
 
@@ -152,5 +155,6 @@ The node process's RSS reads higher (~85 MB) because it counts ~60 MB of the nod
 - **Screen share connects for some people but not others:** that's a strict NAT. Set `CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN` (step 3). `curl` the app's `/iceServers` while logged in to check it returns `turn:` URLs.
 - **`cloudflared` keeps restarting with "Provided Tunnel token is not valid":** recheck `TUNNEL_TOKEN` (no quotes, no `--token` prefix).
 - **Cloudflare shows 502 / "Bad gateway":** the public hostname must point at `http://app:8080` (not `localhost`), and `docker compose ps` should show `app` as healthy.
-- **App exits with "unable to open database file":** `./data` isn't writable by uid 1000: `sudo chown -R 1000:1000 data`. On SELinux hosts (Fedora/RHEL) also append `:z` to both `./data` volume entries in `compose.yaml`.
+- **App exits with "unable to open database file" / "is not writable by uid 1000":** the image's entrypoint fixes the data directory's ownership on start, and the default named volume doesn't need any host setup. If you changed the volume to a host folder (`./data:/app/data`), append `:z` on SELinux hosts (Fedora/RHEL) and make sure the folder is on a local filesystem.
+- **Moving from an older `./data` folder to the volume:** `docker compose down`, then `docker compose run --rm --no-deps -v "$PWD/data:/old" --entrypoint sh backup -c 'cp -a /old/. /data/'` (add `:z` to the `-v` on SELinux hosts), then `docker compose up -d`.
 - **The page loads but rooms never connect:** the client uses WebSocket transport only, so check that WebSockets are on under the zone's **Network** settings.

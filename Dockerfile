@@ -29,7 +29,7 @@ RUN apk add --no-cache binutils && strip /usr/local/bin/node
 
 # --- Runtime ------------------------------------------------------------------------------
 FROM alpine:${ALPINE}
-RUN apk add --no-cache libstdc++ tini \
+RUN apk add --no-cache libstdc++ tini su-exec \
   && addgroup -g 1000 node \
   && adduser -u 1000 -G node -s /sbin/nologin -D node
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
@@ -40,6 +40,7 @@ COPY package.json ./
 COPY words ./words
 COPY --from=build /src/build ./build
 COPY --from=build /src/dist-server ./dist-server
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /app/data && chown node:node /app/data
 
 ENV NODE_ENV=production \
@@ -48,11 +49,11 @@ ENV NODE_ENV=production \
   NODE_OPTIONS="--max-old-space-size=128 --max-semi-space-size=1"
 VOLUME ["/app/data"]
 EXPOSE 8080
-USER node
+# Starts as root so the entrypoint can fix ./data ownership, then drops to uid 1000 (node)
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/ping" || exit 1
 
-# tini forwards SIGTERM to node (which saves every room before exiting) and reaps zombies
-ENTRYPOINT ["/sbin/tini", "--"]
+# tini forwards SIGTERM to node (the entrypoint execs into it), which saves every room before exiting, and reaps zombies
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist-server/server.js"]
