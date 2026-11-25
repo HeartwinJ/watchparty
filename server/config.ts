@@ -20,7 +20,8 @@ const defaults = {
   CF_TURN_KEY_ID: "", // Optional, Cloudflare Realtime TURN key ID (enables TURN relay for screen/file share)
   CF_TURN_API_TOKEN: "", // Optional, Cloudflare Realtime TURN API token. Server-side only, never sent to clients
   YOUTUBE_API_KEY: "", // Optional, provide one to enable searching YouTube
-  OPENSUBTITLES_KEY: "", // Optional, key to OpenSubtitles API
+  OPENSUBTITLES_KEY: "", // Optional, API key of an OpenSubtitles.com API consumer (profile -> API Consumers)
+  OPENSUBTITLES_USER_AGENT: "watchparty v1", // Sent as User-Agent to OpenSubtitles; use your API consumer's app name + version
   // Optional, AIOStreams manifest URL (https://host/stremio/<uuid>/<config>/manifest.json). Enables /addon/*.
   // SECRET: it embeds the AIOStreams config and debrid credentials. Server-side only, never log/return/commit it.
   AIOSTREAMS_MANIFEST_URL: "",

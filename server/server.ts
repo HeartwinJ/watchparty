@@ -24,6 +24,10 @@ import { assertPublicUrl, safeFetch } from "./utils/ssrf.ts";
 import { createAuth } from "./utils/auth.ts";
 import { createIceServerProvider } from "./utils/iceServers.ts";
 import { createAddonRouter } from "./addons/routes.ts";
+import {
+  openSubtitlesError,
+  openSubtitlesHeaders,
+} from "./utils/opensubtitles.ts";
 
 // Last-resort safety net: a stray rejected promise shouldn't take down every room.
 // Socket handlers are individually guarded in room.ts, this catches anything we missed.
@@ -170,23 +174,38 @@ app.post("/subtitle", requireAuth, (req, res) => {
 });
 
 app.get("/downloadSubtitles", requireAuth, async (req, res) => {
+  if (!config.OPENSUBTITLES_KEY) {
+    res.status(503).json({ error: "opensubtitles_not_configured" });
+    return;
+  }
+  const fileId = Number(req.query.file_id);
+  if (!Number.isInteger(fileId) || fileId <= 0) {
+    res.status(400).json({ error: "invalid_params" });
+    return;
+  }
   try {
     // Request the URL from OpenSubtitles
     const urlResp = await fetch(
       "https://api.opensubtitles.com/api/v1/download",
       {
         method: "POST",
-        headers: {
-          "User-Agent": "watchparty v1",
-          "Api-Key": config.OPENSUBTITLES_KEY,
+        headers: openSubtitlesHeaders({
           Accept: "application/json",
           "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ file_id: req.query.file_id }),
+        }),
+        body: JSON.stringify({ file_id: fileId }),
+        signal: AbortSignal.timeout(15000),
       },
     );
     if (!urlResp.ok) {
-      throw new Error(`OpenSubtitles download failed: ${urlResp.status}`);
+      const err = await openSubtitlesError(urlResp);
+      console.warn(
+        "[downloadSubtitles] OpenSubtitles %s: %s",
+        err.status,
+        err.message,
+      );
+      res.status(502).json(err);
+      return;
     }
     const urlData: { link: string } = await urlResp.json();
     // Cache the contents locally (the OpenSubtitles link only lasts a few hours)
@@ -203,6 +222,10 @@ app.get("/downloadSubtitles", requireAuth, async (req, res) => {
 });
 
 app.get("/searchSubtitles", requireAuth, async (req, res) => {
+  if (!config.OPENSUBTITLES_KEY) {
+    res.status(503).json({ error: "opensubtitles_not_configured" });
+    return;
+  }
   let result: unknown = [];
   try {
     const title =
@@ -213,14 +236,19 @@ app.get("/searchSubtitles", requireAuth, async (req, res) => {
       const response = await fetch(
         `https://api.opensubtitles.com/api/v1/subtitles?${params}`,
         {
-          headers: {
-            "User-Agent": "watchparty v1",
-            "Api-Key": config.OPENSUBTITLES_KEY,
-          },
+          headers: openSubtitlesHeaders(),
+          signal: AbortSignal.timeout(15000),
         },
       );
       if (!response.ok) {
-        throw new Error(`OpenSubtitles search failed: ${response.status}`);
+        const err = await openSubtitlesError(response);
+        console.warn(
+          "[searchSubtitles] OpenSubtitles %s: %s",
+          err.status,
+          err.message,
+        );
+        res.status(502).json(err);
+        return;
       }
       const data = await response.json();
       result = data.data;
