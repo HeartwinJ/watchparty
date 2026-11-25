@@ -157,7 +157,9 @@ What the configured manifest provides (probed 2026-11-26): `stream` only, for `m
   - **Fallback for weak devices:** "Share converted stream". The host converts once and streams the result to the room through the existing file-share WebRTC pipeline, limited by the host's upload bandwidth.
 - **Recommended:** create a **separate AIOStreams config for WatchParty** that prefers 1080p WEB-DL, H.264/AV1, excludes REMUX/DTS/TrueHD/DV-only and caps size, then use that URL here. The Stremio config stays untouched. This does most of the filtering upstream and keeps responses small.
 - **Speed:** stream lookups took several seconds and returned ~200 results. The server caches them (~10 min per id) and trims what it sends to the client.
-- **Server routes** (behind the password session): `GET /addon/search?q=`, `GET /addon/meta/:type/:id`, `GET /addon/streams/:type/:id`. Results are cached briefly in memory.
+- [x] **Server routes** (behind the password session, `server/addons/`): `GET /addon/search?q=`, `GET /addon/meta/:type/:id`, `GET /addon/streams/:type/:id`, plus `/addon/subtitles` and `/addon/next` for 6d. Results are cached in memory (TTL + LRU, concurrent lookups de-duplicated). The stream parser/classifier (`server/addons/streamParser.ts`) does the ranking described above server-side. API contract in CLAUDE.md. Client picker still to do (Phase 4).
+  - Kitsu ids are always looked up as type `anime`: as `series`, AIOStreams returns lots of unrelated results (spin-offs, movies, other shows).
+  - Playback URLs don't contain the manifest's uuid/config, but each one carries an AIOStreams-encrypted debrid credential blob (`{i,e,t}`) that can be reused to start other playbacks through the owner's debrid account. That's acceptable while every instance user is trusted. Hiding it would need a video byte proxy, because a redirect still exposes the `Location`.
 - **Playback compatibility:** debrid results are often MKV/HEVC/AC3/EAC3, which browsers can't always play. The picker shows a "browser-friendly" badge (MP4/WebM, H.264/AV1/VP9, AAC/Opus), and those are sorted first. Use AIOStreams' own filters/sorting to prefer them too.
 - **IP-locked links:** not an issue. Your AIOStreams already proxies playback, so the app never proxies video.
 - Torrent-only results (`infoHash` with no URL) are hidden, since WebTorrent is removed.
@@ -165,8 +167,8 @@ What the configured manifest provides (probed 2026-11-26): `stream` only, for `m
 
 #### 6d. Accepted recommendations (in scope)
 
-- [ ] **Next episode:** when an AIOStreams episode ends, offer "Next episode in 10s" (cancelable) for the whole room. It re-resolves streams for `s:e+1`, preferring the same `bingeGroup` so quality and source stay consistent.
-- [ ] **Auto subtitles for AIOStreams titles:** a Stremio subtitle addon (OpenSubtitles v3, keyless, by IMDb id/episode) fills the subtitle menu automatically, with the offset from 6b applied.
+- [ ] **Next episode:** when an AIOStreams episode ends, offer "Next episode in 10s" (cancelable) for the whole room. It re-resolves streams for `s:e+1`, preferring the same `bingeGroup` so quality and source stay consistent. _Server done:_ `GET /addon/next/:type/:id` and `?bingeGroup=` on `/addon/streams`. The client is still to do.
+- [ ] **Auto subtitles for AIOStreams titles:** a Stremio subtitle addon (OpenSubtitles v3, keyless, by IMDb id/episode) fills the subtitle menu automatically, with the offset from 6b applied. _Server done:_ `GET /addon/subtitles/:type/:id` (kitsu ids are mapped to IMDb episodes; the SRT URLs allow CORS `*`). The client is still to do.
 - [ ] **Smoother sync:** fix drift under ~2s by briefly nudging `playbackRate` (0.95–1.05x) and hard-seek only beyond that. A sync indicator shows in the controls.
 - [ ] **Ready check:** optional room toggle. When anyone buffers or joins mid-play, the room auto-pauses until all viewers report enough buffer, then resumes.
 - [ ] **Continue watching / history:** per-room list of recent titles (AIOStreams metadata + poster) with resume position, stored in SQLite.
