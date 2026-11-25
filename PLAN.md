@@ -79,7 +79,20 @@ Done after Phase 1, so there's less code to migrate:
 
 ### Phase 4: UI redesign
 
-**Step 1: mockups.** Produce clickable HTML mockups of Home, Room (desktop and mobile), the source picker (incl. AIOStreams results) and fullscreen mode, for review. Implementation starts only after sign-off.
+**Step 1: mockups.** Done (2026-11-26). The clickable HTML mockups and the design spec live only in the owner's local checkout (`design/`, git-ignored on purpose, never committed). Ask the owner for them if you need the exact tokens.
+
+**Design decisions (signed off 2026-11-26):**
+
+- **Accent: copper** `#C66B3D` (dark) / `#9C4F27` (light). Filled copper buttons use near-black text (`#1B0F08`) in dark mode for contrast.
+- Status colours were moved away from copper: warning is **yellow** `#E8CF4A` / `#8A6D00`, error/danger is **rose-red** `#FF5C7A` / `#C8234A`, success is green. The 4K chip is **platinum**, not gold. Avatar colours avoid orange, brown, yellow and rose hues.
+- **Dark-only** for now (no light theme shipped). **System font** stack (no bundled Inter).
+- Single click on the video = play/pause for everyone, with a toast saying who did it. Double-click = fullscreen.
+- **Speed and loop are room-wide.**
+- Chat bubbles show over the video when the sidebar is collapsed, as well as in fullscreen, with a setting to turn them off.
+- Next-episode card: fixed offset before the end (default 25 s), adjustable in room settings.
+- **Resizable sidebar**, width remembered per device.
+- Source picker: a custom command palette, not Mantine `Spotlight`, because of the drill-down and poster grid.
+- Incompatible streams stay visible: auto-convert where possible (see 6c), otherwise collapsed with "Try anyway".
 
 Working concept:
 
@@ -88,7 +101,7 @@ Working concept:
 - **Room (mobile):** video on top, with the sidebar as a bottom sheet below it.
 - **Source picker:** one command-palette-style input. Paste a URL (YouTube/HLS/MP4), search YouTube, or pick "Share screen" / "Share file". This replaces the current combo box plus several modals.
 - **Player controls:** custom overlay controls that auto-hide, show buffered ranges, and include speed, subtitles and loop.
-- **Theme:** dark by default, one accent color, Mantine 9 theme tokens.
+- **Theme:** dark-only, copper accent, Mantine 9 theme tokens (see design decisions above).
 - **Polish:** sync status indicator ("in sync / you're 2s behind"), toast notifications instead of modals, keyboard shortcuts (space, ←/→, f, c).
 
 ### Phase 5: Packaging & deployment
@@ -129,7 +142,19 @@ The personal manifest URL contains your config/credentials, so it lives **only**
 What the configured manifest provides (probed 2026-11-26): `stream` only, for `movie`/`series`/`anime`, id prefixes `tt` and `kitsu`. It has **no catalogs** and no subtitles. A movie lookup returned 200 streams, all with `url` (debrid playback links already proxied by AIOStreams), sorted 4K REMUX first: ~90 GB, HEVC, DTS-HD, MKV. Codec info only appears in the free-text `description` and `behaviorHints.filename`.
 
 - **Flow:** type a title → server searches **Cinemeta** (`v3-cinemeta.strem.io`, keyless) for movies/series and the **Kitsu addon** for anime → pick a movie, or series → season → episode → server calls `{base}/stream/{type}/{id}.json` → the stream list is shown → pick one → it plays as a normal URL for the whole room.
-- **Stream ranking:** parse `filename`/`description` for resolution, size, video codec (H.264/HEVC/AV1), audio (AAC/AC3/EAC3/DTS/TrueHD), container and REMUX. Show compact badges, and sort a "likely browser-playable" group first (H.264/AV1 + AAC/Opus/AC3/EAC3, ≤ ~20 GB). Show the rest collapsed under "May not play in browser".
+- **Stream ranking:** parse `filename`/`description` for resolution, size, video codec (H.264/HEVC/AV1), audio tracks (AAC/AC3/EAC3/DTS/TrueHD; descriptions often list several, e.g. "DD | DTS-HD MA"), container and REMUX. Three groups:
+  1. **Plays directly:** H.264/AV1/VP9 video + AAC/Opus audio in MP4/WebM, or MKV the browser can open.
+  2. **Plays with conversion:** needs the in-browser converter (below). Cheap when only audio is re-encoded (H.264 + AC3/EAC3, the most common debrid case). Heavy when the video is HEVC (decode + re-encode, capped at 1080p).
+  3. **Probably won't play:** only DTS/TrueHD audio (no browser decoder for those), or too large/high-bitrate to stream (REMUX, > ~40 Mbps). Shown collapsed with "Try anyway".
+- **Auto-convert (requested, based on the existing "Convert" option):** `src/utils/clientTranscode.ts` already converts URLs in the browser with WebCodecs + mediabunny (+ `@mediabunny/ac3` for AC3/EAC3). It copies tracks that play natively and re-encodes only what doesn't, streaming fragmented MP4 into MediaSource. Verified 2026-11-26: AIOStreams playback URLs redirect to the debrid CDN, which serves CORS (`Access-Control-Allow-Origin` reflects our origin) and range requests (`206`), the two things the converter needs.
+  - When a stream is picked, **each viewer's browser probes it** (mediabunny reads the container headers via a few range requests) and decides for itself: play directly, convert, or fail with a toast in the room ("Alex can't play this stream"). This uses the real track list, not filename guesses.
+  - Conversion turns on **automatically when needed**, with a per-device "Auto-convert" setting (default on) replacing the old global toggle. Audio-track selection from the converter (multi-language files) is exposed in the player's audio/subtitle menu.
+  - **Limits to surface in the UI:**
+    - HEVC decoding depends on the browser and hardware (not available in Firefox).
+    - Re-encoding 4K HEVC is heavy on phones and low-end laptops.
+    - Every viewer downloads the source bitrate.
+    - The ready check (6d) covers viewers whose conversion can't keep up.
+  - **Fallback for weak devices:** "Share converted stream". The host converts once and streams the result to the room through the existing file-share WebRTC pipeline, limited by the host's upload bandwidth.
 - **Recommended:** create a **separate AIOStreams config for WatchParty** that prefers 1080p WEB-DL, H.264/AV1, excludes REMUX/DTS/TrueHD/DV-only and caps size, then use that URL here. The Stremio config stays untouched. This does most of the filtering upstream and keeps responses small.
 - **Speed:** stream lookups took several seconds and returned ~200 results. The server caches them (~10 min per id) and trims what it sends to the client.
 - **Server routes** (behind the password session): `GET /addon/search?q=`, `GET /addon/meta/:type/:id`, `GET /addon/streams/:type/:id`. Results are cached briefly in memory.
