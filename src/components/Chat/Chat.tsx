@@ -26,6 +26,7 @@ import {
   TransitionGroup,
 } from "react-transition-group";
 import type { CSSTransitionProps } from "react-transition-group/CSSTransition";
+import { describeChatCommand } from "../App/player/formatChat";
 
 const clientId = getOrCreateClientId();
 const truncateReply = (input?: string, max = 30) =>
@@ -208,7 +209,8 @@ export class Chat extends React.Component<ChatProps> {
     } else if (cmd === "playbackRate") {
       return `set the playback rate to ${msg === "0" ? "auto" : `${msg}x`}`;
     }
-    return cmd;
+    // Newer commands (e.g. subtitleOffset) are described by the player's helper
+    return describeChatCommand(cmd, msg) ?? cmd;
   };
 
   addEmoji = (emoji: any) => {

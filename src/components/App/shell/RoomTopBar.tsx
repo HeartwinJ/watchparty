@@ -29,6 +29,7 @@ import { copyInviteLink } from "./invite";
 import { shortMediaTitle } from "./roomInfo";
 import { requestShortcutsOverlay } from "./shortcuts";
 import styles from "./Shell.module.css";
+import { SyncIndicator } from "../PlayerArea";
 
 /**
  * The room's top bar: home link, room name, the source-picker trigger, sync status, avatars, invite,
@@ -100,7 +101,7 @@ export const RoomTopBar = ({
       )}
 
       <div className={styles.topbarRight}>
-        {/* SLOT(B): <SyncIndicator room={room} /> */}
+        <SyncIndicator room={room} />
         {!isPhone && people.length > 0 && (
           <span className={styles.avatars}>
             <AvatarStack users={people} />
