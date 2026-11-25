@@ -22,4 +22,24 @@ export default {
         : null,
     allowedHosts: true,
   },
+  test: {
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "server",
+          include: ["server/**/*.test.ts"],
+          environment: "node",
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "client",
+          include: ["src/**/*.test.{ts,tsx}"],
+          environment: "happy-dom",
+        },
+      },
+    ],
+  },
 };

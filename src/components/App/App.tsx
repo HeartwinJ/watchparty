@@ -2674,29 +2674,33 @@ export class App extends React.Component<AppProps, AppState> {
                       ></video>
                     )}
                     <div
-                        style={{
-                          color: softWhite,
-                          fontWeight: 400,
-                          fontSize: 10,
-                          lineHeight: "8px",
-                          position: "absolute",
-                          bottom: 0,
-                          right: 0,
-                          zIndex: 1,
-                        }}
-                      >
-                        {[
-Boolean(this.state.total) && Math.min(
-                          (this.state.downloaded / this.state.total) * 100,
-                          100,
-                        ).toFixed(2) +
-                          "% downloaded",
-                          Boolean(this.state.total) && formatSpeed(this.state.speed),
-                          Boolean(this.state.total) && this.state.connections +
-                          " connections",
-this.state.convertProgress !== undefined && (this.state.convertProgress * 100).toFixed(1) +
-                        "% converted",
-                        ].filter(Boolean).join(" - ")}
+                      style={{
+                        color: softWhite,
+                        fontWeight: 400,
+                        fontSize: 10,
+                        lineHeight: "8px",
+                        position: "absolute",
+                        bottom: 0,
+                        right: 0,
+                        zIndex: 1,
+                      }}
+                    >
+                      {[
+                        Boolean(this.state.total) &&
+                          Math.min(
+                            (this.state.downloaded / this.state.total) * 100,
+                            100,
+                          ).toFixed(2) + "% downloaded",
+                        Boolean(this.state.total) &&
+                          formatSpeed(this.state.speed),
+                        Boolean(this.state.total) &&
+                          this.state.connections + " connections",
+                        this.state.convertProgress !== undefined &&
+                          (this.state.convertProgress * 100).toFixed(1) +
+                            "% converted",
+                      ]
+                        .filter(Boolean)
+                        .join(" - ")}
                     </div>
                   </div>
                 </div>

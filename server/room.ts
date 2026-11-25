@@ -565,20 +565,17 @@ export class Room {
       if (stateless) {
         await stateless.terminateVM(vm.id);
       } else {
-        await fetch(
-          "http://localhost:" + config.VMWORKER_PORT + "/releaseVM",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider: vm.provider,
-              isLarge: vm.large ?? false,
-              region: vm.region ?? "",
-              id: vm.id,
-              roomId: this.roomId,
-            }),
-          },
-        );
+        await fetch("http://localhost:" + config.VMWORKER_PORT + "/releaseVM", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: vm.provider,
+            isLarge: vm.large ?? false,
+            region: vm.region ?? "",
+            id: vm.id,
+            roomId: this.roomId,
+          }),
+        });
       }
     } catch (e) {
       console.warn(e);
