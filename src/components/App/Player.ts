@@ -19,6 +19,8 @@ export abstract class Player {
   public abstract clearState: () => void;
   public abstract loadSubtitles: (src: string) => void;
   public abstract syncSubtitles: (sharerTime: number) => void;
+  /** Subtitle offset in seconds (positive = later). No-op where it isn't supported (YouTube). */
+  public abstract setSubtitleOffset: (offset: number) => void;
   public abstract getTimeRanges: () => { start: number; end: number }[];
   public abstract setLoop: (loop: boolean) => void;
   public abstract getVideoEl: () => HTMLMediaElement;

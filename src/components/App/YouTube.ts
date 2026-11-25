@@ -3,6 +3,8 @@ import { Player } from "./Player";
 
 export class YouTube implements Player {
   watchPartyYTPlayer: YT.Player | null;
+  /** Whether we asked YouTube to show captions (the API can't tell us reliably) */
+  private captionsOn = false;
   constructor(watchPartyYTPlayer: YT.Player | null) {
     this.watchPartyYTPlayer = watchPartyYTPlayer;
   }
@@ -30,7 +32,7 @@ export class YouTube implements Player {
     //   console.warn(e);
     //   return false;
     // }
-    return false;
+    return this.captionsOn;
   };
 
   getPlaybackRate = (): number => {
@@ -92,6 +94,8 @@ export class YouTube implements Player {
   };
 
   setSubtitleMode = (mode?: TextTrackMode, lang?: string) => {
+    mode = mode ?? (this.captionsOn ? "hidden" : "showing");
+    this.captionsOn = mode === "showing";
     // Show the available options
     // console.log(this.watchPartyYTPlayer?.getOptions('captions'));
     if (mode === "showing") {
@@ -112,8 +116,8 @@ export class YouTube implements Player {
     }
   };
 
-  getSubtitleMode = () => {
-    return "hidden" as TextTrackMode;
+  getSubtitleMode = (): TextTrackMode => {
+    return this.captionsOn ? "showing" : "hidden";
   };
 
   isReady = () => {
@@ -135,6 +139,19 @@ export class YouTube implements Player {
   syncSubtitles = (sharerTime: number) => {
     return;
   };
+
+  setSubtitleOffset = (_offset: number) => {
+    // YouTube renders its own captions; there's no way to re-time them
+  };
+
+  /** Rates this video supports (the drift controller only nudges to these) */
+  getAvailablePlaybackRates = (): number[] => {
+    return this.watchPartyYTPlayer?.getAvailablePlaybackRates?.() ?? [1];
+  };
+
+  isBuffering = () =>
+    this.watchPartyYTPlayer?.getPlayerState?.() ===
+    window.YT?.PlayerState.BUFFERING;
 
   getTimeRanges = (): { start: number; end: number }[] => {
     return [

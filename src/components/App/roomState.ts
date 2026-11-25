@@ -1,5 +1,23 @@
 import type { AudioTrackInfo } from "../../utils/clientTranscode";
 import type { Store } from "./hooks/useStore";
+import type { SyncStatus } from "./logic/sync";
+import type { SubtitleScope } from "./logic/subtitles";
+
+/**
+ * A subtitle the menu can offer besides the room's own (e.g. auto subtitles found for an AIOStreams title). Picking
+ * one makes it the room subtitle (CMD:subtitle).
+ */
+export interface SubtitleTrackOption {
+  id: string;
+  label: string;
+  /** ISO 639-1 where known */
+  lang?: string;
+  url: string;
+  /** Secondary line, e.g. "OpenSubtitles · hearing impaired" */
+  detail?: string;
+  /** "auto" tracks get an Auto badge and are listed first */
+  source?: "auto" | "manual";
+}
 
 /** Everything the room page renders. Hooks read/write it through a shared Store (see hooks/useStore.ts). */
 export interface RoomState {
@@ -48,6 +66,22 @@ export interface RoomState {
   isScreenShareModalOpen: boolean;
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
+  // Player redesign (player/)
+  /** Socket connected (false while reconnecting) */
+  socketConnected: boolean;
+  /** This device's <video>/YouTube player is waiting for data */
+  buffering: boolean;
+  /** What the sync indicator shows (see logic/sync.ts) */
+  syncStatus: SyncStatus;
+  /** Room-wide subtitle offset in seconds (REC:host / REC:subtitleOffset) */
+  roomSubtitleOffset: number;
+  /** "Just me" override, null when following the room */
+  localSubtitleOffset: number | null;
+  subtitleScope: SubtitleScope;
+  /** Extra subtitle tracks for the menu (slot for auto subtitles; optional) */
+  subtitleTracks?: SubtitleTrackOption[];
+  /** A short message for the player's on-screen display (e.g. "Alex paused" in fullscreen) */
+  playerNotice: { text: string; at: number } | null;
 }
 
 export type RoomStore = Store<RoomState>;
@@ -89,5 +123,12 @@ export function createInitialRoomState(): RoomState {
     isScreenShareModalOpen: false,
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
+    socketConnected: false,
+    buffering: false,
+    syncStatus: { kind: "in-sync" },
+    roomSubtitleOffset: 0,
+    localSubtitleOffset: null,
+    subtitleScope: "everyone",
+    playerNotice: null,
   };
 }

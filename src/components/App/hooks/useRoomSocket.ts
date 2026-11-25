@@ -24,6 +24,7 @@ const SERVER_EVENTS: (keyof ServerToClientEvents)[] = [
   "REC:seek",
   "REC:playbackRate",
   "REC:subtitle",
+  "REC:subtitleOffset",
   "REC:loop",
   "REC:host",
   "REC:chat",

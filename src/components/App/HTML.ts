@@ -1,9 +1,33 @@
 import { default as toWebVTT } from "srt-webvtt";
 import { Player } from "./Player";
 import { apiFetch } from "../../utils/api";
+import { retimeCues, type CueLike } from "./logic/subtitles";
 
+export interface SubtitleTrackInfo {
+  index: number;
+  label: string;
+  language: string;
+  /** Added from the room subtitle URL (vs. embedded in the media) */
+  fromRoom: boolean;
+}
+
+/**
+ * The <video> player. Subtitles: the selected TextTrack is kept in "hidden" mode (cues fire but the browser doesn't
+ * draw them) and the player overlay renders the active cues itself, so size/background/position follow the redesign.
+ * Offsets re-time the cues in place from their original times (logic/subtitles.ts retimeCues).
+ */
 export class HTML implements Player {
   elId: string;
+  /** Index into textTracks of the track to show (-1 = none) */
+  private selectedTrack = 0;
+  private subtitlesEnabled = false;
+  /** User/room offset and the screen-sharer correction, in seconds */
+  private subtitleOffset = 0;
+  private sharerShift = 0;
+  private cueOriginals = new WeakMap<CueLike, { start: number; end: number }>();
+  /** The <track> element we added for the room subtitle */
+  private roomTrack: TextTrack | null = null;
+
   constructor(elId: string) {
     this.elId = elId;
   }
@@ -90,24 +114,85 @@ export class HTML implements Player {
     return this.getVideoEl()?.volume ?? 1;
   };
 
+  /** mode "showing" turns subtitles on, "hidden" off; no mode toggles */
   setSubtitleMode = (mode?: TextTrackMode) => {
-    if (this.getVideoEl()) {
-      for (
-        let i = 0;
-        i < Math.min(this.getVideoEl().textTracks.length, 1);
-        i++
-      ) {
-        this.getVideoEl().textTracks[i].mode =
-          mode ??
-          (this.getVideoEl().textTracks[i].mode === "hidden"
-            ? "showing"
-            : "hidden");
-      }
-    }
+    this.subtitlesEnabled =
+      mode === undefined ? !this.subtitlesEnabled : mode === "showing";
+    this.applyTrackModes();
   };
 
-  getSubtitleMode = () => {
-    return this.getVideoEl()?.textTracks[0]?.mode ?? "hidden";
+  getSubtitleMode = (): TextTrackMode => {
+    return this.subtitlesEnabled && this.getActiveSubtitleTrack()
+      ? "showing"
+      : "hidden";
+  };
+
+  getSubtitleTracks = (): SubtitleTrackInfo[] => {
+    const tracks = this.getVideoEl()?.textTracks;
+    const list: SubtitleTrackInfo[] = [];
+    for (let i = 0; i < (tracks?.length ?? 0); i++) {
+      const t = tracks[i];
+      if (t.kind === "metadata" || t.kind === "chapters") {
+        continue;
+      }
+      list.push({
+        index: i,
+        label: t.label || t.language || `Track ${i + 1}`,
+        language: t.language,
+        fromRoom: t === this.roomTrack,
+      });
+    }
+    return list;
+  };
+
+  /** Shows the track at this textTracks index, or turns subtitles off with -1 */
+  selectSubtitleTrack = (index: number) => {
+    this.selectedTrack = index;
+    this.subtitlesEnabled = index >= 0;
+    this.applyTrackModes();
+  };
+
+  getSelectedSubtitleTrack = () =>
+    this.subtitlesEnabled ? this.selectedTrack : -1;
+
+  /** The TextTrack whose active cues the overlay renders, if subtitles are on */
+  getActiveSubtitleTrack = (): TextTrack | undefined => {
+    if (!this.subtitlesEnabled) {
+      return undefined;
+    }
+    return this.getVideoEl()?.textTracks[this.selectedTrack];
+  };
+
+  private applyTrackModes = () => {
+    const tracks = this.getVideoEl()?.textTracks;
+    for (let i = 0; i < (tracks?.length ?? 0); i++) {
+      const want: TextTrackMode =
+        this.subtitlesEnabled && i === this.selectedTrack
+          ? "hidden"
+          : "disabled";
+      if (tracks[i].mode !== want) {
+        tracks[i].mode = want;
+      }
+    }
+    this.applyCueShift();
+  };
+
+  /** Room or "just me" subtitle offset in seconds (positive = later) */
+  setSubtitleOffset = (offset: number) => {
+    this.subtitleOffset = offset;
+    this.applyCueShift();
+  };
+
+  /** Re-times the cues of every loaded track to the current total shift */
+  applyCueShift = () => {
+    const tracks = this.getVideoEl()?.textTracks;
+    const shift = this.subtitleOffset + this.sharerShift;
+    for (let i = 0; i < (tracks?.length ?? 0); i++) {
+      const cues = tracks[i].cues;
+      if (cues?.length) {
+        retimeCues(cues, shift, this.cueOriginals);
+      }
+    }
   };
 
   isReady = () => {
@@ -122,7 +207,10 @@ export class HTML implements Player {
     leftVideo.srcObject = null;
 
     // Clear subtitles
-    this.setSubtitleMode("hidden");
+    this.subtitlesEnabled = false;
+    this.selectedTrack = 0;
+    this.sharerShift = 0;
+    this.roomTrack = null;
     leftVideo.innerHTML = "";
   };
 
@@ -133,6 +221,11 @@ export class HTML implements Player {
     }
     // Clear subtitles and put new ones in
     leftVideo.innerHTML = "";
+    this.roomTrack = null;
+    if (!src) {
+      this.subtitlesEnabled = false;
+      this.applyTrackModes();
+    }
     if (Boolean(src)) {
       let subtitleSrc = src;
       if (subtitleSrc) {
@@ -144,35 +237,26 @@ export class HTML implements Player {
         track.label = "English";
         track.srclang = "en";
         track.src = url;
+        // Cues load asynchronously: apply the current offset once they're in
+        track.addEventListener("load", () => this.applyCueShift());
         leftVideo.appendChild(track);
-        leftVideo.textTracks[0].mode = "showing";
+        this.roomTrack = track.track;
+        const index = Array.from(leftVideo.textTracks).indexOf(track.track);
+        this.selectSubtitleTrack(index >= 0 ? index : 0);
       }
     }
   };
 
   syncSubtitles = (sharerTime: number) => {
-    // When sharing, our timestamp doesn't match the subtitles so adjust them
-    // For each cue, subtract the videoTS of the sharer, then add our own
+    // When someone shares their screen, our timestamp doesn't match the subtitles, so shift them by the difference
     const leftVideo = this.getVideoEl();
-    const track = leftVideo?.textTracks[0];
-    let offset = leftVideo.currentTime - sharerTime;
-    if (track && track.cues && offset) {
-      for (let i = 0; i < track.cues.length; i++) {
-        let cue = track?.cues?.[i] as TextTrackCue & {
-          origStart: number;
-          origEnd: number;
-        };
-        if (!cue) {
-          continue;
-        }
-        // console.log(cue.text, offset, cue.origStart, cue.origEnd);
-        if (!cue.origStart) {
-          cue.origStart = cue.startTime;
-          cue.origEnd = cue.endTime;
-        }
-        cue.startTime = cue.origStart + offset;
-        cue.endTime = cue.origEnd + offset;
-      }
+    if (!leftVideo || !Number.isFinite(sharerTime)) {
+      return;
+    }
+    const shift = leftVideo.currentTime - sharerTime;
+    if (shift && shift !== this.sharerShift) {
+      this.sharerShift = shift;
+      this.applyCueShift();
     }
   };
 

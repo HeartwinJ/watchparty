@@ -53,7 +53,7 @@ describe("retimeCues", () => {
 
   it("shifts cues from their original times, without accumulating", () => {
     const cues = make();
-    const originals = new WeakMap();
+    const originals = new WeakMap<CueLike, { start: number; end: number }>();
     expect(retimeCues(cues, 0.3, originals)).toBe(2);
     expect(cues[0]).toEqual({ startTime: 1.3, endTime: 2.3 });
     retimeCues(cues, 0.3, originals);
@@ -66,7 +66,7 @@ describe("retimeCues", () => {
 
   it("clamps negative times at 0", () => {
     const cues = make();
-    const originals = new WeakMap();
+    const originals = new WeakMap<CueLike, { start: number; end: number }>();
     retimeCues(cues, -1.5, originals);
     expect(cues[0]).toEqual({ startTime: 0, endTime: 0.5 });
     retimeCues(cues, -3, originals);
@@ -78,7 +78,7 @@ describe("retimeCues", () => {
 
   it("picks up cues added later (track still loading)", () => {
     const cues = make();
-    const originals = new WeakMap();
+    const originals = new WeakMap<CueLike, { start: number; end: number }>();
     retimeCues(cues.slice(0, 1), 1, originals);
     retimeCues(cues, 1, originals);
     expect(cues.map((c) => c.startTime)).toEqual([2, 6]);

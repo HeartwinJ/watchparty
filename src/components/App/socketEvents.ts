@@ -12,8 +12,14 @@ export interface ServerToClientEvents {
   errorMessage: (err: string) => void;
   successMessage: (msg: string) => void;
   kicked: () => void;
-  "REC:play": (video?: string) => void;
-  "REC:pause": () => void;
+  /** `actor` (who pressed play) is sent by newer servers */
+  "REC:play": (video?: string, actor?: PlaybackActor) => void;
+  "REC:pause": (actor?: PlaybackActor) => void;
+  /** Someone else changed the room-wide subtitle offset (not echoed to the sender) */
+  "REC:subtitleOffset": (data: {
+    offset: number;
+    actor?: PlaybackActor;
+  }) => void;
   "REC:seek": (time: number) => void;
   "REC:playbackRate": (rate: number) => void;
   "REC:subtitle": (url: string) => void;
@@ -53,6 +59,8 @@ export interface ClientToServerEvents {
   "CMD:joinScreenShare": (data: { file: boolean }) => void;
   "CMD:leaveScreenShare": () => void;
   "CMD:subtitle": (url: string) => void;
+  /** Room-wide subtitle offset in seconds (server clamps to ±30 s, rounds to 0.05 s) */
+  "CMD:subtitleOffset": (offset: number) => void;
   "CMD:askHost": () => void;
   "CMD:playlistNext": (endedUrl: string) => void;
   "CMD:playlistAdd": (url: string) => void;
@@ -93,6 +101,7 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     joinScreenShare: (file: boolean) => emit("CMD:joinScreenShare", { file }),
     leaveScreenShare: () => emit("CMD:leaveScreenShare"),
     setSubtitle: (url: string) => emit("CMD:subtitle", url),
+    setSubtitleOffset: (offset: number) => emit("CMD:subtitleOffset", offset),
     askHost: () => emit("CMD:askHost"),
     playlistNext: (endedUrl: string) => emit("CMD:playlistNext", endedUrl),
     playlistAdd: (url: string) => emit("CMD:playlistAdd", url),
