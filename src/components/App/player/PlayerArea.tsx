@@ -26,10 +26,8 @@ import { useSubtitleStyle } from "./useSubtitleStyle";
 import { useTextTracks } from "./useTextTracks";
 import styles from "./Player.module.css";
 
-/** Fired by the overflow menu to open the shortcuts overlay */
-export const SHOW_SHORTCUTS_EVENT = "wp:show-shortcuts";
-/** Fired on `c` when the quick chat doesn't apply (sidebar open): the shell should focus its chat input */
-export const FOCUS_CHAT_EVENT = "wp:focus-chat";
+/** Fired by the overflow menu to open the shortcuts overlay (shell/shortcuts.ts requestShortcutsOverlay) */
+const SHOW_SHORTCUTS_EVENT = "wp:show-shortcuts";
 
 type Tap = { x: number; width: number; touch: boolean };
 
@@ -133,9 +131,10 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     if (quickChatAllowed) {
       setQuickChat(true);
     } else {
-      window.dispatchEvent(new CustomEvent(FOCUS_CHAT_EVENT));
+      // Sidebar is open: use its chat input
+      room.chatRef.current?.focusInput();
     }
-  }, [quickChatAllowed]);
+  }, [quickChatAllowed, room.chatRef]);
 
   // Keyboard shortcuts (ignored while typing or in a modal; see logic/shortcuts.ts)
   useEffect(() => {

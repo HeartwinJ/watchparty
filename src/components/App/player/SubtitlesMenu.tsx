@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   IconCheck,
   IconEye,
@@ -50,6 +50,30 @@ async function uploadSubtitleFile(): Promise<string | undefined> {
   return serverPath + "/subtitle/" + json.hash;
 }
 
+let openSubtitlesProbe: Promise<boolean> | undefined;
+/**
+ * Whether the server has an OpenSubtitles key. `/downloadSubtitles` answers 503 opensubtitles_not_configured without
+ * one, and 400 for file_id=0 otherwise, without calling OpenSubtitles. Checked once per page load.
+ */
+function isOpenSubtitlesConfigured(): Promise<boolean> {
+  openSubtitlesProbe ??= apiFetch("/downloadSubtitles?file_id=0")
+    .then((r) => r.status !== 503)
+    .catch(() => true);
+  return openSubtitlesProbe;
+}
+
+function useOpenSubtitlesAvailable() {
+  const [available, setAvailable] = useState(true);
+  useEffect(() => {
+    let live = true;
+    isOpenSubtitlesConfigured().then((ok) => live && setAvailable(ok));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return available;
+}
+
 /**
  * The CC menu: track list (auto tracks from room state first, then the room/embedded tracks), loading a file or URL,
  * the audio track when the converter found several, the timing offset (6b) and the subtitle style.
@@ -74,6 +98,7 @@ export function SubtitlesMenu(props: {
   const roomTrack = tracks.tracks.find((t) => t.fromRoom);
   const off = tracks.selected < 0;
   const ytOn = youtube && player.youtube().isSubtitled();
+  const openSubtitles = useOpenSubtitlesAvailable();
 
   const pickRoomSubtitle = (u: string) => {
     cmd.setSubtitle(u);
@@ -214,21 +239,24 @@ export function SubtitlesMenu(props: {
                   </button>
                 </form>
               )}
-              <button
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={() => {
-                  props.onClose();
-                  // The search modal is a page-level modal; leave fullscreen so it's visible
-                  if (player.isFullscreen()) {
-                    player.toggleFullscreen();
-                  }
-                  subtitles.openModal();
-                }}
-              >
-                <IconSearch size={16} />
-                <span className={styles.grow}>Search OpenSubtitles…</span>
-              </button>
+              {/* Hidden without an OpenSubtitles key; search errors show as toasts from the modal */}
+              {openSubtitles && (
+                <button
+                  className={styles.menuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    props.onClose();
+                    // The search modal is a page-level modal; leave fullscreen so it's visible
+                    if (player.isFullscreen()) {
+                      player.toggleFullscreen();
+                    }
+                    subtitles.openModal();
+                  }}
+                >
+                  <IconSearch size={16} />
+                  <span className={styles.grow}>Search OpenSubtitles…</span>
+                </button>
+              )}
             </>
           )}
         </div>
