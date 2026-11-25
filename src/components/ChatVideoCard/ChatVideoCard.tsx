@@ -7,7 +7,6 @@ import {
   IconArrowUp,
   IconBrandYoutubeFilled,
   IconFile,
-  IconMagnetFilled,
   IconPlayerPlayFilled,
   IconPlaylistAdd,
   IconTrash,
@@ -97,7 +96,6 @@ const ChatVideoCard: React.FC<{
         <div style={{ flexShrink: 0 }}>
           {video.type === "youtube" && <IconBrandYoutubeFilled color="red" />}
           {video.type === "file" && <IconFile />}
-          {video.type === "magnet" && <IconMagnetFilled />}
         </div>
         <div className={classes.Content}>
           <div className={classes.Title}>{decodeEntities(video.name)}</div>

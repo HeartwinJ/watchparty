@@ -1,10 +1,9 @@
 //@ts-expect-error
 import canAutoplay from "can-autoplay";
-import { MD5 } from "./md5";
-import firebase from "firebase/compat/app";
-import config from "../config";
 import { cyrb53 } from "./hash";
-import React from "react";
+import { apiFetch } from "./api";
+
+export { serverPath } from "./api";
 
 export function formatTimestamp(input: any, zeroTime?: number): string {
   if (
@@ -27,29 +26,6 @@ export function formatTimestamp(input: any, zeroTime?: number): string {
     .toString()
     .padStart(2, "0");
   return `${Number(input) < 0 ? "-" : ""}${hours ? `${hours}:` : ""}${minutes}:${seconds}`;
-}
-
-export function formatSpeed(input: number) {
-  if (input >= 1000000) {
-    return (input / 1000000).toFixed(2) + " MB/s";
-  }
-  if (input >= 1000) {
-    return (input / 1000).toFixed(0) + " KB/s";
-  }
-  return input + " B/s";
-}
-
-export function formatSize(input: number) {
-  if (input >= 1000000000) {
-    return (input / 1000000000).toFixed(2) + " GB";
-  }
-  if (input >= 1000000) {
-    return (input / 1000000).toFixed(2) + " MB";
-  }
-  if (input >= 1000) {
-    return (input / 1000).toFixed(0) + " KB";
-  }
-  return input + " B";
 }
 
 export const colorMappings: StringDict = {
@@ -83,9 +59,6 @@ export function getColorForStringHex(id: string) {
   return colorMappings[getColorForString(id)];
 }
 
-export const getFbPhoto = (fbId: string) =>
-  `https://graph.facebook.com/${fbId}/picture?type=normal`;
-
 export const isYouTube = (input: string) => {
   return (
     input.startsWith("https://www.youtube.com/") ||
@@ -95,10 +68,6 @@ export const isYouTube = (input: string) => {
 
 export const isHttp = (input: string) => {
   return input.startsWith("http");
-};
-
-export const isMagnet = (input: string) => {
-  return input.startsWith("magnet:");
 };
 
 // Direct links to video files, i.e. things the browser can fetch and play (or convert) as a plain media file.
@@ -113,18 +82,6 @@ export const isDirectVideoUrl = (input: string) => {
     !isMpegTs(input) &&
     !/^https?:\/\/(www\.|old\.)?(reddit|twitch)\.(com|tv)(\/|$)/.test(input)
   );
-};
-
-// Files smaller than this are assumed not to be the video we want (samples, subtitles, NFOs, etc.)
-const MIN_VIDEO_FILE_BYTES = 10 * 1024 * 1024;
-
-// If exactly one file in a multi-file source (e.g. a torrent) is big enough to plausibly be the video, return it
-// so it can be played without asking the user to choose.
-export const pickSingleLargeFile = <T extends { length: number }>(
-  files: T[],
-): T | undefined => {
-  const large = files.filter((f) => f.length >= MIN_VIDEO_FILE_BYTES);
-  return large.length === 1 ? large[0] : undefined;
 };
 
 export const isHls = (input: string) => {
@@ -145,10 +102,6 @@ export const isScreenShare = (input: string) => {
 
 export const isFileShare = (input: string) => {
   return input.startsWith("fileshare://");
-};
-
-export const isVBrowser = (input: string) => {
-  return input.startsWith("vbrowser://");
 };
 
 export async function testAutoplay() {
@@ -179,115 +132,10 @@ export const isMobile = () => {
   return window.screen.width <= 600;
 };
 
-export function shuffle(array: any[]) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * i);
-    const temp = array[i];
-    array[i] = array[j];
-    array[j] = temp;
-  }
-}
-
-export const iceServers = () => [
-  { urls: "stun:stun.l.google.com:19302" },
-  {
-    urls: "turn:5.161.207.54:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:5.161.49.183:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:135.181.147.65:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:5.78.83.26:3478",
-    username: "username",
-    credential: "password",
-  },
-  {
-    urls: "turn:5.223.48.157:3478",
-    username: "username",
-    credential: "password",
-  },
-  // {
-  //   urls: 'turn:numb.viagenie.ca',
-  //   credential: 'watchparty',
-  //   username: 'howardzchung@gmail.com',
-  // },
-];
-
-export const serverPath =
-  config.VITE_SERVER_HOST ||
-  `${window.location.protocol}//${
-    config.NODE_ENV === "development"
-      ? `${window.location.hostname}:8080`
-      : window.location.host
-  }`;
-
-export async function getMediaPathResults(
-  mediaPath: string,
-  query: string,
-): Promise<SearchResult[]> {
-  let results: SearchResult[] = [];
-  // if (mediaPath.includes('s3.')) {
-  //   const response = await fetch(mediaPath);
-  //   // S3-style buckets return data in XML
-  //   const xml = await response.text();
-  //   const parser = new XMLParser();
-  //   const data = parser.parse(xml);
-  //   let filtered = data.ListBucketResult.Contents.filter(
-  //     // Exclude subdirectories
-  //     (file: any) => !file.Key.includes('/'),
-  //   );
-  //   results = filtered.map((file: any) => ({
-  //     url: mediaPath + '/' + file.Key,
-  //     name: mediaPath + '/' + file.Key,
-  //   }));
-  // } else
-  if (mediaPath.startsWith("https://www.youtube.com/playlist?list=")) {
-    // https://www.youtube.com/playlist?list=<playlist ID>
-    const playlistID = mediaPath.split(
-      "https://www.youtube.com/playlist?list=",
-    )[1];
-    const response = await fetch(serverPath + "/youtubePlaylist/" + playlistID);
-    results = await response.json();
-  } else {
-    // Assume it's a text list of URLs
-    const response = await fetch(mediaPath);
-    const text = await response.text();
-    results = text
-      .split("\n")
-      .map((line) => ({ url: line, name: line, duration: 0, type: "file" }));
-  }
-  return results.filter((res) => res.url);
-}
-
-export async function getStreamPathResults(
-  streamPath: string,
-  query: string,
-): Promise<SearchResult[]> {
-  const response = await fetch(
-    streamPath + `/${query ? "search" : "top"}?q=` + encodeURIComponent(query),
-  );
-  const data = await response.json();
-  return data.map((d: any, i: number) => ({
-    ...d,
-    url: d.magnet ?? String(i),
-  }));
-}
-
 export async function getYouTubeResults(
   query: string,
 ): Promise<SearchResult[]> {
-  const response = await fetch(
-    serverPath + "/youtube?q=" + encodeURIComponent(query),
-  );
+  const response = await apiFetch("/youtube?q=" + encodeURIComponent(query));
   const data = await response.json();
   return data.map((d: any) => ({ ...d, type: "youtube" }));
 }
@@ -338,29 +186,6 @@ export function getOrCreateSessionId() {
   return sessionId;
 }
 
-export function addAndSavePassword(roomId: string, password: string) {
-  const newPasswords = {
-    ...getSavedPasswords(),
-    [roomId]: password,
-  };
-  window.localStorage.setItem(
-    "watchparty-passwords",
-    JSON.stringify(newPasswords),
-  );
-}
-
-export function getSavedPasswords(): Record<string, string> {
-  try {
-    const savedPasswordsString =
-      window.localStorage.getItem("watchparty-passwords") ?? "{}";
-    const savedPasswords = JSON.parse(savedPasswordsString);
-    return savedPasswords;
-  } catch (e) {
-    console.warn("[ALERT] Could not parse saved passwords");
-  }
-  return {};
-}
-
 export function createUuid() {
   return crypto.randomUUID ? crypto.randomUUID() : uuidv4();
 }
@@ -385,24 +210,6 @@ export function calculateMedian(array: number[]): number {
     }
   }
   return 0;
-}
-
-export async function getUserImage(
-  user: firebase.User,
-): Promise<string | null> {
-  // Check if user has a Gravatar
-  const hash = user.email ? MD5.hash(user.email) : "";
-  if (user.email) {
-    const gravatar = `https://www.gravatar.com/avatar/${hash}?d=404&s=256`;
-    const response = await fetch(gravatar);
-    if (response.ok) {
-      return gravatar;
-    }
-  }
-  if (user.photoURL) {
-    return user.photoURL + "?height=256&width=256";
-  }
-  return `https://www.gravatar.com/avatar/${hash}?d=identicon`;
 }
 
 export const getFileName = (input: string) => {

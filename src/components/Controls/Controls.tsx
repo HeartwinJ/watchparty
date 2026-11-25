@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import { Badge, Button, Menu, Progress, Slider } from "@mantine/core";
 import { formatTimestamp, softWhite } from "../../utils/utils";
 import styles from "./Controls.module.css";
-import { MetadataContext } from "../../MetadataContext";
 import type { AudioTrackInfo } from "../../utils/clientTranscode";
 import {
   IconPlayerPlayFilled,

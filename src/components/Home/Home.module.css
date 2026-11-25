@@ -15,12 +15,6 @@
   justify-content: center;
 }
 
-.hero.green {
-  background-image: linear-gradient(to bottom, #222222, rgb(21, 114, 43));
-  border-bottom-left-radius: 50%;
-  border-bottom-right-radius: 0%;
-}
-
 .heroInner {
   padding: 30px;
   max-width: 1200px;

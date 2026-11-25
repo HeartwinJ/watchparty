@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateMedian,
-  formatSize,
   formatTimestamp,
   isDirectVideoUrl,
   isEmojiString,
@@ -28,17 +27,6 @@ describe("formatTimestamp", () => {
   );
 });
 
-describe("formatSize", () => {
-  it.each([
-    [500, "500 B"],
-    [1500, "2 KB"],
-    [2_500_000, "2.50 MB"],
-    [93_947_973_227, "93.95 GB"],
-  ])("formats %s as %s", (input, expected) => {
-    expect(formatSize(input)).toBe(expected);
-  });
-});
-
 describe("URL classification", () => {
   it("detects YouTube", () => {
     expect(isYouTube("https://www.youtube.com/watch?v=abc")).toBe(true);
@@ -59,6 +47,7 @@ describe("URL classification", () => {
       false,
     );
     expect(isDirectVideoUrl("screenshare://abc")).toBe(false);
+    expect(isDirectVideoUrl("magnet:?xt=urn:btih:abc")).toBe(false);
   });
 });
 
