@@ -57,7 +57,6 @@ export function usePlayer(opts: {
     const usingNative = () => !usingYoutube();
     const roomHasDuration = () => hasDuration(store.get().roomMedia);
     const isPauseDisabled = () => isScreenShare(store.get().roomMedia);
-    const refreshControls = () => store.set({ controlsTimestamp: Date.now() });
 
     const getDuration = () =>
       getEffectiveDuration(
@@ -176,9 +175,6 @@ export function usePlayer(opts: {
         console.warn("fullscreen failed", e);
       }
     };
-
-    /** Kept for older callers: always toggles the player container */
-    const localFullScreen = (_videoOnly?: boolean) => toggleFullscreen();
 
     const roomTogglePlay = () => {
       if (isPauseDisabled()) {
@@ -321,9 +317,6 @@ export function usePlayer(opts: {
       updateSyncStatus();
     };
 
-    /** Kept for older callers */
-    const autoSyncRate = onTsMap;
-
     // Loads the YouTube IFrame API, which creates the player in the iframe once ready
     const loadYouTube = () => {
       const tag = document.createElement("script");
@@ -391,14 +384,12 @@ export function usePlayer(opts: {
       getDuration,
       getLeaderTime: leaderTime,
       toRoomTime: roomTime,
-      refreshControls,
       localSeek,
       localPlay,
       localPause,
       localSetMute,
       localSetVolume,
       localToggleMute,
-      localFullScreen,
       toggleFullscreen,
       isFullscreen,
       /** The player view registers its container element here (fullscreen target) */
@@ -417,7 +408,6 @@ export function usePlayer(opts: {
       roomSetPlaybackRate: (rate: number) => cmd.setPlaybackRate(rate),
       roomSetLoop: (loop: boolean) => cmd.setLoop(loop),
       onVideoEnded,
-      autoSyncRate,
       loadYouTube,
     };
   }, [store, cmd, clientId, share]);

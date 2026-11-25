@@ -6,8 +6,27 @@ import {
   normalizeOffset,
   retimeCues,
   stepOffset,
+  toWebVtt,
   type CueLike,
 } from "./subtitles";
+
+describe("toWebVtt", () => {
+  it("converts SRT timestamps and adds the header", () => {
+    const srt =
+      "﻿1\r\n00:00:01,500 --> 00:00:03,000\r\nHello\r\n\r\n2\r\n01:02:03,04 --> 01:02:04,5\r\n<i>Bye</i>\r\n";
+    expect(toWebVtt(srt)).toBe(
+      "WEBVTT\n\n1\n00:00:01.500 --> 00:00:03.000\nHello\n\n2\n01:02:03.04 --> 01:02:04.5\n<i>Bye</i>\n",
+    );
+  });
+
+  it("passes WebVTT through and leaves commas in cue text alone", () => {
+    const vtt = "WEBVTT\n\n00:00.000 --> 00:01.000\nHi, there\n";
+    expect(toWebVtt(vtt)).toBe(vtt);
+    expect(
+      toWebVtt("1\n00:00:00,000 --> 00:00:01,000\nHi, 00:00:02,000\n"),
+    ).toContain("Hi, 00:00:02,000");
+  });
+});
 
 describe("offset math", () => {
   it("steps by 0.1 without float drift", () => {

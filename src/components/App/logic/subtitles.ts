@@ -1,5 +1,22 @@
 // Subtitle offset (PLAN 6b): pure helpers for stepping/formatting offsets and re-timing TextTrack cues.
 
+/**
+ * Converts SRT text to WebVTT (WebVTT input is returned as-is). Strips a BOM, normalizes line endings and turns SRT's
+ * `00:00:01,500` timestamps into `00:00:01.500`. Replaces the srt-webvtt package, whose CommonJS default export
+ * doesn't resolve under Vite 8 (room subtitles silently failed to load).
+ */
+export function toWebVtt(text: string): string {
+  const clean = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  if (/^WEBVTT/.test(clean)) {
+    return clean;
+  }
+  const body = clean.replace(
+    /(\d{1,2}:\d{2}:\d{2}),(\d{1,3})(\s*-->\s*)(\d{1,2}:\d{2}:\d{2}),(\d{1,3})/g,
+    "$1.$2$3$4.$5",
+  );
+  return "WEBVTT\n\n" + body.trim() + "\n";
+}
+
 /** The slider and step buttons cover ±10 s; the server accepts up to ±30 s */
 export const SUBTITLE_OFFSET_SLIDER_MAX = 10;
 export const SUBTITLE_OFFSET_MAX = 30;

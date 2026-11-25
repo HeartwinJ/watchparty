@@ -1,7 +1,6 @@
-import { default as toWebVTT } from "srt-webvtt";
 import { Player } from "./Player";
 import { apiFetch } from "../../utils/api";
-import { retimeCues, type CueLike } from "./logic/subtitles";
+import { retimeCues, toWebVtt, type CueLike } from "./logic/subtitles";
 
 export interface SubtitleTrackInfo {
   index: number;
@@ -230,8 +229,8 @@ export class HTML implements Player {
       let subtitleSrc = src;
       if (subtitleSrc) {
         const response = await apiFetch(subtitleSrc);
-        const buffer = await response.arrayBuffer();
-        const url = await toWebVTT(new Blob([buffer]));
+        const vtt = toWebVtt(await response.text());
+        const url = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
         const track = document.createElement("track");
         track.kind = "captions";
         track.label = "English";

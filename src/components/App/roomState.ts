@@ -47,8 +47,6 @@ export interface RoomState {
   isAutoPlayable: boolean;
   nonPlayableMedia: boolean;
   isLiveStream: boolean;
-  /** Changing it remounts the controls so they re-read the player (e.g. after mute) */
-  controlsTimestamp: number;
   // Client-side conversion (see useConvert)
   convertEnabled: boolean;
   convertProgress: number | undefined;
@@ -109,7 +107,6 @@ export function createInitialRoomState(): RoomState {
     isAutoPlayable: true,
     nonPlayableMedia: false,
     isLiveStream: false,
-    controlsTimestamp: 0,
     convertEnabled: window.localStorage.getItem("watchparty-convert") === "1",
     convertProgress: undefined,
     audioTracks: undefined,
