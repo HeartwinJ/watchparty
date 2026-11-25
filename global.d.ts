@@ -64,8 +64,6 @@ interface HostState {
   videoTS: number;
   subtitle: string;
   paused: boolean;
-  // Unused by the client; the server still sends it as false
-  isVBrowserLarge?: boolean;
   playbackRate: number;
   loop: boolean;
 }

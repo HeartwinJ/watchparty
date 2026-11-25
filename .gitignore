@@ -27,3 +27,6 @@ yarn-error.log*
 .eslintcache
 # SQLite data (DATA_DIR)
 /data
+
+# Claude Code agent worktrees
+.claude/worktrees/
