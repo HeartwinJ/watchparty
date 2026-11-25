@@ -1,5 +1,127 @@
+/* Room layout. Desktop: top bar over a black stage + resizable sidebar. Phone: stacked, sidebar becomes a bottom sheet. */
+
+.room {
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(
+      --room-sidebar-w,
+      var(--wp-sidebar-w)
+    );
+  grid-template-rows: var(--wp-topbar-h) minmax(0, 1fr);
+  grid-template-areas:
+    "top top"
+    "stage side";
+  background: var(--wp-bg);
+  overflow: hidden;
+  transition: grid-template-columns var(--wp-dur-slow) var(--wp-ease);
+}
+
+.room[data-resizing] {
+  transition: none;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.stage {
+  grid-area: stage;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wp-stage);
+}
+
+/* The player box: PlayerArea (agent B) fills it */
+.player {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: size;
+}
+
+.controls {
+  flex: none;
+  padding: 0 var(--wp-sp-2) var(--wp-sp-1);
+}
+
+.sidebar {
+  grid-area: side;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  background: var(--wp-surface-1);
+  border-left: 1px solid var(--wp-border);
+  z-index: var(--wp-z-sidebar);
+}
+
+.room[data-sidebar="collapsed"] .sidebar {
+  border-left: 0;
+}
+
+.sidebarInner {
+  width: var(--room-sidebar-inner-w, var(--wp-sidebar-w));
+  flex: none;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Phone ---------- */
+
+.room[data-layout="phone"] {
+  --wp-topbar-h: 48px;
+  grid-template-columns: 100%;
+  grid-template-rows: var(--wp-topbar-h) auto auto minmax(0, 1fr);
+  grid-template-areas: "top" "stage" "now" "side";
+}
+
+.room[data-layout="phone"] .stage {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.room[data-layout="phone"] .sidebar {
+  /* Positioned by the bottom sheet (height comes from its snap point); the grid row is only a spacer */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  flex-direction: column;
+  border-left: 0;
+  border-top: 1px solid var(--wp-border);
+  border-radius: var(--wp-r-xl) var(--wp-r-xl) 0 0;
+  transition: height var(--wp-dur-slow) var(--wp-ease);
+}
+
+.room[data-layout="phone"] .sidebar[data-snap="min"],
+.room[data-layout="phone"] .sidebar[data-snap="full"] {
+  z-index: var(--wp-z-sheet);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.room[data-layout="phone"] .sidebar[data-dragging] {
+  transition: none;
+}
+
+.room[data-layout="phone"] .sidebarInner {
+  width: 100%;
+  flex: 1;
+}
+
+/* ---------- Pre-redesign player styles still used by PlayerArea.tsx (agent B replaces these) ---------- */
+
 :global(#leftVideo)::-webkit-media-controls {
   display: none !important;
+}
+
+.player :global(#leftVideo) {
+  height: 100%;
+  max-height: 100% !important;
+  object-fit: contain;
 }
 
 .videoContent {
@@ -16,8 +138,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Making this larger causes issues on mobile */
-  min-height: 48vh;
 }
 
 .flexCenter {
@@ -26,54 +146,7 @@
   justify-content: center;
 }
 
-.mobileStack {
-  display: flex;
-  gap: 4px;
-  @media only screen and (max-width: 600px) {
-    flex-direction: column;
-    width: calc(100% - 8px);
-  }
-}
-
-.mobileWrap {
-  @media only screen and (max-width: 600px) {
-    flex-wrap: wrap;
-  }
-}
-
-.leftColumn {
-  flex-grow: 1;
-}
-
-.rightColumn {
-  flex-shrink: 0;
-}
-
-.expandButton {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  top: 50%;
-  right: -30px;
-}
-
-.fullHeightColumn {
-  height: calc(100vh - 72px);
-  transition: width ease-out 0.5s;
-  &.leftColumn {
-    @media only screen and (max-width: 600px) {
-      /* video height doesn't matter on mobile since things are stacked */
-      height: initial;
-    }
-  }
-}
-
-.fullHeightColumnFullscreen {
-  height: calc(100vh);
-  transition: width ease-out 0.5s;
-}
-
-.shareButton {
-  min-width: 150px;
+/* A minimised sheet shows only its tabs */
+.room[data-layout="phone"] .sidebar[data-snap="min"] [data-panel] {
+  display: none;
 }

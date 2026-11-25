@@ -1,19 +1,21 @@
 import React, { type RefObject } from "react";
+import { ActionIcon, HoverCard, TextInput } from "@mantine/core";
 import {
-  ActionIcon,
-  Avatar,
-  Button,
-  HoverCard,
-  TextInput,
-} from "@mantine/core";
+  IconArrowBackUp,
+  IconArrowDown,
+  IconMoodSmile,
+  IconMovie,
+  IconPlayerPlay,
+  IconSend,
+  IconX,
+} from "@tabler/icons-react";
 import { EmojiPicker } from "./EmojiPicker";
 import { Linkify } from "./Linkify";
 import styles from "./Chat.module.css";
+import { UserAvatar } from "../Avatar/Avatar";
 
 import {
   formatTimestamp,
-  getColorForStringHex,
-  getDefaultPicture,
   getOrCreateClientId,
   isEmojiString,
 } from "../../utils/utils";
@@ -119,7 +121,6 @@ export class Chat extends React.Component<ChatProps> {
   };
 
   updateChatMsg = (e: any) => {
-    // console.log(e.target.selectionStart);
     this.setState({ chatMsg: e.target.value });
   };
 
@@ -178,23 +179,24 @@ export class Chat extends React.Component<ChatProps> {
     }
   };
 
+  /** Focuses the message input (e.g. from a keyboard shortcut). */
+  focusInput = () => {
+    this.chatInputRef.current?.focus();
+  };
+
   formatMessage = (cmd: string, msg?: string): React.ReactNode | string => {
     if (cmd === "host") {
       return (
         <React.Fragment>
           {`changed the video to `}
-          <span style={{ textTransform: "initial" }}>
-            {this.props.getMediaDisplayName(msg)}
-          </span>
+          {this.props.getMediaDisplayName(msg)}
         </React.Fragment>
       );
     } else if (cmd === "playlistAdd") {
       return (
         <React.Fragment>
-          {`added to the playlist: `}
-          <span style={{ textTransform: "initial" }}>
-            {this.props.getMediaDisplayName(msg)}
-          </span>
+          {`added to the queue: `}
+          {this.props.getMediaDisplayName(msg)}
         </React.Fragment>
       );
     } else if (cmd === "seek") {
@@ -214,27 +216,23 @@ export class Chat extends React.Component<ChatProps> {
   };
 
   render() {
+    const chat = this.props.chat;
     return (
       <div
-        className={this.props.className}
-        style={{
-          display: this.props.hide ? "none" : "flex",
-          flexDirection: "column",
-          flexGrow: 1,
-          minHeight: 0,
-          marginTop: 0,
-          marginBottom: 0,
-          padding: "8px",
-          backgroundColor: "rgba(30,30,30,1)",
-        }}
+        className={`${styles.chat} ${this.props.className ?? ""}`}
+        style={this.props.hide ? { display: "none" } : undefined}
       >
         <div
           className={styles.chatContainer}
           ref={this.messagesRef}
-          style={{ position: "relative" }}
+          role="log"
+          aria-label="Chat messages"
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {this.props.chat.map((msg) => (
+          <div className={styles.chatList}>
+            {chat.length === 0 && (
+              <div className={styles.emptyChat}>No messages yet. Say hi!</div>
+            )}
+            {chat.map((msg, i) => (
               <ChatMessage
                 key={msg.timestamp + msg.id}
                 className={
@@ -243,6 +241,7 @@ export class Chat extends React.Component<ChatProps> {
                     ? styles.selected
                     : ""
                 }
+                continued={isContinuation(chat[i - 1], msg)}
                 message={msg}
                 pictureMap={this.props.pictureMap}
                 nameMap={this.props.nameMap}
@@ -252,25 +251,20 @@ export class Chat extends React.Component<ChatProps> {
                 onReply={this.setReplyTo}
               />
             ))}
-            {/* <div ref={this.messagesEndRef} /> */}
           </div>
           {!this.state.isNearBottom && (
-            <Button
-              size="xs"
+            <button
+              type="button"
+              className={styles.jump}
               onClick={this.scrollToBottom}
-              style={{
-                position: "sticky",
-                bottom: 0,
-                display: "block",
-                margin: "0 auto",
-              }}
             >
-              Jump to bottom
-            </Button>
+              <IconArrowDown size={14} aria-hidden="true" />
+              Jump to latest
+            </button>
           )}
         </div>
         {this.state.isPickerOpen && (
-          <div style={{ position: "absolute", bottom: "60px" }}>
+          <div className={styles.picker}>
             <EmojiPicker
               theme="dark"
               previewPosition="none"
@@ -294,13 +288,16 @@ export class Chat extends React.Component<ChatProps> {
         >
           <div
             ref={this.reactionMenuRef}
+            className={styles.reactionPicker}
             style={{
-              position: "fixed",
-              top: Math.min(
-                this.state.reactionMenu.yPosition - 150,
-                window.innerHeight - 450,
+              top: Math.max(
+                8,
+                Math.min(
+                  this.state.reactionMenu.yPosition - 150,
+                  window.innerHeight - 450,
+                ),
               ),
-              left: this.state.reactionMenu.xPosition - 240,
+              left: Math.max(8, this.state.reactionMenu.xPosition - 240),
             }}
           >
             <EmojiPicker
@@ -316,69 +313,102 @@ export class Chat extends React.Component<ChatProps> {
             />
           </div>
         </CSSTransition>
-        {this.state.replyTo && (
-          <div
-            className={styles.replyComposer}
-            style={{
-              marginTop: 10,
-              padding: "6px 8px",
-              borderLeft: "2px solid rgb(46, 137, 212)",
-              background: "rgba(255, 255, 255, 0.06)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <div className={styles.small + " " + styles.light}>
-              Replying to{" "}
-              {this.props.nameMap[this.state.replyTo.id] || "Unknown"}
-              {this.state.replyTo.msg ? (
-                <div
-                  style={{
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: 260,
+        <div className={styles.composer}>
+          {this.state.replyTo && (
+            <div className={styles.replyComposer}>
+              <div className={styles.replyComposerText}>
+                Replying to{" "}
+                <b>{this.props.nameMap[this.state.replyTo.id] || "Unknown"}</b>
+                {this.state.replyTo.msg ? (
+                  <div className={styles.replyComposerMsg}>
+                    {this.state.replyTo.msg}
+                  </div>
+                ) : null}
+              </div>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size={28}
+                aria-label="Cancel reply"
+                onClick={this.clearReplyTo}
+              >
+                <IconX size={16} />
+              </ActionIcon>
+            </div>
+          )}
+          <TextInput
+            ref={this.chatInputRef}
+            size="md"
+            aria-label="Message"
+            onKeyDown={(e: any) => e.key === "Enter" && this.sendChatMsg()}
+            onChange={this.updateChatMsg}
+            value={this.state.chatMsg}
+            error={this.chatTooLong() ? "That message is too long." : undefined}
+            placeholder="Message"
+            classNames={{ input: styles.input }}
+            rightSectionWidth={72}
+            rightSectionPointerEvents="all"
+            rightSection={
+              <div className={styles.inputActions}>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size={30}
+                  aria-label="Insert emoji"
+                  aria-expanded={this.state.isPickerOpen}
+                  onClick={() => {
+                    // Add a delay to prevent the click from triggering onClickOutside
+                    const curr = this.state.isPickerOpen;
+                    setTimeout(
+                      () => this.setState({ isPickerOpen: !curr }),
+                      100,
+                    );
                   }}
                 >
-                  {this.state.replyTo.msg}
-                </div>
-              ) : null}
-            </div>
-            <Button size="xs" variant="subtle" onClick={this.clearReplyTo}>
-              Cancel
-            </Button>
-          </div>
-        )}
-        <TextInput
-          ref={this.chatInputRef}
-          style={{ marginTop: "10px" }}
-          onKeyDown={(e: any) => e.key === "Enter" && this.sendChatMsg()}
-          onChange={this.updateChatMsg}
-          value={this.state.chatMsg}
-          error={this.chatTooLong()}
-          placeholder="Enter a message..."
-          rightSection={
-            <ActionIcon
-              onClick={() => {
-                // Add a delay to prevent the click from triggering onClickOutside
-                const curr = this.state.isPickerOpen;
-                setTimeout(() => this.setState({ isPickerOpen: !curr }), 100);
-              }}
-            >
-              <span role="img" aria-label="Emoji">
-                😀
-              </span>
-            </ActionIcon>
-          }
-        >
-          {/* <Icon onClick={this.sendChatMsg} name="send" inverted circular link /> */}
-        </TextInput>
+                  <IconMoodSmile size={18} />
+                </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  color={this.state.chatMsg ? "copper" : "gray"}
+                  size={30}
+                  aria-label="Send message"
+                  disabled={!this.state.chatMsg}
+                  onClick={this.sendChatMsg}
+                >
+                  <IconSend size={18} />
+                </ActionIcon>
+              </div>
+            }
+          />
+        </div>
       </div>
     );
   }
 }
+
+/** Messages from the same person within a few minutes are grouped under one name and avatar. */
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+export function isContinuation(
+  prev: ChatMessage | undefined,
+  msg: ChatMessage,
+): boolean {
+  if (!prev || prev.id !== msg.id || prev.cmd || msg.cmd) {
+    return false;
+  }
+  if (prev.system || msg.system || msg.replyToUserId) {
+    return false;
+  }
+  const gap = Date.parse(msg.timestamp) - Date.parse(prev.timestamp);
+  return Number.isFinite(gap) && gap >= 0 && gap < GROUP_WINDOW_MS;
+}
+
+const formatTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+};
 
 const ChatMessage = ({
   message,
@@ -389,6 +419,7 @@ const ChatMessage = ({
   handleReactionClick,
   onReply,
   className,
+  continued,
 }: {
   message: ChatMessage;
   nameMap: StringDict;
@@ -404,60 +435,170 @@ const ChatMessage = ({
   handleReactionClick: (value: string, id?: string, timestamp?: string) => void;
   onReply: (id: string, timestamp: string, msg?: string) => void;
   className: string;
+  continued: boolean;
 }) => {
   const { id, timestamp, cmd, msg, system, reactions, videoTS } = message;
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
   const imageMsg = renderImageString(msg);
+  const name = system ? "System" : nameMap[id] || id;
+  const time = formatTime(timestamp);
+
+  const actions = (
+    <div className={styles.commentMenu}>
+      {id && id !== clientId && !cmd && (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size={26}
+          aria-label={`Reply to ${name}`}
+          onClick={() => onReply(id, timestamp, msg)}
+        >
+          <IconArrowBackUp size={16} />
+        </ActionIcon>
+      )}
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        size={26}
+        aria-label="Add reaction"
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setTimeout(() => {
+            setReactionMenu(true, id, timestamp, rect.top, rect.right);
+          }, 100);
+        }}
+      >
+        <IconMoodSmile size={16} />
+      </ActionIcon>
+    </div>
+  );
+
+  const reactionChips = (
+    <TransitionGroup className={styles.reactions} component="div">
+      {Object.keys(reactions ?? []).map((key) =>
+        reactions?.[key].length ? (
+          <NodeTransition
+            key={key}
+            timeout={200}
+            classNames={{
+              enter: styles["reaction-enter"],
+              enterActive: styles["reaction-enter-active"],
+              exit: styles["reaction-exit"],
+              exitActive: styles["reaction-exit-active"],
+            }}
+            unmountOnExit
+          >
+            {(nodeRef) => (
+              <HoverCard>
+                <HoverCard.Target>
+                  <button
+                    type="button"
+                    ref={nodeRef}
+                    className={`${styles.reactionContainer} ${
+                      reactions[key].includes(clientId)
+                        ? styles.highlighted
+                        : ""
+                    }`}
+                    aria-pressed={reactions[key].includes(clientId)}
+                    onClick={() =>
+                      handleReactionClick(key, message.id, message.timestamp)
+                    }
+                  >
+                    <span className={styles.reactionEmoji}>{key}</span>
+                    <SwitchTransition>
+                      <NodeTransition
+                        key={key + "-" + reactions[key].length}
+                        classNames={{
+                          enter: styles["reactionCounter-enter"],
+                          enterActive: styles["reactionCounter-enter-active"],
+                          exit: styles["reactionCounter-exit"],
+                          exitActive: styles["reactionCounter-exit-active"],
+                        }}
+                        endOnTransitionEnd
+                        unmountOnExit
+                      >
+                        {(nodeRef) => (
+                          <span
+                            ref={nodeRef}
+                            className={styles.reactionCounter}
+                          >
+                            {reactions[key].length}
+                          </span>
+                        )}
+                      </NodeTransition>
+                    </SwitchTransition>
+                  </button>
+                </HoverCard.Target>
+                <HoverCard.Dropdown className={styles.tooltip}>
+                  {`${reactions[key]
+                    .slice(0, spellFull)
+                    .map((id) => nameMap[id] || "Unknown")
+                    .concat(
+                      reactions[key].length > spellFull
+                        ? [`${reactions[key].length - spellFull} more`]
+                        : [],
+                    )
+                    .reduce(
+                      (text, value, i, array) =>
+                        text + (i < array.length - 1 ? ", " : " and ") + value,
+                    )} reacted.`}
+                </HoverCard.Dropdown>
+              </HoverCard>
+            )}
+          </NodeTransition>
+        ) : null,
+      )}
+    </TransitionGroup>
+  );
+
+  if (cmd) {
+    return (
+      <div className={`${styles.comment} ${styles.sys} ${className}`}>
+        <span className={styles.sysIcon} aria-hidden="true">
+          {cmd === "host" || cmd === "playlistAdd" ? (
+            <IconMovie size={14} />
+          ) : (
+            <IconPlayerPlay size={14} />
+          )}
+        </span>
+        <div className={styles.sysBody}>
+          <b>{name}</b> {formatMessage(cmd, msg)}
+          {reactionChips}
+        </div>
+        {actions}
+      </div>
+    );
+  }
+
   return (
     <div
-      style={{
-        display: "flex",
-        gap: "8px",
-        alignItems: "center",
-        position: "relative",
-        overflowWrap: "anywhere",
-      }}
-      className={`${styles.comment} ${className} ${
+      className={`${styles.comment} ${continued ? styles.cont : ""} ${className} ${
         message.replyToUserId === clientId ? styles.replyMessage : ""
       }`}
     >
-      {id ? (
-        <Avatar
-          src={
-            pictureMap[id] ||
-            getDefaultPicture(nameMap[id], getColorForStringHex(id))
-          }
-        />
-      ) : null}
-      <div>
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "flex-end",
-            fontSize: 14,
-          }}
-        >
-          <div style={{ fontWeight: 700 }} className={styles.light}>
-            {Boolean(system) && "System"}
-            {nameMap[id] || id}
+      {continued ? (
+        <span className={styles.avatarSpacer} aria-hidden="true" />
+      ) : (
+        <UserAvatar id={id} name={name} picture={pictureMap[id]} size={28} />
+      )}
+      <div className={styles.body}>
+        {!continued && (
+          <div className={styles.meta}>
+            <span className={styles.who}>{name}</span>
+            <span
+              className={styles.when}
+              title={new Date(timestamp).toLocaleString()}
+            >
+              {time}
+              {Boolean(videoTS) && ` · @ ${formatTimestamp(videoTS)}`}
+            </span>
           </div>
-          <div className={styles.small + " " + styles.dark}>
-            <div title={new Date(timestamp).toLocaleDateString()}>
-              {new Date(timestamp).toLocaleTimeString()}
-              {Boolean(videoTS) && " @ "}
-              {formatTimestamp(videoTS)}
-            </div>
-          </div>
-        </div>
-        <div className={styles.light + " " + styles.system}>
-          {cmd && formatMessage(cmd, msg)}
-        </div>
+        )}
         {message.replyToUserId && (
           <HoverCard withinPortal={false} openDelay={120}>
             <HoverCard.Target>
               <div className={styles.replyInfo}>
-                {`Replying to @${nameMap[message.replyToUserId] || "user"}: `}
+                {`↪ @${nameMap[message.replyToUserId] || "user"}: `}
                 {truncateReply(message.replyToMsg, 30)}
               </div>
             </HoverCard.Target>
@@ -467,161 +608,14 @@ const ChatMessage = ({
           </HoverCard>
         )}
         <div
-          className={`${styles.light} ${
-            isEmojiString(msg) ? styles.emoji : ""
-          }`}
+          className={`${styles.txt} ${isEmojiString(msg) ? styles.emoji : ""}`}
         >
-          {!cmd && <Linkify text={msg} />}
+          <Linkify text={msg} />
         </div>
         {imageMsg}
-        <div className={styles.commentMenu}>
-          {id && id !== clientId && (
-            <ActionIcon
-              onClick={() => onReply(id, timestamp, msg)}
-              style={{
-                opacity: 1,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                padding: 0,
-                margin: 0,
-                marginRight: 4,
-              }}
-            >
-              <span
-                role="img"
-                aria-label="Reply"
-                style={{ margin: 0, fontSize: 16 }}
-              >
-                ↩
-              </span>
-            </ActionIcon>
-          )}
-          <ActionIcon
-            onClick={(e) => {
-              //@ts-expect-error
-              const viewportOffset = e.target.getBoundingClientRect();
-              setTimeout(() => {
-                setReactionMenu(
-                  true,
-                  id,
-                  timestamp,
-                  viewportOffset.top,
-                  viewportOffset.right,
-                );
-              }, 100);
-            }}
-            style={{
-              opacity: 1,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              padding: 0,
-              margin: 0,
-            }}
-          >
-            <span
-              role="img"
-              aria-label="React"
-              style={{ margin: 0, fontSize: 18 }}
-            >
-              😀
-            </span>
-          </ActionIcon>
-        </div>
-        <TransitionGroup>
-          {Object.keys(reactions ?? []).map((key) =>
-            reactions?.[key].length ? (
-              <NodeTransition
-                key={key}
-                timeout={200}
-                classNames={{
-                  enter: styles["reaction-enter"],
-                  enterActive: styles["reaction-enter-active"],
-                  exit: styles["reaction-exit"],
-                  exitActive: styles["reaction-exit-active"],
-                }}
-                unmountOnExit
-              >
-                {(nodeRef) => (
-                  <HoverCard>
-                    <HoverCard.Target>
-                      <div
-                        ref={nodeRef}
-                        className={`${styles.reactionContainer} ${
-                          reactions[key].includes(clientId)
-                            ? styles.highlighted
-                            : ""
-                        }`}
-                        onClick={() =>
-                          handleReactionClick(
-                            key,
-                            message.id,
-                            message.timestamp,
-                          )
-                        }
-                      >
-                        <span
-                          style={{
-                            fontSize: 17,
-                            position: "relative",
-                            bottom: 1,
-                          }}
-                        >
-                          {key}
-                        </span>
-                        <SwitchTransition>
-                          <NodeTransition
-                            key={key + "-" + reactions[key].length}
-                            classNames={{
-                              enter: styles["reactionCounter-enter"],
-                              enterActive:
-                                styles["reactionCounter-enter-active"],
-                              exit: styles["reactionCounter-exit"],
-                              exitActive: styles["reactionCounter-exit-active"],
-                            }}
-                            endOnTransitionEnd
-                            unmountOnExit
-                          >
-                            {(nodeRef) => (
-                              <span
-                                ref={nodeRef}
-                                className={styles.reactionCounter}
-                                style={{
-                                  color: "rgba(255, 255, 255, 0.85)",
-                                  marginLeft: 3,
-                                }}
-                              >
-                                {reactions[key].length}
-                              </span>
-                            )}
-                          </NodeTransition>
-                        </SwitchTransition>
-                      </div>
-                    </HoverCard.Target>
-                    <HoverCard.Dropdown>
-                      {`${reactions[key]
-                        .slice(0, spellFull)
-                        .map((id) => nameMap[id] || "Unknown")
-                        .concat(
-                          reactions[key].length > spellFull
-                            ? [`${reactions[key].length - spellFull} more`]
-                            : [],
-                        )
-                        .reduce(
-                          (text, value, i, array) =>
-                            text +
-                            (i < array.length - 1 ? ", " : " and ") +
-                            value,
-                        )} reacted.`}
-                    </HoverCard.Dropdown>
-                  </HoverCard>
-                )}
-              </NodeTransition>
-            ) : null,
-          )}
-        </TransitionGroup>
+        {reactionChips}
       </div>
+      {actions}
     </div>
   );
 };
@@ -667,50 +661,7 @@ export const renderImageString = (
   let regex =
     /^https?:\/\/.*\/.*\.(png|gif|webp|jpeg|jpg|heic|heif|jfif)\??.*$/gim;
   if (String(input)?.match(regex)) {
-    return <img style={{ maxWidth: "100%" }} src={input} />;
+    return <img className={styles.image} src={input} alt="" loading="lazy" />;
   }
   return null;
 };
-
-// class ReactionMenuInner extends React.Component<{
-//   handleReactionClick: (value: string, id?: string, timestamp?: string) => void;
-//   closeMenu: () => void;
-//   yPosition: number;
-//   xPosition: number;
-// }> {
-//   state = {
-//     containerWidth: 0,
-//   };
-//   handleClickOutside = () => {
-//     this.props.closeMenu();
-//   };
-//   containerRef = React.createRef<HTMLDivElement>();
-//   componentDidMount() {
-//     this.setState({ containerWidth: this.containerRef.current?.offsetWidth });
-//   }
-//   render() {
-//     return (
-//       <div
-//         ref={this.containerRef}
-//         className={styles.reactionMenuContainer}
-//         style={{
-//           top: this.props.yPosition - 9,
-//           left: this.props.xPosition - this.state.containerWidth - 35,
-//         }}
-//       >
-//         {reactionEmojis.map((reaction) => (
-//           <div
-//             onClick={() => {
-//               this.props.handleReactionClick(reaction);
-//               this.props.closeMenu();
-//             }}
-//             style={{ cursor: 'pointer' }}
-//           >
-//             {reaction}
-//           </div>
-//         ))}
-//       </div>
-//     );
-//   }
-// }
-// const ReactionMenu = onClickOutside(ReactionMenuInner);

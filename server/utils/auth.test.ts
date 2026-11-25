@@ -73,7 +73,10 @@ describe("auth routes", () => {
     expect((await login(base, "nope")).status).toBe(401);
     const limited = await login(base, "pw");
     expect(limited.status).toBe(429);
-    expect(await limited.json()).toEqual({ error: "rate_limited" });
+    const body = await limited.json();
+    expect(body.error).toBe("rate_limited");
+    expect(body.retryAfter).toBeGreaterThan(0);
+    expect(limited.headers.get("retry-after")).toBe(String(body.retryAfter));
   });
 });
 

@@ -30,9 +30,7 @@ const renderChat = (chat: ChatMessage[] = []) => {
 describe("Chat", () => {
   it("sends a message on Enter and clears the input", () => {
     const cmd = renderChat();
-    const input = screen.getByPlaceholderText(
-      "Enter a message...",
-    ) as HTMLInputElement;
+    const input = screen.getByPlaceholderText("Message") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(cmd.sendChat).toHaveBeenCalledWith("hello");
@@ -41,7 +39,7 @@ describe("Chat", () => {
 
   it("doesn't send empty messages", () => {
     const cmd = renderChat();
-    const input = screen.getByPlaceholderText("Enter a message...");
+    const input = screen.getByPlaceholderText("Message");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(cmd.sendChat).not.toHaveBeenCalled();
   });

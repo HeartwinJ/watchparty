@@ -107,5 +107,13 @@ export function createRateLimiter(opts: { max: number; windowMs: number }) {
     reset(key: string) {
       hits.delete(key);
     },
+    /** Whole seconds until the key's window resets (0 if it isn't limited). */
+    retryAfterSec(key: string, now = Date.now()): number {
+      const entry = hits.get(key);
+      if (!entry || entry.resetAt <= now || entry.count <= opts.max) {
+        return 0;
+      }
+      return Math.ceil((entry.resetAt - now) / 1000);
+    },
   };
 }

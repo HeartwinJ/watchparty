@@ -1,7 +1,5 @@
 html body {
   margin: 0;
-  /* fix for scrollbar popping in and out at certain widths, but adds a permanent scrollbar */
-  overflow-y: scroll;
   background-color: var(--wp-bg);
   color: var(--wp-text);
   font-family: var(--wp-font);

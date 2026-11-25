@@ -52,6 +52,11 @@
   --wp-avatar-2: #8b6cf0;
   --wp-avatar-3: #1f8a7d;
   --wp-avatar-4: #2f9fbf;
+  /* Muted extras so bigger rooms repeat colours less */
+  --wp-avatar-5: #5a6fb0;
+  --wp-avatar-6: #6b5a9e;
+  --wp-avatar-7: #3f7d5c;
+  --wp-avatar-8: #4a7f95;
 
   /* Typography */
   --wp-font:
@@ -93,6 +98,7 @@
   --wp-sidebar-w: 360px;
   --wp-sidebar-min: 280px;
   --wp-sidebar-max: 560px;
+  --wp-sheet-min: 100px;
   --wp-control-h: 36px;
   --wp-player-btn: 40px;
 

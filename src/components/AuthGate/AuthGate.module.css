@@ -1,0 +1,30 @@
+.form {
+  display: grid;
+  gap: var(--wp-sp-4);
+}
+
+.alert {
+  display: flex;
+  gap: var(--wp-sp-3);
+  padding: var(--wp-sp-3);
+  border-radius: var(--wp-r-md);
+  font-size: var(--wp-fs-sm);
+  background: var(--wp-warning-soft);
+  color: var(--wp-text);
+  border: 1px solid color-mix(in srgb, var(--wp-warning) 35%, transparent);
+}
+
+.alert b {
+  display: block;
+}
+
+.alertIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--wp-warning);
+}
+
+.mono {
+  font-family: var(--wp-font-mono);
+  font-variant-numeric: tabular-nums;
+}

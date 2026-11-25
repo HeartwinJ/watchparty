@@ -1,39 +1,4 @@
-import React from "react";
-
-// export const SettingsModal = ({ trigger }: any) => (
-//   <Modal trigger={trigger} basic closeIcon size="small">
-//     <Header icon="setting" content="Settings" />
-//     <Modal.Content>
-//       <Form>
-//         <TextArea rows={10} id="settings_textarea">
-//           {window.localStorage.getItem('watchparty-setting') ||
-//             JSON.stringify(getDefaultSettings(), null, 2)}
-//         </TextArea>
-//       </Form>
-//     </Modal.Content>
-//     <Modal.Actions>
-//       <Button
-//         color="green"
-//         inverted
-//         onClick={() => {
-//           const newSetting = (document.getElementById(
-//             'settings_textarea',
-//           ) as HTMLTextAreaElement)!.value;
-//           try {
-//             validateSettingsString(newSetting);
-//             updateSettings(newSetting);
-//             window.location.reload();
-//           } catch (e) {
-//             alert(e);
-//           }
-//         }}
-//       >
-//         <Icon name="checkmark" />
-//         Save
-//       </Button>
-//     </Modal.Actions>
-//   </Modal>
-// );
+// Per-device settings (localStorage). Edited in the room settings modal (App/shell/RoomSettingsModal.tsx).
 
 export function getDefaultSettings(): Settings {
   return {};

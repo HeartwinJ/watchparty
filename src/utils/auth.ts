@@ -34,8 +34,37 @@ export async function fetchSession(): Promise<SessionInfo> {
 
 export type LoginResult = "ok" | "invalid_password" | "rate_limited" | "error";
 
-/** POST /login. On success the server sets an httpOnly session cookie. */
-export async function login(password: string): Promise<LoginResult> {
+export interface LoginOutcome {
+  result: LoginResult;
+  /** Seconds until another attempt is allowed (only for "rate_limited") */
+  retryAfterSec?: number;
+}
+
+/** Default wait when a 429 doesn't say how long (the server's window is 10 minutes). */
+export const DEFAULT_RETRY_AFTER_SEC = 60;
+
+/** Reads the wait from a 429: the JSON `retryAfter`, else the Retry-After header, else a default. */
+async function readRetryAfter(response: Response): Promise<number> {
+  let fromBody: unknown;
+  try {
+    fromBody = (await response.json())?.retryAfter;
+  } catch {
+    // Not JSON
+  }
+  const candidates = [fromBody, response.headers.get("Retry-After")];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (value != null && value !== "" && Number.isFinite(n) && n > 0) {
+      return Math.ceil(n);
+    }
+  }
+  return DEFAULT_RETRY_AFTER_SEC;
+}
+
+/** POST /login with details (the rate-limit wait). On success the server sets an httpOnly session cookie. */
+export async function loginWithDetails(
+  password: string,
+): Promise<LoginOutcome> {
   let response: Response;
   try {
     response = await apiFetch(
@@ -48,18 +77,26 @@ export async function login(password: string): Promise<LoginResult> {
       { ignoreUnauthorized: true },
     );
   } catch {
-    return "error";
+    return { result: "error" };
   }
   if (response.ok) {
-    return "ok";
+    return { result: "ok" };
   }
   if (response.status === 401) {
-    return "invalid_password";
+    return { result: "invalid_password" };
   }
   if (response.status === 429) {
-    return "rate_limited";
+    return {
+      result: "rate_limited",
+      retryAfterSec: await readRetryAfter(response),
+    };
   }
-  return "error";
+  return { result: "error" };
+}
+
+/** POST /login. On success the server sets an httpOnly session cookie. */
+export async function login(password: string): Promise<LoginResult> {
+  return (await loginWithDetails(password)).result;
 }
 
 /** POST /logout. Errors are ignored: the caller shows the login screen either way. */

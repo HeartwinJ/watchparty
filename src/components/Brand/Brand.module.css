@@ -1,0 +1,30 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  font-weight: 700;
+  font-size: var(--wp-fs-lg);
+  letter-spacing: -0.01em;
+  color: var(--wp-text);
+  text-decoration: none;
+  border-radius: var(--wp-r-sm);
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--wp-accent-text);
+  outline-offset: 2px;
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 8px;
+  background: var(--wp-accent);
+  color: #fff;
+}
+
+.word {
+  white-space: nowrap;
+}
