@@ -32,7 +32,7 @@ npm run format:check && npm run check && npx vite build
 
 ## Deployment
 
-One `docker compose up -d` runs the app, a Cloudflare Tunnel and a nightly SQLite backup, with no ports opened on the host. The image is published to `ghcr.io/heartwinj/watchparty` on every push to `master`. See [`DEPLOY.md`](DEPLOY.md) for the step-by-step setup.
+One `docker compose up -d` runs the app, a Cloudflare Tunnel and a nightly SQLite backup, with no ports opened on the host. The app image is built on the host from the checkout. See [`DEPLOY.md`](DEPLOY.md) for the step-by-step setup.
 
 ## Configuration
 

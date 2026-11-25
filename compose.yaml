@@ -1,5 +1,5 @@
 # WatchParty stack: app + Cloudflare Tunnel + nightly SQLite backup. See DEPLOY.md.
-#   docker compose pull && docker compose up -d
+#   docker compose up -d   (builds app + backup on this host, pulls cloudflared)
 # Nothing is published on the host: cloudflared dials out to Cloudflare and reaches the app
 # over the stack's private network (public hostname -> http://app:8080).
 name: watchparty
@@ -12,9 +12,12 @@ x-logging: &logging
 
 services:
   app:
-    image: ghcr.io/heartwinj/watchparty:latest
-    # Fallback for local builds: `docker compose build app` (or `up --build`)
+    # Built on the host from this checkout. `pull_policy: build` makes every
+    # `docker compose up` rebuild it (cached layers make that fast when nothing changed)
+    # and keeps `docker compose pull` from looking for it in a registry.
+    image: watchparty-app:local
     build: .
+    pull_policy: build
     restart: unless-stopped
     env_file: .env
     environment:
@@ -51,8 +54,10 @@ services:
     logging: *logging
 
   backup:
-    # Built locally from ./backup (alpine + sqlite, a few MB); `compose pull` skips it
+    # Built locally from ./backup (alpine + sqlite, a few MB)
+    image: watchparty-backup:local
     build: ./backup
+    pull_policy: build
     restart: unless-stopped
     init: true
     depends_on:
