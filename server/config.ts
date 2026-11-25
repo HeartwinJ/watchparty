@@ -21,6 +21,10 @@ const defaults = {
   CF_TURN_API_TOKEN: "", // Optional, Cloudflare Realtime TURN API token. Server-side only, never sent to clients
   YOUTUBE_API_KEY: "", // Optional, provide one to enable searching YouTube
   OPENSUBTITLES_KEY: "", // Optional, key to OpenSubtitles API
+  // Optional, AIOStreams manifest URL (https://host/stremio/<uuid>/<config>/manifest.json). Enables /addon/*.
+  // SECRET: it embeds the AIOStreams config and debrid credentials. Server-side only, never log/return/commit it.
+  AIOSTREAMS_MANIFEST_URL: "",
+  SUBTITLE_LANGS: "en", // Preferred subtitle languages for /addon/subtitles, ISO 639-1, comma-separated, e.g. "en,es"
 };
 
 export default {
