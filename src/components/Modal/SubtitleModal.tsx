@@ -9,7 +9,6 @@ import {
   ActionIcon,
   Divider,
 } from "@mantine/core";
-import { Socket } from "socket.io-client";
 import { openFileSelector, serverPath } from "../../utils/utils";
 import { apiFetch } from "../../utils/api";
 import {
@@ -23,7 +22,8 @@ export class SubtitleModal extends React.Component<{
   closeModal: () => void;
   roomSubtitle: string | undefined;
   roomMedia: string;
-  socket: Socket;
+  /** Sets the room subtitle (CMD:subtitle) */
+  setRoomSubtitle: (url: string) => void;
   getMediaDisplayName: (input: string) => string;
   setSubtitleMode: (mode?: TextTrackMode) => void;
   getSubtitleMode: () => TextTrackMode;
@@ -54,10 +54,7 @@ export class SubtitleModal extends React.Component<{
       });
       // Once URL obtained, make those the room subtitles
       const json = await resp.json();
-      this.props.socket.emit(
-        "CMD:subtitle",
-        serverPath + "/subtitle/" + json.hash,
-      );
+      this.props.setRoomSubtitle(serverPath + "/subtitle/" + json.hash);
     });
     reader.readAsText(file);
   };
@@ -95,14 +92,12 @@ export class SubtitleModal extends React.Component<{
             <TextInput
               placeholder="Subtitle URL"
               value={this.props.roomSubtitle}
-              onChange={(e) =>
-                this.props.socket.emit("CMD:subtitle", e.target.value)
-              }
+              onChange={(e) => this.props.setRoomSubtitle(e.target.value)}
               rightSection={
                 <ActionIcon
                   color="red"
                   onClick={() => {
-                    this.props.socket.emit("CMD:subtitle", "");
+                    this.props.setRoomSubtitle("");
                   }}
                 >
                   <IconX />
@@ -152,10 +147,7 @@ export class SubtitleModal extends React.Component<{
                             result.attributes.files[0]?.file_id,
                         );
                         const data = await resp.json();
-                        this.props.socket.emit(
-                          "CMD:subtitle",
-                          serverPath + data.link,
-                        );
+                        this.props.setRoomSubtitle(serverPath + data.link);
                       }}
                     >
                       <IconDownload />
