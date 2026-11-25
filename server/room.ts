@@ -1,6 +1,14 @@
 import { Server, Socket } from "socket.io";
 import type { DatabaseSync } from "node:sqlite";
-import { saveRoomData } from "./utils/db.ts";
+import {
+  getSubtitleOffset,
+  saveRoomData,
+  saveSubtitleOffset,
+} from "./utils/db.ts";
+import {
+  normalizeSubtitleOffset,
+  subtitleOffsetKey,
+} from "./utils/subtitleOffset.ts";
 import { fetchYoutubeVideo, getYoutubeVideoID } from "./utils/youtube.ts";
 
 // Extend the interface
@@ -58,6 +66,8 @@ export class Room {
   private nameMap: StringDict = {};
   private pictureMap: StringDict = {};
   public playlist: PlaylistVideo[] = [];
+  /** Room-wide subtitle offset in seconds (positive = later), see setSubtitleOffset */
+  public subtitleOffset = 0;
 
   // Non-serialized state
   public roomId: string;
@@ -70,6 +80,9 @@ export class Room {
   public lastUpdateTime: Date = new Date();
   private preventTSUpdate = false;
   private db: DatabaseSync;
+  private subtitleOffsetChatTimer: NodeJS.Timeout | undefined = undefined;
+  /** How long the subtitle offset has to stay unchanged before it's announced in chat */
+  public static SUBTITLE_OFFSET_CHAT_DELAY_MS = 1500;
 
   constructor(
     io: Server,
@@ -212,6 +225,9 @@ export class Room {
       on("CMD:subtitle", (data: unknown) => {
         this.addSubtitles(String(data));
       });
+      on("CMD:subtitleOffset", (data: unknown) => {
+        this.setSubtitleOffset(socket, data);
+      });
       on("CMD:askHost", () => {
         socket.emit("REC:host", this.getHostState());
       });
@@ -266,6 +282,7 @@ export class Room {
       pictureMap: abbrPictureMap,
       playlist: this.playlist,
       loop: this.loop,
+      subtitleOffset: this.subtitleOffset,
     });
   };
 
@@ -297,6 +314,7 @@ export class Room {
     if (roomObj.loop) {
       this.loop = roomObj.loop;
     }
+    this.subtitleOffset = normalizeSubtitleOffset(roomObj.subtitleOffset) ?? 0;
   };
 
   public saveRoom = () => {
@@ -316,6 +334,7 @@ export class Room {
     if (this.tsInterval) {
       clearInterval(this.tsInterval);
     }
+    clearTimeout(this.subtitleOffsetChatTimer);
     // Unregister the namespace so it doesn't linger (or get duplicated on reload)
     this.io._nsps.delete(this.roomId);
   };
@@ -347,6 +366,7 @@ export class Room {
       playbackRate: this.playbackRate,
       paused: this.paused,
       loop: this.loop,
+      subtitleOffset: this.subtitleOffset,
     };
   };
 
@@ -360,6 +380,7 @@ export class Room {
     this.subtitle = "";
     this.loop = false;
     this.playbackRate = 1;
+    this.subtitleOffset = this.loadSubtitleOffset(data);
     this.tsMap = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
@@ -512,8 +533,14 @@ export class Room {
     this.io.of(this.roomId).emit("playlist", this.playlist);
   };
 
+  /** Who sent a play/pause, so the others can show "Alex paused" (older clients ignore the extra argument) */
+  private getActor = (socket: Socket): PlaybackActor => ({
+    id: socket.clientId,
+    name: this.nameMap[socket.clientId],
+  });
+
   private playVideo = (socket: Socket) => {
-    socket.broadcast.emit("REC:play", this.video);
+    socket.broadcast.emit("REC:play", this.video, this.getActor(socket));
     const chatMsg = {
       id: socket.clientId,
       cmd: "play",
@@ -524,7 +551,7 @@ export class Room {
   };
 
   private pauseVideo = (socket: Socket) => {
-    socket.broadcast.emit("REC:pause");
+    socket.broadcast.emit("REC:pause", this.getActor(socket));
     const chatMsg = {
       id: socket.clientId,
       cmd: "pause",
@@ -739,6 +766,54 @@ export class Room {
     }
     this.subtitle = data;
     this.io.of(this.roomId).emit("REC:subtitle", this.subtitle);
+  };
+
+  // --- Subtitle offset (PLAN 6b) ---
+
+  /** The saved offset for a video (0 when none was saved or it has no stable key) */
+  private loadSubtitleOffset = (video: string | null) => {
+    const key = subtitleOffsetKey(video);
+    if (!key) {
+      return 0;
+    }
+    try {
+      return normalizeSubtitleOffset(getSubtitleOffset(this.db, key)) ?? 0;
+    } catch (e) {
+      console.warn("failed to load subtitle offset:", e);
+      return 0;
+    }
+  };
+
+  /**
+   * CMD:subtitleOffset: sets the room-wide offset (validated, clamped to ±30 s, rounded to 0.05 s), tells the others
+   * (REC:subtitleOffset), saves it for this video, and announces it in chat once it stops changing.
+   */
+  private setSubtitleOffset = (socket: Socket, data: unknown) => {
+    const offset = normalizeSubtitleOffset(data);
+    if (offset === undefined) {
+      return;
+    }
+    this.subtitleOffset = offset;
+    socket.broadcast.emit("REC:subtitleOffset", {
+      offset,
+      actor: this.getActor(socket),
+    });
+    const key = subtitleOffsetKey(this.video);
+    if (key) {
+      try {
+        saveSubtitleOffset(this.db, key, offset);
+      } catch (e) {
+        console.warn("failed to save subtitle offset:", e);
+      }
+    }
+    clearTimeout(this.subtitleOffsetChatTimer);
+    this.subtitleOffsetChatTimer = setTimeout(() => {
+      this.addChatMessage(socket, {
+        id: socket.clientId,
+        cmd: "subtitleOffset",
+        msg: String(this.subtitleOffset),
+      });
+    }, Room.SUBTITLE_OFFSET_CHAT_DELAY_MS);
   };
 
   private sendSignal = (socket: Socket, raw: unknown) => {

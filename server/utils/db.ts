@@ -21,6 +21,12 @@ const MIGRATIONS: string[] = [
     expiresAt INTEGER NOT NULL
   );
   CREATE INDEX subtitles_expiresAt ON subtitles (expiresAt);`,
+  // 2: room-wide subtitle offset per video (PLAN 6b), keyed by subtitleOffsetKey()
+  `CREATE TABLE subtitle_offsets (
+    videoKey TEXT PRIMARY KEY,
+    offset REAL NOT NULL,
+    updatedAt INTEGER NOT NULL
+  );`,
 ];
 
 export function migrate(db: DatabaseSync) {
@@ -135,4 +141,32 @@ export function pruneSubtitles(db: DatabaseSync, now = Date.now()) {
   return Number(
     db.prepare("DELETE FROM subtitles WHERE expiresAt <= ?").run(now).changes,
   );
+}
+
+/** The saved subtitle offset (seconds) for a video key, or undefined if none was saved. */
+export function getSubtitleOffset(
+  db: DatabaseSync,
+  videoKey: string,
+): number | undefined {
+  const row = db
+    .prepare("SELECT offset FROM subtitle_offsets WHERE videoKey = ?")
+    .get(videoKey) as { offset: number } | undefined;
+  return row ? Number(row.offset) : undefined;
+}
+
+/** Saves a video's subtitle offset. An offset of 0 deletes the row (it's the default). */
+export function saveSubtitleOffset(
+  db: DatabaseSync,
+  videoKey: string,
+  offset: number,
+  now = Date.now(),
+) {
+  if (offset === 0) {
+    db.prepare("DELETE FROM subtitle_offsets WHERE videoKey = ?").run(videoKey);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO subtitle_offsets (videoKey, offset, updatedAt) VALUES (?, ?, ?)
+     ON CONFLICT(videoKey) DO UPDATE SET offset = excluded.offset, updatedAt = excluded.updatedAt`,
+  ).run(videoKey, offset, now);
 }
