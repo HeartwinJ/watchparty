@@ -34,6 +34,10 @@ export interface ServerToClientEvents {
   roster: (users: User[]) => void;
   chatinit: (chat: ChatMessage[]) => void;
   playlist: (playlist: PlaylistVideo[]) => void;
+  /** AIOStreams metadata of the current video, null when it has none (cleared on every host change) */
+  "REC:videoMeta": (meta: VideoMeta | null) => void;
+  /** Someone's browser can't play the current video */
+  "REC:playbackIssue": (issue: PlaybackIssue) => void;
   signalSS: (data: {
     msg: SignalMessage;
     from: string;
@@ -42,6 +46,14 @@ export interface ServerToClientEvents {
 }
 
 type ReactionPayload = Omit<Reaction, "user">;
+
+/** A queue item with a readable name (and AIOStreams metadata), as sent by the source picker */
+export type PlaylistAddItem = {
+  url: string;
+  name?: string;
+  img?: string;
+  meta?: VideoMeta;
+};
 
 export interface ClientToServerEvents {
   "CMD:name": (name: string) => void;
@@ -63,9 +75,13 @@ export interface ClientToServerEvents {
   "CMD:subtitleOffset": (offset: number) => void;
   "CMD:askHost": () => void;
   "CMD:playlistNext": (endedUrl: string) => void;
-  "CMD:playlistAdd": (url: string) => void;
+  "CMD:playlistAdd": (item: string | PlaylistAddItem) => void;
   "CMD:playlistMove": (data: { index: number; toIndex: number }) => void;
   "CMD:playlistDelete": (index: number) => void;
+  /** Ignored by the server unless `url` is still the room's video */
+  "CMD:videoMeta": (data: { url: string; meta: VideoMeta | null }) => void;
+  /** Rate limited server-side; broadcast as REC:playbackIssue */
+  "CMD:playbackIssue": (data: { reason: string }) => void;
   signalSS: (data: {
     to: string;
     msg: SignalMessage;
@@ -105,9 +121,14 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     askHost: () => emit("CMD:askHost"),
     playlistNext: (endedUrl: string) => emit("CMD:playlistNext", endedUrl),
     playlistAdd: (url: string) => emit("CMD:playlistAdd", url),
+    playlistAddItem: (item: PlaylistAddItem) => emit("CMD:playlistAdd", item),
     playlistMove: (index: number, toIndex: number) =>
       emit("CMD:playlistMove", { index, toIndex }),
     playlistDelete: (index: number) => emit("CMD:playlistDelete", index),
+    setVideoMeta: (url: string, meta: VideoMeta | null) =>
+      emit("CMD:videoMeta", { url, meta }),
+    reportPlaybackIssue: (reason: string) =>
+      emit("CMD:playbackIssue", { reason }),
     signal: (to: string, msg: SignalMessage, sharer?: boolean) =>
       emit("signalSS", { to, msg, sharer }),
   };

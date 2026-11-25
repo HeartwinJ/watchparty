@@ -34,6 +34,10 @@
   --wp-danger: #ff5c7a;
   --wp-danger-soft: rgba(255, 92, 122, 0.12);
 
+  /* 4K resolution chip: platinum, so it never competes with copper or warning yellow */
+  --wp-platinum: linear-gradient(135deg, #f1f3f6, #9aa3b2);
+  --wp-on-platinum: #14161b;
+
   /* Overlays */
   --wp-scrim: rgba(0, 0, 0, 0.62);
   --wp-glass: rgba(16, 17, 22, 0.78);

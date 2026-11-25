@@ -197,7 +197,7 @@ export const QueuePanel = ({ room }: { room: Room }) => {
           variant="default"
           fullWidth
           leftSection={<IconPlus size={16} />}
-          onClick={ui.openPicker}
+          onClick={() => ui.openPicker({ mode: "queue" })}
         >
           Add to queue
         </Button>
