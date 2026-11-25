@@ -1,0 +1,20 @@
+# Keep the build context small and never send secrets or local data to the builder
+**/node_modules
+build
+dist-server
+data
+coverage
+.git
+.github
+.claude
+.vscode
+.env
+.env.*
+!.env.example
+design
+*.log
+**/.DS_Store
+Dockerfile
+.dockerignore
+compose.yaml
+backup

@@ -1,0 +1,70 @@
+# WatchParty stack: app + Cloudflare Tunnel + nightly SQLite backup. See DEPLOY.md.
+#   docker compose pull && docker compose up -d
+# Nothing is published on the host: cloudflared dials out to Cloudflare and reaches the app
+# over the stack's private network (public hostname -> http://app:8080).
+name: watchparty
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    image: ghcr.io/heartwinj/watchparty:latest
+    # Fallback for local builds: `docker compose build app` (or `up --build`)
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Fixed inside the container regardless of .env
+      DATA_DIR: /app/data
+      PORT: "8080"
+    volumes:
+      - ./data:/app/data
+    networks: [watchparty]
+    mem_limit: 256m
+    healthcheck:
+      test:
+        ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ping"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    logging: *logging
+
+  cloudflared:
+    image: docker.io/cloudflare/cloudflared:2026.11.2
+    command: tunnel --no-autoupdate run
+    restart: unless-stopped
+    # Only the tunnel token, not the rest of .env (read by compose for ${...} interpolation)
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [watchparty]
+    mem_limit: 128m
+    logging: *logging
+
+  backup:
+    # Built locally from ./backup (alpine + sqlite, a few MB); `compose pull` skips it
+    build: ./backup
+    restart: unless-stopped
+    init: true
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      BACKUP_KEEP: "7"
+      BACKUP_HOUR: "3" # UTC
+    volumes:
+      - ./data:/data
+    network_mode: none
+    mem_limit: 32m
+    logging: *logging
+
+networks:
+  # Project-scoped (watchparty_watchparty), so it can't collide with other stacks
+  watchparty:
