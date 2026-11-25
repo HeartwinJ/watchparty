@@ -90,9 +90,7 @@ export class SubtitleModal extends React.Component<{
     }
     this.setState({ loading: true });
     const resp = await fetch(
-      serverPath +
-        "/searchSubtitles?title=" +
-        this.state.titleQuery,
+      serverPath + "/searchSubtitles?title=" + this.state.titleQuery,
     );
     const json = await resp.json();
     this.setState({ searchResults: json });

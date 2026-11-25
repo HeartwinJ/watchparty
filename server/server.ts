@@ -410,7 +410,7 @@ app.post("/checkoutSub", async (req, res) => {
       return;
     }
   }
-  const returnUrl = req.body?.return_url
+  const returnUrl = req.body?.return_url;
   if (!returnUrl) {
     res.status(400).json({ error: "invalid return_url" });
     return;

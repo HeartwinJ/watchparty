@@ -364,10 +364,8 @@ export class VBrowser extends React.Component<{
       this.twoFingerMoved = false;
       this.scrollAccumX = 0;
       this.scrollAccumY = 0;
-      this.lastTwoFingerX =
-        (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      this.lastTwoFingerY =
-        (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      this.lastTwoFingerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      this.lastTwoFingerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     }
   };
 
@@ -449,7 +447,11 @@ export class VBrowser extends React.Component<{
       return;
     }
 
-    if (e.touches.length === 0 && !this.touchMoved && !this.longPressTriggered) {
+    if (
+      e.touches.length === 0 &&
+      !this.touchMoved &&
+      !this.longPressTriggered
+    ) {
       this.clickAtCursor(1);
     }
   };

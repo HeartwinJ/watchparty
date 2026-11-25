@@ -55,8 +55,7 @@ export class Chat extends React.Component<ChatProps> {
   public state = {
     chatMsg: "",
     replyTo: undefined as
-      | { id: string; timestamp: string; msg?: string }
-      | undefined,
+      { id: string; timestamp: string; msg?: string } | undefined,
     isNearBottom: true,
     isPickerOpen: false,
     reactionMenu: {
@@ -361,7 +360,8 @@ export class Chat extends React.Component<ChatProps> {
             }}
           >
             <div className={styles.small + " " + styles.light}>
-              Replying to {this.props.nameMap[this.state.replyTo.id] || "Unknown"}
+              Replying to{" "}
+              {this.props.nameMap[this.state.replyTo.id] || "Unknown"}
               {this.state.replyTo.msg ? (
                 <div
                   style={{
@@ -558,7 +558,11 @@ const ChatMessage = ({
                 marginRight: 4,
               }}
             >
-              <span role="img" aria-label="Reply" style={{ margin: 0, fontSize: 16 }}>
+              <span
+                role="img"
+                aria-label="Reply"
+                style={{ margin: 0, fontSize: 16 }}
+              >
                 ↩
               </span>
             </ActionIcon>
