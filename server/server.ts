@@ -23,6 +23,7 @@ import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { assertPublicUrl, safeFetch } from "./utils/ssrf.ts";
 import { createAuth } from "./utils/auth.ts";
 import { createIceServerProvider } from "./utils/iceServers.ts";
+import { createAddonRouter } from "./addons/routes.ts";
 
 // Last-resort safety net: a stray rejected promise shouldn't take down every room.
 // Socket handlers are individually guarded in room.ts, this catches anything we missed.
@@ -254,6 +255,16 @@ app.get("/youtubePlaylist/:playlistId", requireAuth, async (req, res) => {
     res.status(500).json({ error: "youtube error" });
   }
 });
+
+// AIOStreams search/streams/subtitles (/addon/*). 503 when AIOSTREAMS_MANIFEST_URL is unset.
+app.use(
+  createAddonRouter({
+    manifestUrl: config.AIOSTREAMS_MANIFEST_URL,
+    subtitleLangs: config.SUBTITLE_LANGS,
+    requireAuth,
+    fetchFn: safeFetch,
+  }),
+);
 
 app.post("/createRoom", requireAuth, async (req, res) => {
   // Pick a name nobody else is using. Collisions just retry.
