@@ -37,6 +37,19 @@ describe("Chat", () => {
     expect(input.value).toBe("");
   });
 
+  it("describes subtitle offset changes instead of showing the raw command", () => {
+    renderChat([
+      {
+        id: "u1",
+        timestamp: new Date(0).toISOString(),
+        cmd: "subtitleOffset",
+        msg: "0.3",
+      },
+    ]);
+    expect(screen.queryByText(/^subtitleOffset$/)).toBeNull();
+    expect(screen.getByText(/set subtitles \+0\.3/)).toBeTruthy();
+  });
+
   it("doesn't send empty messages", () => {
     const cmd = renderChat();
     const input = screen.getByPlaceholderText("Message");
