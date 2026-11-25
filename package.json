@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/server.ts",
     "ui": "vite --host",
-    "dev": "node --watch-path server server/server.ts",
+    "dev": "NODE_ENV=development node --watch-path server server/server.ts",
     "build": "npm run buildReact && npm run typecheckServer",
     "buildReact": "vite build && npm run typecheck",
     "prettier": "npx prettier --write .",
@@ -20,18 +20,10 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@googleapis/youtube": "^8.0.2",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
-    "discord.js": "^14.25.1",
     "express": "^5.2.1",
-    "firebase-admin": "^11.11.1",
-    "ioredis": "^5.8.2",
-    "node-ssh": "^13.2.1",
-    "pg": "^8.16.3",
-    "pm2": "^7.1.2",
-    "socket.io": "^4.8.1",
-    "stripe": "^11.18.0"
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "@emoji-mart/data": "^1.2.1",
@@ -43,7 +35,6 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.1",
-    "@types/pg": "^8.16.0",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
     "@types/react-onclickoutside": "^6.7.10",
@@ -72,7 +63,6 @@
     "recharts": "^2.15.4",
     "socket.io-client": "^4.8.1",
     "srt-webvtt": "^2.0.0",
-    "twitch-m3u8": "^1.1.5",
     "typescript": "^7.0.2",
     "vite": "^7.2.7",
     "vitest": "^5.1.2",

@@ -25,3 +25,5 @@ yarn-error.log*
 
 .theia
 .eslintcache
+# SQLite data (DATA_DIR)
+/data

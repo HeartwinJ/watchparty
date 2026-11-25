@@ -27,20 +27,18 @@ npm start              # production: serves the API and build/ from one process
 
 - CI (`.github/workflows/nodejs.yml`) runs on PRs and pushes to `master`: format check, both typechecks, unit tests and the Vite build.
 - Tests use **Vitest** and live next to the code as `*.test.ts(x)`. `server/**` tests run in the `node` environment and `src/**` tests in `happy-dom` (projects are defined in `vite.config.ts`). Add tests for new logic, especially pure helpers (parsers, sync math, stream ranking) and socket handlers.
-- Node 24+ is required. The server runs TypeScript directly with no compile step, so server code must use only **erasable** TS syntax (`erasableSyntaxOnly`): no `enum`, no `namespace`, no constructor parameter properties. Relative imports must include the `.ts` extension (`import x from "./utils/redis.ts"`).
+- Node 24+ is required. The server runs TypeScript directly with no compile step, so server code must use only **erasable** TS syntax (`erasableSyntaxOnly`): no `enum`, no `namespace`, no constructor parameter properties. Relative imports must include the `.ts` extension (`import x from "./utils/db.ts"`).
 - `typescript` is v7 (the native/Go compiler).
 
 ## Architecture
 
 **Server (`server/`)**: Express 5 + Socket.IO (websocket transport only).
 
-- `server.ts`: HTTP routes (`/createRoom`, `/youtube`, `/metadata`, `/proxy/*`, subtitles, Stripe and account endpoints), Socket.IO setup, the in-memory `rooms` Map, and the loops that persist and unload rooms. It also serves `build/` as a single-page app (SPA) fallback.
-- `room.ts`: the `Room` class. **Each room is its own Socket.IO namespace** (`/roomId`). Client→server events are named `CMD:*` and registered with the wrapped `on(...)` helper in the constructor, which catches errors so one bad message can't crash the process. Room state (video, timestamps, playlist, chat, roster, vBrowser) lives in memory. `serialize()`/`deserialize()` handle persistence, and `saveRoom()` writes the room to Postgres.
+- `server.ts`: HTTP routes (`/createRoom`, `/generateName`, `/youtube`, `/youtubePlaylist/:id`, `/proxy/*`, subtitles, `/iceServers`, `/ping`), Socket.IO setup, the in-memory `rooms` Map, the 1s save loop that persists active rooms and unloads empty rooms idle for 8h, and graceful shutdown (SIGTERM/SIGINT save every room and close the DB). It also serves `build/` as a single-page app (SPA) fallback. Single process, no sharding.
+- `room.ts`: the `Room` class. **Each room is its own Socket.IO namespace** (`/roomId`). Client→server events are named `CMD:*` and registered with the wrapped `on(...)` helper in the constructor, which catches errors so one bad message can't crash the process. Room state (video, timestamps, playlist, chat, roster) lives in memory. `serialize()`/`deserialize()` handle persistence, and `saveRoom()` writes the room to SQLite. Screen/file share is P2P WebRTC, signaled via `CMD:joinScreenShare`/`CMD:leaveScreenShare`/`signalSS`. Everyone who knows the instance password is trusted (anyone can kick or delete chat; there are no owners/locks).
 - `config.ts`: **every server env var with its default and a comment**. Add new server config here.
-- `utils/`: optional integrations (`postgres.ts`, `redis.ts`, `firebase.ts`, `stripe.ts`, `youtube.ts`) and helpers (`ssrf.ts` guards the proxy, `resolveShard.ts`). Each integration is null or a no-op when its env var isn't set. Keep it that way, and guard calls with `postgres?.` / `if (redis)`.
-- `vm/`: virtual browser (neko) providers: `docker.ts` (easiest to self-host) plus Hetzner, DigitalOcean and Scaleway. `vmWorker.ts` manages VM pools and is auto-imported in development.
-- Separate background processes (see `ecosystem.config.js`): `vmWorker`, `syncSubs` (Stripe), `timeSeries`, `cleanup`, `discordBot`. Most of these are for running the public service and probably aren't needed for personal hosting.
-- Sharding: when `SHARD` is set, rooms are split across processes by the first letter of the room ID (`resolveShard.ts` counts the shards in `ecosystem.config.js`). With `SHARD` unset (normal single-process self-hosting), everything runs in one process.
+- `utils/`: `db.ts` (SQLite via built-in `node:sqlite`; add schema changes to `MIGRATIONS`, tracked with `PRAGMA user_version`), `auth.ts` + `session.ts` (instance password, HMAC-signed `wp_session` cookie, login rate limit), `iceServers.ts` (Cloudflare TURN credentials, STUN fallback), `youtube.ts` (small `fetch` client for the YouTube Data API), `ssrf.ts` (guards the proxy), `moniker.ts` (random room/user names from `words/`). Optional integrations are no-ops when their env var isn't set; keep it that way.
+- **Auth**: if `APP_PASSWORD` is set, every API route uses the `requireAuth` middleware (except `/ping`, `/session`, `/login`, `/logout`, static assets and the SPA fallback), and every Socket.IO namespace rejects connections without a valid session (`connect_error` "unauthorized"; checked on the engine handshake, enforced via `io.on("new_namespace")`). New API routes must add `requireAuth`.
 
 **Client (`src/`)**: React 18 + Vite + Mantine 8, react-router v5.
 
@@ -49,7 +47,7 @@ npm start              # production: serves the API and build/ from one process
 - Components are in `src/components/<Name>/<Name>.tsx`, with CSS modules where styling is needed.
 - `global.d.ts` (repo root) has types shared by client and server (`User`, `ChatMessage`, `RoomState`, etc.). Update it when you change data sent over the socket.
 
-**Data**: `sql/schema.sql` (tables: room, subscriber, link_account, active_user, vbrowser) and `sql/migrations.sql`. Postgres is optional. Without it, rooms aren't saved across restarts and the owner/lock/vanity URL features are off. Redis is optional and only used for metrics and session spoof protection.
+**Data**: one SQLite file, `$DATA_DIR/watchparty.db` (default `./data`, gitignored, WAL mode). Tables: `rooms` (roomId, data JSON, lastUpdateTime, createdAt; every room persists) and `subtitles` (uploaded/downloaded subtitles, gzipped, 24h sliding expiry). The schema lives in `server/utils/db.ts`. Back up by copying `data/`. There's no Postgres or Redis.
 
 ## Configuration / self-hosting notes
 
@@ -57,11 +55,9 @@ npm start              # production: serves the API and build/ from one process
 - Leave `VITE_FIREBASE_CONFIG=` blank to turn off login. All features are then usable without an account. If the variable is _missing_ entirely, `src/config.ts` falls back to **upstream's Firebase project**, so keep it set, even if blank.
 - Upstream-specific values to change for my deployment:
   - `src/config.ts` `VITE_OAUTH_REDIRECT_HOSTNAME`, which defaults to `https://www.watchparty.me`
-  - `server/discordBot.ts`, which has hardcoded watchparty.me hostnames
-  - `server/ecosystem.config.js`, which has upstream's shard layout, gateways and VM image IDs
   - the Terms/Privacy/FAQ text in `src/components/Pages/Pages.tsx`, and the support email in `ProfileModal.tsx`
-  - Discord IDs in `server/config.ts`
-- Stripe/subscriptions, Discord bots, cloud VM providers and the stats/timeSeries endpoints are upstream's business features. They're optional and can be ignored or removed.
+- Server env: `APP_PASSWORD` (blank disables auth, with a warning), `SESSION_SECRET` (blank means a random secret per process, so sessions reset on restart), `DATA_DIR`, `TRUST_PROXY` (default trusts private/loopback proxies such as cloudflared, so `req.secure`/`req.ip` honor `X-Forwarded-*`), `CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN` (optional TURN), `YOUTUBE_API_KEY`, `OPENSUBTITLES_KEY`. See `server/config.ts`.
+- CORS: none in production (same origin). `npm run dev` sets `NODE_ENV=development`, which reflects the request origin with credentials so the Vite dev server on another port can send the session cookie.
 - Simplest deployment: `Dockerfile` (`npm ci && npm run build && npm start`) behind a TLS reverse proxy. HTTPS is required for camera, mic and screen-share features. To serve TLS directly instead, set `SSL_KEY_FILE`/`SSL_CRT_FILE`.
 
 ## Gotchas

@@ -59,26 +59,22 @@ Next, you have to stringify it: `JSON.stringify(PASTE_CONFIG_HERE)` in your brow
 
 For server verification of accounts you'll also need `FIREBASE_ADMIN_SDK_CONFIG`, which you should do the same steps for.
 
-### Virtual Browser Setup
+### Instance password
 
-This project supports creating virtual browsers (using https://github.com/m1k1o/neko) either on a cloud provider or with Docker containers. For development, Docker is easiest.
-
-- Install Docker: `curl -fsSL https://get.docker.com | sh`
-- Make sure you have an SSH key pair set up on the server (`id_rsa` in `~/.ssh` directory), if not, use `ssh-keygen`.
-- Configure `DOCKER_VM_HOST_SSH_USER` if `root` is not the correct user
-- Note: If your web client is not running on the same physical machine as the server, you will also need to configure `DOCKER_VM_HOST` to a publically-resolvable value (i.e. not localhost)
-- If you want to run managed instance pools (whether on cloud or with Docker), configure `VM_MANAGER_CONFIG` and run the vmWorker service.
+Set `APP_PASSWORD` (and `SESSION_SECRET`, e.g. `openssl rand -hex 32`) in `.env`. Everyone who wants to use the instance must enter the password once; the session cookie lasts 30 days. Without `APP_PASSWORD`, the instance is open to anyone who can reach it.
 
 ### Room Persistence
 
-- Configure Postgres by adding DATABASE_URL to your .env file and then setting up the database schema
-- This allows rooms to persist between server restarts
+Rooms are stored in SQLite at `$DATA_DIR/watchparty.db` (default `./data`). Back it up by copying the directory.
+
+### TURN relay (optional)
+
+Screen and file sharing are peer-to-peer. To relay them when a direct connection fails, create a Cloudflare Realtime TURN key and set `CF_TURN_KEY_ID` and `CF_TURN_API_TOKEN`. Without them, only STUN is used.
 
 ## Tech
 
 - React
 - TypeScript
 - Node.js
-- Redis
-- PostgreSQL
+- SQLite (`node:sqlite`)
 - Docker
