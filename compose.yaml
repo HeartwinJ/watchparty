@@ -22,7 +22,9 @@ services:
       DATA_DIR: /app/data
       PORT: "8080"
     volumes:
-      - ./data:/app/data
+      # Named volume: on first use Docker seeds it from the image's /app/data, which is
+      # already owned by uid 1000, so there's no host-folder chown/SELinux setup
+      - data:/app/data
     networks: [watchparty]
     mem_limit: 256m
     healthcheck:
@@ -60,10 +62,14 @@ services:
       BACKUP_KEEP: "7"
       BACKUP_HOUR: "3" # UTC
     volumes:
-      - ./data:/data
+      - data:/data
     network_mode: none
     mem_limit: 32m
     logging: *logging
+
+volumes:
+  # SQLite database + nightly backups (in backups/). Docker names it `watchparty_data`.
+  data:
 
 networks:
   # Project-scoped (watchparty_watchparty), so it can't collide with other stacks
