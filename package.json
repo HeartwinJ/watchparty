@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node server/server.ts",
+    "start:prod": "node dist-server/server.js",
     "ui": "vite --host",
     "dev": "NODE_ENV=development node --watch-path server server/server.ts",
-    "build": "npm run buildReact && npm run typecheckServer",
+    "build": "npm run buildReact && npm run buildServer",
+    "buildServer": "tsc --project server/tsconfig.build.json",
     "buildReact": "vite build && npm run typecheck",
     "prettier": "npx prettier --write .",
     "typecheckServer": "tsc --project server/tsconfig.json",

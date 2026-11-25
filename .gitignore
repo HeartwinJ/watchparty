@@ -30,3 +30,5 @@ yarn-error.log*
 
 # Claude Code agent worktrees
 .claude/worktrees/
+# Compiled server (npm run buildServer)
+/dist-server
