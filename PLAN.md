@@ -56,18 +56,18 @@ Each phase ends with a green `npm run build` and a manual smoke test. Each is on
 
 ### Phase 1: Strip removed features (biggest win, lowest risk)
 
-- **Server:** remove Stripe, Firebase admin, the Discord bot, the VM providers, the stats/timeSeries/health endpoints, `linkAccount`, the subscriber checks and room limits, `listRooms`/`deleteRoom` ownership logic, mediasoup and torrent handling. Shrink `config.ts` to the handful of vars still used.
+- [x] **Server:** remove Stripe, Firebase admin, the Discord bot, the VM providers, the stats/timeSeries/health endpoints, `linkAccount`, the subscriber checks and room limits, `listRooms`/`deleteRoom` ownership logic, mediasoup and torrent handling. Shrink `config.ts` to the handful of vars still used. Also removed: room owner/lock/vanity URLs/sub-rooms, per-room passwords, video-chat signaling, Twitch URL resolution (it relied on an external proxy), and `dev/` + `sql/`. Server deps removed: `stripe`, `firebase-admin`, `discord.js`, `node-ssh`, `pm2`, `pg`, `@types/pg`, `ioredis`, `@googleapis/youtube`, `twitch-m3u8`.
 - **Client:** remove SubscribeButton/SubscribeModal, LoginModal, ProfileModal, VBrowser and VBrowserModal, VideoChat and ChatVideoCard, the Discord page, Debug, the Privacy/Terms/FAQ pages, Announce, PermanentRoomModal, `isSub` gating and the WebTorrent/mediasoup paths in `App.tsx`.
 - **Deps removed:** `stripe`, `firebase`, `firebase-admin`, `discord.js`, `node-ssh`, `pm2`, `pg`, `ioredis`, `webtorrent`, `mediasoup-client`, `recharts`, `react-countup`, `@googleapis/youtube` (replaced with ~30 lines of `fetch` against the YouTube Data API).
 - This also clears most of the `npm audit` findings, which come from the firebase-admin → grpc/protobuf chain.
 
 ### Phase 2: Simplify server & persistence
 
-- Instance password: `APP_PASSWORD` env var, checked on login. The server issues a signed, httpOnly session cookie, and both HTTP routes and the Socket.IO handshake require it. Optional per-room passwords stay as they are.
-- Replace Postgres with `node:sqlite`. Rewrite `saveRoom`/`deserialize`/the room loader against one `rooms` table. Rooms are permanent by default. Add an optional "My rooms" list.
-- Clean up the `/proxy` route (keep the SSRF guard) and the subtitle endpoints. Replace in-memory LRU caps where Redis was used.
-- `GET /iceServers`: server-side endpoint that issues short-lived Cloudflare TURN credentials.
-- Graceful shutdown, so rooms are saved on SIGTERM (container restarts).
+- [x] (server) Instance password: `APP_PASSWORD` env var, checked on login. The server issues a signed, httpOnly session cookie, and both HTTP routes and the Socket.IO handshake require it. **Per-room passwords are removed**: the instance password is the only gate.
+- [x] (server) Replace Postgres with `node:sqlite`. Rewrite `saveRoom`/`deserialize`/the room loader against one `rooms` table. Rooms are permanent by default. Uploaded subtitles moved from Redis to a `subtitles` table. Still to do: an optional "My rooms" list.
+- [x] (server) Clean up the `/proxy` route (keep the SSRF guard) and the subtitle endpoints. clientId session-spoof protection moved from Redis to an in-memory map.
+- [x] (server) `GET /iceServers`: server-side endpoint that issues short-lived Cloudflare TURN credentials. The client still needs to use it.
+- [x] (server) Graceful shutdown, so rooms are saved on SIGTERM (container restarts).
 
 ### Phase 3: Upgrade the stack
 

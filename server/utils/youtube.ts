@@ -5,18 +5,70 @@ import {
   PT_SECONDS_REGEX,
   YOUTUBE_VIDEO_ID_REGEX,
 } from "./regex.ts";
-import { youtube, youtube_v3 } from "@googleapis/youtube";
 
-let Youtube = config.YOUTUBE_API_KEY
-  ? youtube({
-      version: "v3",
-      auth: config.YOUTUBE_API_KEY,
-    })
-  : null;
+/**
+ * Minimal fetch-based client for the YouTube Data API v3 (search, videos, playlistItems).
+ * Every call returns empty results when no YOUTUBE_API_KEY is configured.
+ */
 
-export const mapYoutubeSearchResult = (
-  video: youtube_v3.Schema$SearchResult,
-): PlaylistVideo => {
+const API_BASE = "https://www.googleapis.com/youtube/v3/";
+
+interface YtSnippet {
+  title?: string;
+  channelTitle?: string;
+  thumbnails?: { default?: { url?: string } };
+  resourceId?: { videoId?: string };
+}
+interface YtSearchItem {
+  id?: { videoId?: string };
+  snippet?: YtSnippet;
+}
+interface YtVideo {
+  id?: string;
+  snippet?: YtSnippet;
+  contentDetails?: { duration?: string };
+}
+interface YtPlaylistItem {
+  snippet?: YtSnippet;
+}
+
+// Overridable for tests
+let fetchFn: typeof fetch = (...args) => fetch(...args);
+let apiKey = config.YOUTUBE_API_KEY;
+export function setYoutubeClient(opts: {
+  fetchFn?: typeof fetch;
+  apiKey?: string;
+}) {
+  if (opts.fetchFn) {
+    fetchFn = opts.fetchFn;
+  }
+  if (opts.apiKey !== undefined) {
+    apiKey = opts.apiKey;
+  }
+}
+
+async function ytGet<T>(
+  resource: string,
+  params: Record<string, string>,
+): Promise<T[] | null> {
+  if (!apiKey) {
+    return null;
+  }
+  const url = new URL(resource, API_BASE);
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, v);
+  }
+  url.searchParams.set("key", apiKey);
+  const resp = await fetchFn(url, { signal: AbortSignal.timeout(10000) });
+  if (!resp.ok) {
+    // Don't include the URL, it contains the API key
+    throw new Error(`YouTube API ${resource} failed: ${resp.status}`);
+  }
+  const data = (await resp.json()) as { items?: T[] };
+  return data.items ?? [];
+}
+
+export const mapYoutubeSearchResult = (video: YtSearchItem): PlaylistVideo => {
   return {
     channel: video.snippet?.channelTitle ?? "",
     url: "https://www.youtube.com/watch?v=" + video?.id?.videoId,
@@ -27,12 +79,9 @@ export const mapYoutubeSearchResult = (
   };
 };
 
-export const mapYoutubeListResult = (
-  video: youtube_v3.Schema$Video,
-): PlaylistVideo => {
-  const videoId = video.id;
+export const mapYoutubeListResult = (video: YtVideo): PlaylistVideo => {
   return {
-    url: "https://www.youtube.com/watch?v=" + videoId,
+    url: "https://www.youtube.com/watch?v=" + video.id,
     name: video.snippet?.title ?? "",
     img: video.snippet?.thumbnails?.default?.url ?? "",
     channel: video.snippet?.channelTitle ?? "",
@@ -42,7 +91,7 @@ export const mapYoutubeListResult = (
 };
 
 export const mapYoutubePlaylistResult = (
-  item: youtube_v3.Schema$PlaylistItem,
+  item: YtPlaylistItem,
 ): PlaylistVideo => {
   return {
     url: "https://www.youtube.com/watch?v=" + item.snippet?.resourceId?.videoId,
@@ -50,7 +99,6 @@ export const mapYoutubePlaylistResult = (
     img: item.snippet?.thumbnails?.default?.url ?? "",
     channel: item.snippet?.channelTitle ?? "",
     duration: 0,
-    // duration: getVideoDuration(video.contentDetails?.duration ?? ''),
     type: "youtube",
   };
 };
@@ -58,24 +106,35 @@ export const mapYoutubePlaylistResult = (
 export const searchYoutube = async (
   query: string,
 ): Promise<PlaylistVideo[]> => {
-  const response = await Youtube?.search.list({
-    part: ["snippet"],
-    type: ["video"],
-    maxResults: 25,
+  const items = await ytGet<YtSearchItem>("search", {
+    part: "snippet",
+    type: "video",
+    maxResults: "25",
     q: query,
   });
-  return response?.data?.items?.map(mapYoutubeSearchResult) ?? [];
+  return items?.map(mapYoutubeSearchResult) ?? [];
 };
 
 export const youtubePlaylist = async (
   playlistId: string,
 ): Promise<PlaylistVideo[]> => {
-  const response = await Youtube?.playlistItems.list({
-    part: ["snippet"],
+  const items = await ytGet<YtPlaylistItem>("playlistItems", {
+    part: "snippet",
     playlistId,
-    maxResults: 100,
+    maxResults: "50", // API maximum
   });
-  return response?.data?.items?.map(mapYoutubePlaylistResult) ?? [];
+  return items?.map(mapYoutubePlaylistResult) ?? [];
+};
+
+export const fetchYoutubeVideo = async (
+  id: string,
+): Promise<PlaylistVideo | null> => {
+  const items = await ytGet<YtVideo>("videos", {
+    part: "snippet,contentDetails",
+    id,
+  });
+  const top = items?.[0];
+  return top ? mapYoutubeListResult(top) : null;
 };
 
 export const getYoutubeVideoID = (url: string) => {
@@ -90,17 +149,6 @@ export const getYoutubeVideoID = (url: string) => {
   }
 
   return id;
-};
-
-export const fetchYoutubeVideo = async (
-  id: string,
-): Promise<PlaylistVideo | null> => {
-  const response = await Youtube?.videos.list({
-    part: ["snippet", "contentDetails"],
-    id: [id],
-  });
-  const top = response?.data?.items?.[0];
-  return top ? mapYoutubeListResult(top) : null;
 };
 
 export const getVideoDuration = (string: string): number => {

@@ -1,44 +1,49 @@
-import config from "./config.ts";
 import { Server, Socket } from "socket.io";
-import { getUser, validateUserToken } from "./utils/firebase.ts";
-import { redis, redisCount, redisCountDistinct } from "./utils/redis.ts";
-import { getIsSubscriberByUid } from "./utils/stripe.ts";
-import { type AssignedVM } from "./vm/base.ts";
-import { getStartOfDay } from "./utils/time.ts";
-import { postgres, updateObject, upsertObject } from "./utils/postgres.ts";
-import {
-  fetchYoutubeVideo,
-  getYoutubeVideoID,
-  isYouTube,
-} from "./utils/youtube.ts";
-//@ts-expect-error
-import twitch from "twitch-m3u8";
-import { type QueryResult } from "pg";
-import { Docker } from "./vm/docker.ts";
-
-// Stateless pool instance to use for VMs if full management isn't needed
-let stateless: Docker | undefined = undefined;
-if (!config.VM_MANAGER_CONFIG) {
-  stateless = new Docker({
-    provider: "Docker",
-    isLarge: false,
-    region: "US",
-    limitSize: 0,
-    minSize: 0,
-    hostname: config.DOCKER_VM_HOST,
-  });
-}
-
-// Max number of vBrowsers a single user can have assigned at once
-const MAX_VBROWSERS_PER_USER = 2;
+import type { DatabaseSync } from "node:sqlite";
+import { saveRoomData } from "./utils/db.ts";
+import { fetchYoutubeVideo, getYoutubeVideoID } from "./utils/youtube.ts";
 
 // Extend the interface
 declare module "socket.io" {
   interface Socket {
     clientId: string;
-    uid: string;
-    isSub: boolean;
   }
+}
+
+// clientId spoof protection: clientIds are visible to everyone in the room, so the
+// first connection claims it with a secret sessionId (generated and stored by the client)
+// and later connections must present the same one. Kept in memory: after a restart the
+// first connection re-claims it.
+const SESSION_CLAIM_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const sessionClaims = new Map<
+  string,
+  { sessionId: string; expiresAt: number }
+>();
+export function claimClientId(
+  clientId: string,
+  sessionId: string,
+  now = Date.now(),
+): boolean {
+  const existing = sessionClaims.get(clientId);
+  if (
+    existing &&
+    existing.expiresAt > now &&
+    existing.sessionId !== sessionId
+  ) {
+    return false;
+  }
+  if (!existing && sessionClaims.size >= 50000) {
+    for (const [k, v] of sessionClaims) {
+      if (v.expiresAt <= now) {
+        sessionClaims.delete(k);
+      }
+    }
+  }
+  sessionClaims.set(clientId, {
+    sessionId,
+    expiresAt: now + SESSION_CLAIM_TTL_MS,
+  });
+  return true;
 }
 
 export class Room {
@@ -52,9 +57,6 @@ export class Room {
   private chat: ChatMessage[] = [];
   private nameMap: StringDict = {};
   private pictureMap: StringDict = {};
-  public vBrowser: AssignedVM | undefined = undefined;
-  public creator: string | undefined = undefined; // email of the user who created the room (just used for stats)
-  public lock: string | undefined = undefined; // uid of the user who locked the room
   public playlist: PlaylistVideo[] = [];
 
   // Non-serialized state
@@ -65,29 +67,19 @@ export class Room {
   private io: Server;
   private socketIdMap: StringDict = {};
   private tsInterval: NodeJS.Timeout | undefined = undefined;
-  public isChatDisabled: boolean | undefined = undefined;
   public lastUpdateTime: Date = new Date();
   private preventTSUpdate = false;
-  // Not really a queue since there's no ordering, we just retry as long as this is set
-  // If we want a real queue then we need external processing of the jobs and a way to update the room from outside
-  public vBrowserQueue:
-    | {
-        roomId: string;
-        queueTime: Date;
-        isLarge: boolean;
-        region: string;
-        uid: string;
-        clientId: string;
-      }
-    | undefined = undefined;
+  private db: DatabaseSync;
 
   constructor(
     io: Server,
+    db: DatabaseSync,
     roomId: string,
     roomData?: string | null | undefined,
   ) {
     this.roomId = roomId;
     this.io = io;
+    this.db = db;
 
     if (roomData) {
       this.deserialize(roomData);
@@ -108,63 +100,9 @@ export class Room {
       }
     }, 1000);
 
+    // clientId identifies a user within rooms (chat, names, signaling). See claimClientId.
     io.of(roomId).use(async (socket, next) => {
       try {
-        if (postgres) {
-          const result = await postgres.query(
-            `SELECT password, owner, "isSubRoom" FROM room where "roomId" = $1`,
-            [this.roomId],
-          );
-          const password = socket.handshake.query?.password;
-          // Check if user has the password
-          const roomPassword = result.rows[0]?.password;
-          if (roomPassword && password !== roomPassword) {
-            next(new Error("password"));
-            return;
-          }
-          // Check if room is at capacity
-          const isSubRoom = result.rows[0]?.isSubRoom;
-          const roomCapacity = isSubRoom
-            ? config.ROOM_CAPACITY_SUB
-            : config.ROOM_CAPACITY;
-          // A client that's already in the roster (e.g. reconnecting after a network drop
-          // before the old socket timed out) doesn't take an additional slot
-          const queryClientId = socket.handshake.query?.clientId;
-          const isReconnect =
-            typeof queryClientId === "string" &&
-            this.roster.some((user) => user.id === queryClientId);
-          if (
-            roomCapacity &&
-            !isReconnect &&
-            this.roster.length >= roomCapacity
-          ) {
-            next(new Error("This room is full"));
-            return;
-          }
-        }
-        // clientId is meant for things that shouldn't require login
-        // Anything sensitive (e.g. subscriber features, room lock) should be validated with uid and require login
-        // vbrowser controller, identify chat messages, video chat/screenshare signaling
-        // Used as keys for ephemeral room state (e.g. name, picture, timestamp)
-
-        // redis-based clientId spoof protection (session)
-        // Keep a map of clientIds to sessionIDs (a secret generated by client and stored in localstorage)
-        // If a clientId already exists in map, a matching sessionId must be provided, otherwise fail
-        // Otherwise, store it with some expiry
-        // Refresh the expiry on each successful connection
-        // Attacker can't spoof unless the user doesn't connect for a long time
-
-        // ALTERNATIVE: using crypto?
-        // What if we send back the client an encrypt or hmac of their clientID?
-        // Client can store in localstorage
-        // Can't be spoofed without the server's encryption key
-        // Attacker could try to bruteforce the key by trying all possibilities
-        // Client sends both the clear clientId and the hmac
-        // During transition, accept requests with no hmac
-        // We would need to turn on enforcement after a while (after all clients have updated)
-        // On connection, compute hmac of clear clientId and verify it matches what client sent
-        // We can accept query param clientHmac?
-
         const clientId = socket.handshake.query?.clientId;
         const sessionId = socket.handshake.auth.sessionId;
         if (typeof clientId !== "string") {
@@ -176,38 +114,17 @@ export class Room {
           next(new Error("Invalid clientId format"));
           return;
         }
-        // If Redis isn't enabled we'll just allow
-        if (redis) {
-          // clientIds are visible to everyone in the room, so a session secret is mandatory,
-          // otherwise anyone could connect as (and kick) another user
-          if (
-            typeof sessionId !== "string" ||
-            sessionId.length < 16 ||
-            sessionId.length > 200
-          ) {
-            next(new Error("Missing or invalid sessionId"));
-            return;
-          }
-          const key = "session:" + clientId;
-          const ttlSeconds = 60 * 60 * 24 * 7;
-          // Atomically claim the clientId if nobody has yet (avoids a get/set race)
-          const claimed = await redis.set(
-            key,
-            sessionId,
-            "EX",
-            ttlSeconds,
-            "NX",
-          );
-          if (!claimed) {
-            // Already claimed, passed ID must match
-            const savedSession = await redis.get(key);
-            if (savedSession !== sessionId) {
-              next(new Error("Incorrect sessionId"));
-              return;
-            }
-            // Refresh expiry
-            await redis.expire(key, ttlSeconds);
-          }
+        if (
+          typeof sessionId !== "string" ||
+          sessionId.length < 16 ||
+          sessionId.length > 200
+        ) {
+          next(new Error("Missing or invalid sessionId"));
+          return;
+        }
+        if (!claimClientId(clientId, sessionId)) {
+          next(new Error("Incorrect sessionId"));
+          return;
         }
 
         // Disconnect other sockets with this clientId
@@ -222,7 +139,7 @@ export class Room {
 
         next();
       } catch (e) {
-        // e.g. the DB or Redis is unavailable, refuse the connection instead of leaving it hanging
+        // Refuse the connection instead of leaving it hanging
         console.warn("socket auth failed for room %s:", this.roomId, e);
         next(new Error("Internal error"));
       }
@@ -234,38 +151,15 @@ export class Room {
         return;
       }
 
-      redisCount("connectStarts");
-      redisCountDistinct("connectStartsDistinct", clientId);
-
       socket.emit("REC:host", this.getHostState());
       socket.emit("REC:nameMap", this.nameMap);
       socket.emit("REC:pictureMap", this.pictureMap);
       socket.emit("REC:tsMap", this.tsMap);
-      socket.emit("REC:lock", this.lock);
       socket.emit("chatinit", this.chat);
       socket.emit("playlist", this.playlist);
-      this.getRoomState(socket);
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
-      socket.uid = "";
-      socket.isSub = false;
-
-      // Check if this socket matches this.lock UID
-      const validateLock = () => {
-        return !this.lock || socket.uid === this.lock;
-      };
-
-      // Check if this socket matches the room owner UID
-      const validateOwner = async () => {
-        const result = await postgres?.query(
-          'SELECT owner FROM room where "roomId" = $1',
-          [this.roomId],
-        );
-        const owner = result?.rows[0]?.owner;
-        return !owner || socket.uid === owner;
-      };
-
       // Handlers run on untrusted input. Contain any throw/rejection so one bad
       // message can't crash the whole process (and every room with it).
       const on = (event: string, handler: (...args: any[]) => unknown) => {
@@ -284,39 +178,23 @@ export class Room {
       on("CMD:picture", (data: unknown) =>
         this.changeUserPicture(socket, String(data)),
       );
-      on("CMD:uid", async (raw: unknown) => {
-        let data = raw as { uid: string; token: string };
-        // Called when the user logs in, sets the socket's auth state
-        if (!data || !data.uid || !data.token) {
-          return;
-        }
-        const decoded = await validateUserToken(data.uid, data.token);
-        if (decoded?.uid) {
-          // This socket is now confirmed to be this UID
-          socket.uid = decoded?.uid;
-        }
-        const isSubscriber = await getIsSubscriberByUid(decoded?.uid);
-        if (isSubscriber) {
-          socket.isSub = true;
-        }
-      });
       on("CMD:host", (data: unknown) => {
-        validateLock() && this.startHosting(socket, String(data));
+        this.startHosting(socket, String(data));
       });
       on("CMD:play", () => {
-        validateLock() && this.playVideo(socket);
+        this.playVideo(socket);
       });
       on("CMD:pause", () => {
-        validateLock() && this.pauseVideo(socket);
+        this.pauseVideo(socket);
       });
       on("CMD:seek", (data: unknown) => {
-        validateLock() && this.seekVideo(socket, data);
+        this.seekVideo(socket, data);
       });
       on("CMD:playbackRate", (data: unknown) => {
-        validateLock() && this.setPlaybackRate(socket, data);
+        this.setPlaybackRate(socket, data);
       });
       on("CMD:loop", (data: unknown) => {
-        validateLock() && this.setLoop(data);
+        this.setLoop(data);
       });
       on("CMD:ts", (data: unknown) => this.setTimestamp(socket, data));
       on("CMD:chat", (data: unknown) =>
@@ -327,63 +205,35 @@ export class Room {
       on("CMD:removeReaction", (data: unknown) => {
         this.removeReaction(socket, data);
       });
-      on("CMD:joinVideo", () => this.joinVideo(socket));
-      on("CMD:leaveVideo", () => this.leaveVideo(socket));
       on("CMD:joinScreenShare", (data) => {
-        validateLock() && this.joinScreenSharing(socket, data);
+        this.joinScreenSharing(socket, data);
       });
-      on("CMD:userMute", (data: unknown) => this.setUserMute(socket, data));
       on("CMD:leaveScreenShare", () => this.leaveScreenSharing(socket));
-      on("CMD:startVBrowser", (data: unknown) => {
-        validateLock() && this.startVBrowser(socket, data);
-      });
-      on("CMD:stopVBrowser", () => {
-        validateLock() && this.stopVBrowser();
-      });
-      on("CMD:changeController", (data: unknown) => {
-        validateLock() && this.changeController(String(data));
-      });
       on("CMD:subtitle", (data: unknown) => {
-        validateLock() && this.addSubtitles(String(data));
-      });
-      on("CMD:lock", async (data: unknown) => {
-        const hasLock = validateLock();
-        const isOwner = await validateOwner();
-        (hasLock || isOwner) && this.lockRoom(socket, data);
+        this.addSubtitles(String(data));
       });
       on("CMD:askHost", () => {
         socket.emit("REC:host", this.getHostState());
       });
-      on("CMD:getRoomState", () => this.getRoomState(socket));
-      on("CMD:setRoomState", async (data: unknown) => {
-        (await validateOwner()) && this.setRoomState(socket, data);
-      });
-      on("CMD:setRoomOwner", async (data: unknown) => {
-        (await validateOwner()) && this.setRoomOwner(socket, data);
-      });
       on("CMD:playlistNext", (data: unknown) => {
-        validateLock() && this.playlistNext(data);
+        this.playlistNext(data);
       });
       on("CMD:playlistAdd", (data: unknown) => {
-        validateLock() && this.playlistAdd(socket, String(data));
+        this.playlistAdd(socket, String(data));
       });
       on("CMD:playlistMove", (data: unknown) => {
-        validateLock() && this.playlistMove(data);
+        this.playlistMove(data);
       });
       on("CMD:playlistDelete", (data: unknown) => {
-        validateLock() && this.playlistDelete(data);
+        this.playlistDelete(data);
       });
-      on("CMD:kickUser", async (data: unknown) => {
-        (await validateOwner()) && this.kickUser(data);
-      });
-      on("CMD:deleteChatMessages", async (data: unknown) => {
-        (await validateOwner()) && this.deleteChatMessages(data);
-      });
-
-      on("signal", (data: unknown) => this.sendSignal(socket, data, "signal"));
-      on("signalSS", (data: unknown) =>
-        this.sendSignal(socket, data, "signalSS"),
+      // Everyone on the instance is trusted (they know the instance password)
+      on("CMD:kickUser", (data: unknown) => this.kickUser(data));
+      on("CMD:deleteChatMessages", (data: unknown) =>
+        this.deleteChatMessages(data),
       );
+
+      on("signalSS", (data: unknown) => this.sendSignal(socket, data));
 
       on("disconnect", () => this.onDisconnect(socket));
     });
@@ -414,9 +264,6 @@ export class Room {
       chat: this.chat,
       nameMap: abbrNameMap,
       pictureMap: abbrPictureMap,
-      vBrowser: this.vBrowser,
-      lock: this.lock,
-      creator: this.creator,
       playlist: this.playlist,
       loop: this.loop,
     });
@@ -441,15 +288,6 @@ export class Room {
     if (roomObj.pictureMap) {
       this.pictureMap = roomObj.pictureMap;
     }
-    if (roomObj.vBrowser) {
-      this.vBrowser = roomObj.vBrowser;
-    }
-    if (roomObj.lock) {
-      this.lock = roomObj.lock;
-    }
-    if (roomObj.creator) {
-      this.creator = roomObj.creator;
-    }
     if (roomObj.playlist) {
       this.playlist = roomObj.playlist;
     }
@@ -461,19 +299,16 @@ export class Room {
     }
   };
 
-  public saveRoom = async () => {
-    if (postgres) {
-      try {
-        const roomString = this.serialize();
-        await postgres.query(
-          `UPDATE room SET
-          "lastUpdateTime" = $1, data = $2
-          WHERE "roomId" = $3`,
-          [this.lastUpdateTime ?? new Date(), roomString, this.roomId],
-        );
-      } catch (e) {
-        console.warn(e);
-      }
+  public saveRoom = () => {
+    try {
+      saveRoomData(
+        this.db,
+        this.roomId,
+        this.serialize(),
+        Number(this.lastUpdateTime ?? new Date()),
+      );
+    } catch (e) {
+      console.warn("failed to save room %s:", this.roomId, e);
     }
   };
 
@@ -483,18 +318,6 @@ export class Room {
     }
     // Unregister the namespace so it doesn't linger (or get duplicated on reload)
     this.io._nsps.delete(this.roomId);
-  };
-
-  public getRosterForStats = () => {
-    return this.roster.map((p) => ({
-      id: p.id,
-      name: this.nameMap[p.id] || p.id,
-      ts: this.tsMap[p.id],
-      // TODO this will not work behind nginx reverse proxy, pass it and read from X-Real-IP instead
-      // socket.handshake.headers["x-real-ip"]
-      // ip: this.io.of(this.roomId).sockets.get(p.id)?.request?.socket
-      //   ?.remoteAddress,
-    }));
   };
 
   protected getSharerId = (): string => {
@@ -523,63 +346,9 @@ export class Room {
       subtitle: this.subtitle,
       playbackRate: this.playbackRate,
       paused: this.paused,
-      isVBrowserLarge: Boolean(this.vBrowser && this.vBrowser.large),
-      controller: this.vBrowser?.controllerClient,
+      isVBrowserLarge: false, // TODO drop from HostState once the client no longer reads it
       loop: this.loop,
     };
-  };
-
-  public stopVBrowserInternal = async () => {
-    const assignTime = this.vBrowser && this.vBrowser.assignTime;
-    const id = this.vBrowser?.id;
-    const provider = this.vBrowser?.provider;
-    const isLarge = this.vBrowser?.large ?? false;
-    const region = this.vBrowser?.region ?? "";
-    const uid = this.vBrowser?.creatorUID ?? "";
-    this.vBrowser = undefined;
-    this.cmdHost(null, "");
-    // Force a save because this might change in unattended rooms
-    this.lastUpdateTime = new Date();
-    this.saveRoom();
-    if (redis && assignTime) {
-      await redis.lpush("vBrowserSessionMS", Date.now() - assignTime);
-      await redis.ltrim("vBrowserSessionMS", 0, 19);
-    }
-
-    if (id) {
-      await this.releaseVM({ id, provider, large: isLarge, region });
-    }
-  };
-
-  // Give a VM back to the pool (or terminate it if we're running stateless)
-  private releaseVM = async (vm: {
-    id?: string;
-    provider?: string;
-    large?: boolean;
-    region?: string;
-  }) => {
-    if (!vm.id) {
-      return;
-    }
-    try {
-      if (stateless) {
-        await stateless.terminateVM(vm.id);
-      } else {
-        await fetch("http://localhost:" + config.VMWORKER_PORT + "/releaseVM", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            provider: vm.provider,
-            isLarge: vm.large ?? false,
-            region: vm.region ?? "",
-            id: vm.id,
-            roomId: this.roomId,
-          }),
-        });
-      }
-    } catch (e) {
-      console.warn(e);
-    }
   };
 
   private cmdHost = (socket: Socket | null, data: string) => {
@@ -604,24 +373,16 @@ export class Room {
     if (data === "") {
       this.playlistNext(null);
     }
-    // The room video is changing so remove room from vbrowser queue
-    this.vBrowserQueue = undefined;
     // Resend the roster (updates screenshare state etc)
     this.io.of(this.roomId).emit("roster", this.getRosterForApp());
   };
 
   public addChatMessage = (socket: Socket | null, chatMsg: ChatMessageBase) => {
-    if (this.isChatDisabled && !chatMsg.cmd) {
-      return;
-    }
     const chatWithTime: ChatMessage = {
       ...chatMsg,
       timestamp: new Date().toISOString(),
       videoTS: socket?.clientId ? this.tsMap[socket.clientId] : undefined,
     };
-    if (socket?.isSub) {
-      chatWithTime.isSub = true;
-    }
     this.chat.push(chatWithTime);
     this.chat = this.chat.splice(-100);
     this.io.of(this.roomId).emit("REC:chat", chatWithTime);
@@ -646,48 +407,7 @@ export class Room {
     this.io.of(this.roomId).emit("REC:pictureMap", this.pictureMap);
   };
 
-  private startHosting = async (socket: Socket, data: string) => {
-    if (this.vBrowser) {
-      socket.emit(
-        "errorMessage",
-        `Can't update the video while vbrowser is running`,
-      );
-      return;
-    }
-    redisCount("urlStarts");
-    if (config.STREAM_PATH && data?.startsWith(config.STREAM_PATH)) {
-      redisCount("streamStarts");
-    }
-    if (
-      data?.startsWith("https://www.twitch.tv") ||
-      data?.startsWith("https://twitch.tv")
-    ) {
-      try {
-        // Extract m3u8 data
-        // Note this won't work directly since Twitch will reject requests from the wrong origin--need to proxy the m3u8 playlist
-        const channel = data.split("/").slice(-1)[0];
-        const isStream = isNaN(Number(channel));
-        let streams = [];
-        if (isStream) {
-          streams = await twitch.getStream(channel);
-        } else {
-          streams = await twitch.getVod(channel);
-        }
-        // console.log(streams);
-        const target =
-          streams.find((str: any) => str.quality.includes("(source)")) ||
-          streams[0];
-        const parsed = new URL(target?.url);
-        const newUrl = new URL(config.TWITCH_PROXY_PATH);
-        newUrl.pathname = "/proxy" + parsed.pathname;
-        newUrl.searchParams.set("host", parsed.host);
-        newUrl.searchParams.set("displayName", data);
-        newUrl.search = newUrl.searchParams.toString();
-        data = newUrl.toString();
-      } catch (e) {
-        console.warn(e);
-      }
-    }
+  private startHosting = (socket: Socket, data: string) => {
     this.cmdHost(socket, data);
   };
 
@@ -720,14 +440,13 @@ export class Room {
     if (typeof data !== "string" || !data || data.length > 20000) {
       return;
     }
-    redisCount("playlistAdds");
     const youtubeVideoId = getYoutubeVideoID(data);
     const item = {
       name: data,
       channel: "Video URL",
       duration: 0,
       url: data,
-      type: data.startsWith("magnet:") ? "magnet" : "file",
+      type: "file",
     };
     let video: PlaylistVideo | null = null;
     try {
@@ -909,7 +628,6 @@ export class Room {
 
     const baseMsg: ChatMessageBase = { id: socket.clientId, msg };
     const emitChatMessage = (chatMsg: ChatMessageBase) => {
-      redisCount("chatMessages");
       this.addChatMessage(socket, chatMsg);
     };
 
@@ -958,7 +676,6 @@ export class Room {
     if (!msg.reactions[data.value].includes(socket.clientId)) {
       msg.reactions[data.value].push(socket.clientId);
       const reaction: Reaction = { user: socket.clientId, ...data };
-      redisCount("addReaction");
       this.io.of(this.roomId).emit("REC:addReaction", reaction);
     }
   };
@@ -985,37 +702,8 @@ export class Room {
     this.io.of(this.roomId).emit("REC:removeReaction", reaction);
   };
 
-  private joinVideo = async (socket: Socket) => {
-    const match = this.roster.find((user) => user.id === socket.clientId);
-    if (match) {
-      match.isVideoChat = true;
-      redisCount("videoChatStarts");
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
-
-  private leaveVideo = async (socket: Socket) => {
-    const match = this.roster.find((user) => user.id === socket.clientId);
-    if (match) {
-      match.isVideoChat = false;
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
-
-  private setUserMute = (socket: Socket, raw: unknown) => {
-    const data = raw as { isMuted: boolean };
-    if (!data) {
-      return;
-    }
-    const match = this.roster.find((user) => user.id === socket.clientId);
-    if (match) {
-      match.isMuted = data.isMuted;
-    }
-    this.io.of(this.roomId).emit("roster", this.getRosterForApp());
-  };
-
   private joinScreenSharing = (socket: Socket, raw: unknown) => {
-    const data = raw as { file: boolean; mediasoup?: boolean };
+    const data = raw as { file?: boolean } | null;
     if (!data) {
       return;
     }
@@ -1028,23 +716,10 @@ export class Room {
       );
       return;
     }
-    let mediasoupSuffix = "";
-    if (data?.mediasoup) {
-      // TODO validate the user has permissions to ask for a mediasoup
-      // TODO set up the room on the remote server rather than letting the remote server create
-      mediasoupSuffix =
-        "@" + config.MEDIASOUP_SERVER + "/" + crypto.randomUUID();
-      redisCount("mediasoupStarts");
-    }
-    if (data && data.file) {
-      this.cmdHost(socket, "fileshare://" + socket.clientId + mediasoupSuffix);
-      redisCount("fileShareStarts");
+    if (data.file) {
+      this.cmdHost(socket, "fileshare://" + socket.clientId);
     } else {
-      this.cmdHost(
-        socket,
-        "screenshare://" + socket.clientId + mediasoupSuffix,
-      );
-      redisCount("screenShareStarts");
+      this.cmdHost(socket, "screenshare://" + socket.clientId);
     }
     this.io.of(this.roomId).emit("roster", this.getRosterForApp());
   };
@@ -1059,221 +734,6 @@ export class Room {
     this.io.of(this.roomId).emit("roster", this.getRosterForApp());
   };
 
-  private startVBrowser = async (socket: Socket, raw: unknown) => {
-    const data = raw as {
-      options?: { size: string; region: string; provider: string };
-    };
-    if (!data) {
-      socket.emit("errorMessage", "Invalid vBrowser input");
-      return;
-    }
-    const { clientId, uid, isSub } = socket;
-    // Only one VM per room: a second start would leak whichever VM is assigned first
-    if (this.vBrowser || this.vBrowserQueue) {
-      socket.emit(
-        "errorMessage",
-        "A vBrowser is already running or starting in this room.",
-      );
-      return;
-    }
-    // these checks are skipped if firebase not provided
-    if (config.FIREBASE_ADMIN_SDK_CONFIG) {
-      // VMs are assigned per user, anonymous users can't get one
-      if (!uid) {
-        socket.emit(
-          "errorMessage",
-          "You must be logged in to start a vBrowser.",
-        );
-        return;
-      }
-      let user: Awaited<ReturnType<typeof getUser>> = null;
-      try {
-        user = await getUser(uid);
-      } catch (e) {
-        console.warn(e);
-        socket.emit("errorMessage", "Could not verify your account.");
-        return;
-      }
-      // Validate verified email if not a third-party auth provider
-      if (
-        user?.providerData?.[0]?.providerId === "password" &&
-        !user?.emailVerified
-      ) {
-        socket.emit(
-          "errorMessage",
-          "A verified email is required to start a VBrowser.",
-        );
-        return;
-      }
-
-      // Log the vbrowser creation by uid and clientid
-      if (redis) {
-        const expireTime = getStartOfDay() / 1000 + 86400;
-        if (clientId) {
-          const clientCount = await redis.zincrby(
-            "vBrowserClientIDs",
-            1,
-            clientId,
-          );
-          redis.expireat("vBrowserClientIDs", expireTime);
-          const clientMinutes = await redis.zincrby(
-            "vBrowserClientIDMinutes",
-            1,
-            clientId,
-          );
-          redis.expireat("vBrowserClientIDMinutes", expireTime);
-        }
-        if (uid) {
-          const uidCount = await redis.zincrby("vBrowserUIDs", 1, uid);
-          redis.expireat("vBrowserUIDs", expireTime);
-          const uidMinutes = await redis.zincrby("vBrowserUIDMinutes", 1, uid);
-          redis.expireat("vBrowserUIDMinutes", expireTime);
-          // TODO limit users based on client or uid usage
-        }
-      }
-      // check if the user already has a VM already in postgres
-      if (postgres) {
-        const { rows } = await postgres.query(
-          "SELECT count(1) from vbrowser WHERE uid = $1",
-          [uid],
-        );
-        if (Number(rows[0].count) >= MAX_VBROWSERS_PER_USER) {
-          socket.emit(
-            "errorMessage",
-            "There is already an active vBrowser for this user.",
-          );
-          return;
-        }
-      }
-    }
-    let isLarge = false;
-    let region = "";
-    // Check if user is subscriber or firebase not configured, if so allow sub options
-    if (isSub || !config.FIREBASE_ADMIN_SDK_CONFIG) {
-      isLarge = data.options?.size === "large";
-      if (data.options?.region) {
-        region = data.options?.region;
-      }
-    }
-
-    // Re-check: another start (or a host change) may have gotten in while we awaited above
-    if (this.vBrowser || this.vBrowserQueue) {
-      socket.emit(
-        "errorMessage",
-        "A vBrowser is already running or starting in this room.",
-      );
-      return;
-    }
-    redisCount("vBrowserStarts");
-    this.cmdHost(socket, "vbrowser://");
-    // Put the room in the vbrowser queue
-    const queue = {
-      roomId: this.roomId,
-      queueTime: new Date(),
-      isLarge,
-      region,
-      uid,
-      clientId,
-    };
-    this.vBrowserQueue = queue;
-    try {
-      // Check if a vbrowser is available
-      // Keep going only while this request is still the active one. Stopping the vBrowser,
-      // changing the video or starting another one replaces/clears the queue entry.
-      while (this.vBrowserQueue === queue) {
-        const { queueTime, isLarge, region, uid, roomId, clientId } = queue;
-        let assignment: AssignedVM | undefined = undefined;
-        try {
-          if (stateless) {
-            const pass = crypto.randomUUID();
-            const id = await stateless.startVM(pass);
-            assignment = {
-              ...(await stateless.getVM(id)),
-              pass,
-              assignTime: Date.now(),
-            };
-          } else {
-            const resp = await fetch(
-              "http://localhost:" + config.VMWORKER_PORT + "/assignVM",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  isLarge,
-                  region,
-                  uid,
-                  roomId,
-                }),
-              },
-            );
-            if (resp.ok) {
-              assignment = await resp.json();
-            }
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-        if (this.vBrowserQueue !== queue) {
-          // The request was cancelled while we were waiting for the VM, don't leak it
-          if (assignment) {
-            await this.releaseVM(assignment);
-          }
-          return;
-        }
-        if (assignment) {
-          this.vBrowser = assignment;
-          this.vBrowser.controllerClient = clientId;
-          this.vBrowser.creatorUID = uid;
-          this.vBrowser.creatorClientID = clientId;
-          const assignEnd = Date.now();
-          const assignElapsed = assignEnd - Number(queueTime);
-          try {
-            await redis?.lpush("vBrowserStartMS", assignElapsed);
-            await redis?.ltrim("vBrowserStartMS", 0, 19);
-          } catch (e) {
-            // Metrics only, must not prevent the room from getting its VM
-            console.warn(e);
-          }
-          console.log(
-            "[ASSIGN] %s to %s in %s",
-            assignment.provider + ":" + assignment.id,
-            roomId,
-            assignElapsed + "ms",
-          );
-          // Also clears the queue, which ends the loop
-          this.cmdHost(
-            null,
-            "vbrowser://" + this.vBrowser.pass + "@" + this.vBrowser.host,
-          );
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    } finally {
-      // Never leave a stale queue entry behind, it would block future starts
-      if (this.vBrowserQueue === queue) {
-        this.vBrowserQueue = undefined;
-      }
-    }
-  };
-
-  private stopVBrowser = async () => {
-    if (!this.vBrowser && this.video !== "vbrowser://") {
-      return;
-    }
-    await this.stopVBrowserInternal();
-    redisCount("vBrowserTerminateManual");
-  };
-
-  private changeController = (data: string) => {
-    if (data && data.length > 100) {
-      return;
-    }
-    if (this.vBrowser) {
-      this.vBrowser.controllerClient = data;
-      this.io.of(this.roomId).emit("REC:changeController", data);
-    }
-  };
-
   private addSubtitles = async (data: string) => {
     if (data && data.length > 10000) {
       return;
@@ -1282,258 +742,15 @@ export class Room {
     this.io.of(this.roomId).emit("REC:subtitle", this.subtitle);
   };
 
-  private lockRoom = async (socket: Socket, raw: unknown) => {
-    const data = raw as { locked?: unknown } | null;
-    if (!data) {
-      return;
-    }
-    const locked = data.locked === true;
-    const { uid, clientId } = socket;
-    // The lock is stored as the locker's uid. An anonymous user has none, so "locking"
-    // would silently do nothing while still announcing to the room that it was locked.
-    if (locked && !uid) {
-      socket.emit("errorMessage", "You must be logged in to lock the room.");
-      return;
-    }
-    this.lock = locked ? uid : "";
-    this.io.of(this.roomId).emit("REC:lock", this.lock);
-    const chatMsg = {
-      id: clientId,
-      cmd: locked ? "lock" : "unlock",
-      msg: "",
-    };
-    this.addChatMessage(socket, chatMsg);
-  };
-
-  private setRoomOwner = async (socket: Socket, raw: unknown) => {
-    const data = raw as {
-      undo: boolean;
-    };
-    if (!data) {
-      return;
-    }
-    if (!postgres) {
-      socket.emit("errorMessage", "Database is not available");
-      return;
-    }
-    const { uid, isSub } = socket;
-    if (data.undo) {
-      await updateObject(
-        postgres,
-        "room",
-        {
-          password: null,
-          owner: null,
-          vanity: null,
-          isChatDisabled: null,
-          isSubRoom: null,
-          roomTitle: null,
-          roomDescription: null,
-          roomTitleColor: null,
-          mediaPath: null,
-        },
-        { roomId: this.roomId },
-      );
-      socket.emit("REC:getRoomState", {});
-    } else {
-      // validate room count
-      const roomCount = (
-        await postgres.query(
-          'SELECT count(1) from room where owner = $1 AND "roomId" != $2',
-          [uid, this.roomId],
-        )
-      ).rows[0].count;
-      const limit = isSub
-        ? config.SUBSCRIBER_ROOM_LIMIT
-        : config.FREE_ROOM_LIMIT;
-      if (roomCount >= limit) {
-        socket.emit(
-          "errorMessage",
-          `You've exceeded the permanent room limit. Subscribe for additional permanent rooms.`,
-        );
-        return;
-      }
-      const roomObj = {
-        roomId: this.roomId,
-        owner: uid,
-        isSubRoom: isSub,
-      };
-      let result: QueryResult | null = null;
-      result = await upsertObject(postgres, "room", roomObj, {
-        roomId: true,
-      });
-      const row = result?.rows?.[0];
-      // console.log(result, row);
-      socket.emit("REC:getRoomState", {
-        password: row?.password,
-        vanity: row?.vanity,
-        owner: row?.owner,
-      });
-    }
-  };
-
-  private getRoomState = async (socket: Socket) => {
-    if (!postgres) {
-      return;
-    }
-    const result = await postgres.query(
-      `SELECT password, vanity, owner, "isChatDisabled", "roomTitle", "roomDescription", "roomTitleColor", "mediaPath" FROM room where "roomId" = $1`,
-      [this.roomId],
-    );
-    const first = result.rows[0];
-    if (this.isChatDisabled === undefined) {
-      this.isChatDisabled = Boolean(first?.isChatDisabled);
-    }
-    // TODO only send the password if this is current owner
-    socket.emit("REC:getRoomState", {
-      password: first?.password,
-      vanity: first?.vanity,
-      owner: first?.owner,
-      isChatDisabled: first?.isChatDisabled,
-      roomTitle: first?.roomTitle,
-      roomDescription: first?.roomDescription,
-      roomTitleColor: first?.roomTitleColor,
-      mediaPath: first?.mediaPath,
-    });
-  };
-
-  private setRoomState = async (socket: Socket, raw: unknown) => {
-    const data = raw as {
-      password?: string | null;
-      vanity?: string | null;
-      isChatDisabled?: boolean | null;
-      roomTitle?: string | null;
-      roomDescription?: string | null;
-      roomTitleColor?: string | null;
-      mediaPath?: string | null;
-    } | null;
-    if (!postgres) {
-      socket.emit("errorMessage", "Database is not available");
-      return;
-    }
-    if (!data || typeof data !== "object") {
-      return;
-    }
-    const {
-      password,
-      vanity,
-      isChatDisabled,
-      roomTitle,
-      roomDescription,
-      roomTitleColor,
-      mediaPath,
-    } = data;
-    const { isSub, uid } = socket;
-    const isOptionalString = (v: unknown) => v == null || typeof v === "string";
-    if (
-      ![
-        password,
-        vanity,
-        roomTitle,
-        roomDescription,
-        roomTitleColor,
-        mediaPath,
-      ].every(isOptionalString) ||
-      (isChatDisabled != null && typeof isChatDisabled !== "boolean")
-    ) {
-      socket.emit("errorMessage", "Invalid room settings");
-      return;
-    }
-    if (password && password.length > 100) {
-      socket.emit("errorMessage", "Password too long");
-      return;
-    }
-    if (vanity && vanity.length > 100) {
-      socket.emit("errorMessage", "Custom URL too long");
-      return;
-    }
-    if (roomTitle && roomTitle.length > 50) {
-      socket.emit("errorMessage", "Room title too long");
-      return;
-    }
-    if (roomDescription && roomDescription.length > 120) {
-      socket.emit("errorMessage", "Room description too long");
-      return;
-    }
-    // The color is only a subscriber setting, so only validate (and require) it for them
-    // check if is valid hex color representation
-    if (
-      isSub &&
-      roomTitleColor != null &&
-      !/^#([0-9a-f]{3}){1,2}$/i.test(roomTitleColor)
-    ) {
-      socket.emit("errorMessage", "Invalid color code");
-      return;
-    }
-    if (mediaPath && mediaPath.length > 1000) {
-      socket.emit("errorMessage", "Media source too long");
-      return;
-    }
-    const roomObj: any = {
-      password: password,
-      isChatDisabled: isChatDisabled,
-      mediaPath: mediaPath,
-    };
-    if (isSub) {
-      // user must be sub to set certain properties
-      // If empty vanity, reset to null
-      roomObj.vanity = vanity ? vanity : null;
-      roomObj.roomTitle = roomTitle;
-      roomObj.roomDescription = roomDescription;
-      roomObj.roomTitleColor = roomTitleColor;
-    }
-    try {
-      const query = `UPDATE room
-        SET ${Object.keys(roomObj).map((k, i) => `"${k}" = $${i + 1}`)}
-        WHERE "roomId" = $${Object.keys(roomObj).length + 1}
-        AND owner = $${Object.keys(roomObj).length + 2}
-        RETURNING *`;
-      const result = await postgres.query(query, [
-        ...Object.values(roomObj),
-        this.roomId,
-        uid,
-      ]);
-      const row = result.rows[0];
-      if (!row) {
-        // Nothing matched, so the caller isn't the owner. Don't touch any state or tell
-        // the room the settings changed (that would e.g. re-enable chat for everyone).
-        socket.emit(
-          "errorMessage",
-          "Only the room owner can change these settings",
-        );
-        return;
-      }
-      this.isChatDisabled = Boolean(row.isChatDisabled);
-      // TODO only send password if current owner
-      this.io.of(this.roomId).emit("REC:getRoomState", {
-        password: row.password,
-        vanity: row.vanity,
-        owner: row.owner,
-        isChatDisabled: row.isChatDisabled,
-        roomTitle: row.roomTitle,
-        roomDescription: row.roomDescription,
-        roomTitleColor: row.roomTitleColor,
-        mediaPath: row.mediaPath,
-      });
-      socket.emit("successMessage", "Saved admin settings");
-    } catch (e) {
-      console.warn(e);
-    }
-  };
-
-  private sendSignal = (
-    socket: Socket,
-    raw: unknown,
-    eventName: "signal" | "signalSS",
-  ) => {
-    const data = raw as { to: string; msg: string; sharer?: boolean };
-    if (!data) {
+  private sendSignal = (socket: Socket, raw: unknown) => {
+    const data = raw as { to: string; msg: string; sharer?: boolean } | null;
+    if (!data || typeof data.to !== "string") {
       return;
     }
     const fromClientId = socket.clientId;
     const toId = this.socketIdMap[data.to];
     if (toId) {
-      this.io.of(this.roomId).to(toId).emit(eventName, {
+      this.io.of(this.roomId).to(toId).emit("signalSS", {
         from: fromClientId,
         msg: data.msg,
         sharer: data.sharer,

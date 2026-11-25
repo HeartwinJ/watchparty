@@ -1,7 +1,6 @@
 import fs from "node:fs";
-import { resolveShard } from "./resolveShard.ts";
 
-let adjectives = fs
+const adjectives = fs
   .readFileSync(process.cwd() + "/words/adjectives.txt")
   .toString()
   .split(/\r?\n/);
@@ -16,15 +15,8 @@ const verbs = fs
 const randomElement = (array: string[]) =>
   array[Math.floor(Math.random() * array.length)];
 
-export function makeRoomName(shard: number | undefined) {
-  let filteredAdjectives = adjectives;
-  if (shard) {
-    // Filter the adjective list by shard
-    filteredAdjectives = adjectives.filter(
-      (adj) => resolveShard(adj) === Number(shard),
-    );
-  }
-  const adjective = randomElement(filteredAdjectives);
+export function makeRoomName() {
+  const adjective = randomElement(adjectives);
   const noun = randomElement(nouns);
   const verb = randomElement(verbs);
   return `${adjective}-${noun}-${verb}`;
