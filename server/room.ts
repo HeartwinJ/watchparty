@@ -346,7 +346,6 @@ export class Room {
       subtitle: this.subtitle,
       playbackRate: this.playbackRate,
       paused: this.paused,
-      isVBrowserLarge: false, // TODO drop from HostState once the client no longer reads it
       loop: this.loop,
     };
   };

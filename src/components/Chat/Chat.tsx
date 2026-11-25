@@ -6,7 +6,6 @@ import {
   HoverCard,
   TextInput,
 } from "@mantine/core";
-// import data from '@emoji-mart/data';
 import Picker from "@emoji-mart/react";
 import { init } from "emoji-mart";
 //@ts-expect-error
