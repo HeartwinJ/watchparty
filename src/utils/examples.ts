@@ -1,4 +1,4 @@
-import { isMagnet, isYouTube } from "./utils";
+import { isYouTube } from "./utils";
 
 export const examples: SearchResult[] = [
   {
@@ -14,10 +14,6 @@ export const examples: SearchResult[] = [
     img: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Big_Buck_Bunny_-_forest.jpg/320px-Big_Buck_Bunny_-_forest.jpg",
   },
   {
-    url: "magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fsintel.torrent",
-    img: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Sintel-screenshot-1.jpg/320px-Sintel-screenshot-1.jpg",
-  },
-  {
     url: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Spring_-_Blender_Open_Movie.webm",
     img: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/SpringOpenMovie-desend.jpg/320px-SpringOpenMovie-desend.jpg",
   },
@@ -30,8 +26,6 @@ export const examples: SearchResult[] = [
   let type: SearchResult["type"] = "file";
   if (isYouTube(url)) {
     type = "youtube";
-  } else if (isMagnet(url)) {
-    type = "magnet";
   }
   const img = typeof urlOrObject === "object" ? urlOrObject.img : "";
   return {

@@ -1,10 +1,8 @@
 import React from "react";
 import {
   debounce,
-  getMediaPathResults,
   getYouTubeResults,
   isHttp,
-  isMagnet,
   isYouTube,
 } from "../../utils/utils";
 import { examples } from "../../utils/examples";
@@ -22,7 +20,6 @@ type ComboBoxProps = {
   playlistAdd: (value: string) => void;
   roomMedia: string;
   getMediaDisplayName: (input: string) => string;
-  mediaPath: string | undefined;
   disabled?: boolean;
 };
 
@@ -52,18 +49,12 @@ export class ComboBox extends React.Component<ComboBoxProps, ComboBoxState> {
     if (
       query === "" ||
       // Anything that doesn't pass this check we pass to YouTube as a search query
-      (query && (isHttp(query) || isMagnet(query)))
+      (query && isHttp(query))
     ) {
-      if (!value && this.props.mediaPath) {
-        items = await getMediaPathResults(this.props.mediaPath, "");
-      }
       if (query) {
         let type: SearchResult["type"] = "file";
         if (isYouTube(query)) {
           type = "youtube";
-        }
-        if (isMagnet(query)) {
-          type = "magnet";
         }
         // Create entry from user input
         items = [
@@ -121,17 +112,14 @@ export class ComboBox extends React.Component<ComboBoxProps, ComboBoxState> {
           this.setState(
             {
               // Display the real string value (currentMedia) when focused
-              inputMedia:
-                isHttp(currentMedia) || isMagnet(currentMedia)
-                  ? currentMedia
-                  : getMediaDisplayName(currentMedia),
+              inputMedia: isHttp(currentMedia)
+                ? currentMedia
+                : getMediaDisplayName(currentMedia),
             },
             () => {
               if (
                 !this.state.inputMedia ||
-                (this.state.inputMedia &&
-                  (isHttp(this.state.inputMedia) ||
-                    isMagnet(this.state.inputMedia)))
+                (this.state.inputMedia && isHttp(this.state.inputMedia))
               ) {
                 this.doSearch();
               }
@@ -161,7 +149,7 @@ export class ComboBox extends React.Component<ComboBoxProps, ComboBoxState> {
           </ActionIcon>
         }
         leftSection={this.state.loading ? <Loader size="sm" /> : <IconLink />}
-        placeholder="Enter video file URL, magnet link, YouTube link, or YouTube search term"
+        placeholder="Enter video file URL, YouTube link, or YouTube search term"
         value={
           this.state.inputMedia !== undefined
             ? this.state.inputMedia

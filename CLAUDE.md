@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Personal fork of [howardchung/watchparty](https://github.com/howardchung/watchparty): a site for watching videos together with synced playback, chat, video chat, screen share and virtual browsers. The goal is to add my own features and self-host it for personal use, not to run the public watchparty.me service.
+Personal fork of [howardchung/watchparty](https://github.com/howardchung/watchparty): a site for watching videos together with synced playback, chat, screen share and file share. The goal is to add my own features and self-host it for personal use, not to run the public watchparty.me service.
 
 ## Git & PR rules (important)
 
@@ -42,8 +42,11 @@ npm start              # production: serves the API and build/ from one process
 
 **Client (`src/`)**: React 18 + Vite + Mantine 8, react-router v5.
 
-- `index.tsx`: routes and app shell. `components/App/App.tsx` (~2.8k lines) is the main room page and holds most client state and socket handling. `App/Player.ts`, `HTML.ts` and `YouTube.ts` abstract the video players.
-- `config.ts`: client `VITE_*` env vars. `utils/utils.ts` `serverPath` decides where the client sends requests: `VITE_SERVER_HOST`, or `hostname:8080` in dev, or the same origin in prod.
+- `index.tsx`: routes (`/`, `/create`, `/watch/:roomId`) wrapped in `components/AuthGate`, which calls `GET /session` on load and shows a password form (`POST /login`) until logged in. A 401 from any API call or a socket `connect_error` of `"unauthorized"` sends the app back to the login form. `AuthContext`/`useAuth()` exposes `authRequired` and `logout()` (the "Log out" button is in `TopBar`). A 404 from `/session` is treated as "no auth".
+- `components/App/App.tsx` (~1.8k lines) is the main room page and holds most client state and socket handling. `App/Player.ts`, `HTML.ts` and `YouTube.ts` abstract the video players. Supported sources: YouTube, direct URLs, HLS (hls.js, lazy), DASH (dash.js, lazy), screen share and file share (P2P WebRTC only, optional in-browser transcoding via mediabunny, lazy).
+- `config.ts`: client `VITE_*` env vars (only `VITE_SERVER_HOST`). `utils/api.ts` `serverPath` decides where the client sends requests: `VITE_SERVER_HOST`, or `hostname:8080` in dev, or the same origin in prod.
+- **Always call the server through `apiFetch()` (`utils/api.ts`)**, never bare `fetch`: it sends `credentials: "include"` (the dev client runs on a different port) and handles 401s. URLs on other origins go through plain `fetch` without credentials. The room socket uses `withCredentials: true`.
+- `utils/iceServers.ts` `getIceServers()`: fetches `GET /iceServers` once (cached 1h in memory, failures not cached) for screen/file share, falling back to Cloudflare STUN.
 - Components are in `src/components/<Name>/<Name>.tsx`, with CSS modules where styling is needed.
 - `global.d.ts` (repo root) has types shared by client and server (`User`, `ChatMessage`, `RoomState`, etc.). Update it when you change data sent over the socket.
 
@@ -52,10 +55,7 @@ npm start              # production: serves the API and build/ from one process
 ## Configuration / self-hosting notes
 
 - Copy `.env.example` to `.env` (gitignored). Both server and Vite load it via `loadEnvFile()`.
-- Leave `VITE_FIREBASE_CONFIG=` blank to turn off login. All features are then usable without an account. If the variable is _missing_ entirely, `src/config.ts` falls back to **upstream's Firebase project**, so keep it set, even if blank.
-- Upstream-specific values to change for my deployment:
-  - `src/config.ts` `VITE_OAUTH_REDIRECT_HOSTNAME`, which defaults to `https://www.watchparty.me`
-  - the Terms/Privacy/FAQ text in `src/components/Pages/Pages.tsx`, and the support email in `ProfileModal.tsx`
+- Client env: only `VITE_SERVER_HOST` (optional). Firebase/OAuth config, accounts and the marketing/legal pages are gone.
 - Server env: `APP_PASSWORD` (blank disables auth, with a warning), `SESSION_SECRET` (blank means a random secret per process, so sessions reset on restart), `DATA_DIR`, `TRUST_PROXY` (default trusts private/loopback proxies such as cloudflared, so `req.secure`/`req.ip` honor `X-Forwarded-*`), `CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN` (optional TURN), `YOUTUBE_API_KEY`, `OPENSUBTITLES_KEY`. See `server/config.ts`.
 - CORS: none in production (same origin). `npm run dev` sets `NODE_ENV=development`, which reflects the request origin with credentials so the Vite dev server on another port can send the session cookie.
 - Simplest deployment: `Dockerfile` (`npm ci && npm run build && npm start`) behind a TLS reverse proxy. HTTPS is required for camera, mic and screen-share features. To serve TLS directly instead, set `SSL_KEY_FILE`/`SSL_CRT_FILE`.

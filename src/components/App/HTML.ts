@@ -1,5 +1,6 @@
 import { default as toWebVTT } from "srt-webvtt";
 import { Player } from "./Player";
+import { apiFetch } from "../../utils/api";
 
 export class HTML implements Player {
   elId: string;
@@ -135,7 +136,7 @@ export class HTML implements Player {
     if (Boolean(src)) {
       let subtitleSrc = src;
       if (subtitleSrc) {
-        const response = await fetch(subtitleSrc);
+        const response = await apiFetch(subtitleSrc);
         const buffer = await response.arrayBuffer();
         const url = await toWebVTT(new Blob([buffer]));
         const track = document.createElement("track");

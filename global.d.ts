@@ -2,16 +2,10 @@ declare module "srt-webvtt";
 
 type StringDict = Record<string, string>;
 type NumberDict = Record<string, number>;
-type BooleanDict = Record<string, boolean>;
-type AnyDict = Record<string, any>;
 type PCDict = Record<string, RTCPeerConnection>;
-type HTMLVideoElementDict = Record<string, HTMLVideoElement>;
-type MediaType = "vbrowser" | "screenshare" | "video" | "youtube";
 
 interface User {
   id: string;
-  isVideoChat?: boolean;
-  isMuted?: boolean;
   isScreenShare?: boolean;
 }
 
@@ -33,7 +27,6 @@ interface ChatMessageBase {
   cmd?: string;
   msg?: string;
   system?: boolean;
-  isSub?: boolean;
   replyToId?: string;
   replyToTimestamp?: string;
   replyToUserId?: string;
@@ -60,10 +53,7 @@ interface PlaylistVideo {
 }
 
 interface SearchResult extends PlaylistVideo {
-  size?: string | number;
-  seeders?: string;
-  magnet?: string;
-  type: "youtube" | "file" | "magnet";
+  type: "youtube" | "file";
   url: string;
   name: string;
   duration: number;
@@ -74,33 +64,8 @@ interface HostState {
   videoTS: number;
   subtitle: string;
   paused: boolean;
-  isVBrowserLarge: boolean;
-  controller?: string;
+  // Unused by the client; the server still sends it as false
+  isVBrowserLarge?: boolean;
   playbackRate: number;
   loop: boolean;
-}
-
-interface PersistentRoom {
-  roomId: string;
-  password: string;
-  owner: string;
-  vanity: string;
-  isChatDisabled: boolean;
-  isSubRoom: boolean;
-  data: any;
-}
-
-interface LinkAccount {
-  accountname: string;
-  accountid: string;
-  discriminator: string;
-  kind: string;
-}
-
-interface ShardMetric {
-  uptime: number;
-  mem: number;
-  roomCount: number;
-  users: number;
-  vbWaiting: number;
 }

@@ -1,4 +1,4 @@
-import React, { RefObject, useContext } from "react";
+import React, { RefObject } from "react";
 import {
   ActionIcon,
   Avatar,
@@ -9,7 +9,6 @@ import {
 // import data from '@emoji-mart/data';
 import Picker from "@emoji-mart/react";
 import { init } from "emoji-mart";
-// import onClickOutside from 'react-onclickoutside';
 //@ts-expect-error
 import Linkify from "react-linkify";
 import { SecureLink } from "react-secure-link";
@@ -22,14 +21,12 @@ import {
   getOrCreateClientId,
   isEmojiString,
 } from "../../utils/utils";
-import { UserMenu } from "../UserMenu/UserMenu";
 import { Socket } from "socket.io-client";
 import {
   CSSTransition,
   SwitchTransition,
   TransitionGroup,
 } from "react-transition-group";
-import { MetadataContext } from "../../MetadataContext";
 
 const clientId = getOrCreateClientId();
 const truncateReply = (input?: string, max = 30) =>
@@ -44,14 +41,10 @@ interface ChatProps {
   className?: string;
   getMediaDisplayName: (input?: string) => string;
   hide?: boolean;
-  isChatDisabled?: boolean;
-  owner: string | undefined;
   ref: RefObject<Chat>;
 }
 
 export class Chat extends React.Component<ChatProps> {
-  static contextType = MetadataContext;
-  declare context: React.ContextType<typeof MetadataContext>;
   public state = {
     chatMsg: "",
     replyTo: undefined as
@@ -207,26 +200,6 @@ export class Chat extends React.Component<ChatProps> {
       return `paused the video at ${formatTimestamp(msg)}`;
     } else if (cmd === "playbackRate") {
       return `set the playback rate to ${msg === "0" ? "auto" : `${msg}x`}`;
-    } else if (cmd === "lock") {
-      return `locked the room`;
-    } else if (cmd === "unlock") {
-      return "unlocked the room";
-    } else if (cmd === "vBrowserTimeout") {
-      return (
-        <React.Fragment>
-          The VBrowser shut down automatically.
-          <br />
-          Subscribe for longer sessions.
-        </React.Fragment>
-      );
-    } else if (cmd === "vBrowserAlmostTimeout") {
-      return (
-        <React.Fragment>
-          The VBrowser will shut down soon.
-          <br />
-          Subscribe for longer sessions.
-        </React.Fragment>
-      );
     }
     return cmd;
   };
@@ -269,9 +242,6 @@ export class Chat extends React.Component<ChatProps> {
                 pictureMap={this.props.pictureMap}
                 nameMap={this.props.nameMap}
                 formatMessage={this.formatMessage}
-                owner={this.props.owner}
-                socket={this.props.socket}
-                isChatDisabled={this.props.isChatDisabled}
                 setReactionMenu={this.setReactionMenu}
                 handleReactionClick={this.handleReactionClick}
                 onReply={this.setReplyTo}
@@ -387,12 +357,7 @@ export class Chat extends React.Component<ChatProps> {
           onChange={this.updateChatMsg}
           value={this.state.chatMsg}
           error={this.chatTooLong()}
-          disabled={this.props.isChatDisabled}
-          placeholder={
-            this.props.isChatDisabled
-              ? "The chat was disabled by the room owner."
-              : "Enter a message..."
-          }
+          placeholder="Enter a message..."
           rightSection={
             <ActionIcon
               onClick={() => {
@@ -400,7 +365,6 @@ export class Chat extends React.Component<ChatProps> {
                 const curr = this.state.isPickerOpen;
                 setTimeout(() => this.setState({ isPickerOpen: !curr }), 100);
               }}
-              disabled={this.props.isChatDisabled}
             >
               <span role="img" aria-label="Emoji">
                 😀
@@ -420,9 +384,6 @@ const ChatMessage = ({
   nameMap,
   pictureMap,
   formatMessage,
-  socket,
-  owner,
-  isChatDisabled,
   setReactionMenu,
   handleReactionClick,
   onReply,
@@ -432,9 +393,6 @@ const ChatMessage = ({
   nameMap: StringDict;
   pictureMap: StringDict;
   formatMessage: (cmd: string, msg?: string) => React.ReactNode;
-  socket: Socket;
-  owner: string | undefined;
-  isChatDisabled: boolean | undefined;
   setReactionMenu: (
     isOpen: boolean,
     selectedMsgId?: string,
@@ -446,9 +404,7 @@ const ChatMessage = ({
   onReply: (id: string, timestamp: string, msg?: string) => void;
   className: string;
 }) => {
-  const { user } = useContext(MetadataContext);
-  const { id, timestamp, cmd, msg, system, isSub, reactions, videoTS } =
-    message;
+  const { id, timestamp, cmd, msg, system, reactions, videoTS } = message;
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
   const imageMsg = renderImageString(msg);
   return (
@@ -481,24 +437,10 @@ const ChatMessage = ({
             fontSize: 14,
           }}
         >
-          <UserMenu
-            displayName={nameMap[id] || id}
-            timestamp={timestamp}
-            socket={socket}
-            userToManage={id}
-            isChatMessage
-            disabled={!Boolean(owner && owner === user?.uid)}
-            trigger={
-              <div
-                style={{ cursor: "pointer", fontWeight: 700 }}
-                title={isSub ? "WatchParty Plus subscriber" : ""}
-                className={`${isSub ? styles.subscriber : styles.light} ${styles.hoverEffect}`}
-              >
-                {Boolean(system) && "System"}
-                {nameMap[id] || id}
-              </div>
-            }
-          />
+          <div style={{ fontWeight: 700 }} className={styles.light}>
+            {Boolean(system) && "System"}
+            {nameMap[id] || id}
+          </div>
           <div className={styles.small + " " + styles.dark}>
             <div title={new Date(timestamp).toLocaleDateString()}>
               {new Date(timestamp).toLocaleTimeString()}
@@ -547,7 +489,6 @@ const ChatMessage = ({
           {id && id !== clientId && (
             <ActionIcon
               onClick={() => onReply(id, timestamp, msg)}
-              disabled={isChatDisabled}
               style={{
                 opacity: 1,
                 display: "flex",
@@ -581,7 +522,6 @@ const ChatMessage = ({
                 );
               }, 100);
             }}
-            disabled={isChatDisabled}
             style={{
               opacity: 1,
               display: "flex",

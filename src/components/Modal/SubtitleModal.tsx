@@ -11,8 +11,7 @@ import {
 } from "@mantine/core";
 import { Socket } from "socket.io-client";
 import { openFileSelector, serverPath } from "../../utils/utils";
-import config from "../../config";
-import { MetadataContext } from "../../MetadataContext";
+import { apiFetch } from "../../utils/api";
 import {
   IconDownload,
   IconSearch,
@@ -23,15 +22,12 @@ import {
 export class SubtitleModal extends React.Component<{
   closeModal: () => void;
   roomSubtitle: string | undefined;
-  haveLock: () => boolean;
   roomMedia: string;
   socket: Socket;
   getMediaDisplayName: (input: string) => string;
   setSubtitleMode: (mode?: TextTrackMode) => void;
   getSubtitleMode: () => TextTrackMode;
 }> {
-  static contextType = MetadataContext;
-  declare context: React.ContextType<typeof MetadataContext>;
   state = {
     loading: false,
     searchResults: [],
@@ -40,24 +36,6 @@ export class SubtitleModal extends React.Component<{
       .split("/")
       .slice(-1)[0],
   };
-
-  async componentDidMount() {
-    if (this.props.roomMedia.includes("/stream?torrent=magnet")) {
-      const re = /&fileIndex=(\d+)$/;
-      const match = re.exec(this.props.roomMedia);
-      if (match) {
-        const fileIndex = match[1];
-        if (fileIndex) {
-          // Fetch title from the data endpoint
-          const response = await fetch(
-            this.props.roomMedia.replace("/stream", "/data"),
-          );
-          const data = await response.json();
-          this.setState({ titleQuery: data?.files[fileIndex]?.name });
-        }
-      }
-    }
-  }
 
   uploadSubtitle = async () => {
     const files = await openFileSelector(".srt,.vtt");
@@ -69,7 +47,7 @@ export class SubtitleModal extends React.Component<{
     reader.addEventListener("load", async (event) => {
       const subData = event.target?.result;
       // Upload to server
-      const resp = await fetch(serverPath + "/subtitle", {
+      const resp = await apiFetch("/subtitle", {
         method: "POST",
         body: subData,
         headers: { "Content-Type": "text/plain" },
@@ -85,12 +63,9 @@ export class SubtitleModal extends React.Component<{
   };
 
   searchSubtitles = async () => {
-    if (!this.props.haveLock()) {
-      return;
-    }
     this.setState({ loading: true });
-    const resp = await fetch(
-      serverPath + "/searchSubtitles?title=" + this.state.titleQuery,
+    const resp = await apiFetch(
+      "/searchSubtitles?title=" + encodeURIComponent(this.state.titleQuery),
     );
     const json = await resp.json();
     this.setState({ searchResults: json });
@@ -120,14 +95,12 @@ export class SubtitleModal extends React.Component<{
             <TextInput
               placeholder="Subtitle URL"
               value={this.props.roomSubtitle}
-              disabled={!this.props.haveLock()}
               onChange={(e) =>
                 this.props.socket.emit("CMD:subtitle", e.target.value)
               }
               rightSection={
                 <ActionIcon
                   color="red"
-                  disabled={!this.props.haveLock()}
                   onClick={() => {
                     this.props.socket.emit("CMD:subtitle", "");
                   }}
@@ -139,7 +112,6 @@ export class SubtitleModal extends React.Component<{
             <Button
               color="violet"
               onClick={() => this.uploadSubtitle()}
-              disabled={!this.props.haveLock()}
               leftSection={<IconUpload />}
             >
               Upload (.srt / .vtt)
@@ -150,14 +122,12 @@ export class SubtitleModal extends React.Component<{
               value={this.state.titleQuery}
               onChange={(e) => this.setState({ titleQuery: e.target.value })}
               onKeyDown={(e) => e.key === "Enter" && this.searchSubtitles()}
-              disabled={!this.props.haveLock()}
               rightSectionWidth={85}
               rightSection={
                 <Button
                   size="compact-xs"
                   loading={this.state.loading}
                   color="green"
-                  disabled={!this.props.haveLock()}
                   onClick={this.searchSubtitles}
                   leftSection={<IconSearch size={14} />}
                 >
@@ -176,11 +146,9 @@ export class SubtitleModal extends React.Component<{
                 }) => (
                   <div key={result.id} style={{ display: "flex", gap: "4px" }}>
                     <ActionIcon
-                      disabled={!this.props.haveLock()}
                       onClick={async (e) => {
-                        const resp = await fetch(
-                          serverPath +
-                            "/downloadSubtitles?file_id=" +
+                        const resp = await apiFetch(
+                          "/downloadSubtitles?file_id=" +
                             result.attributes.files[0]?.file_id,
                         );
                         const data = await resp.json();
