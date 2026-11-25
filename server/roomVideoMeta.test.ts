@@ -108,6 +108,33 @@ describe("Room videoMeta", () => {
     loaded.destroy();
   });
 
+  it("keys the subtitle offset by title/episode, so a new stream link restores it", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    const a = await t.join("Alex");
+    const b = await t.join("Sam");
+    // First pick of this episode: set an offset
+    a.emit("CMD:host", STREAM);
+    await settle();
+    a.emit("CMD:videoMeta", { url: STREAM, meta });
+    await settle();
+    a.emit("CMD:subtitleOffset", 0.75);
+    await settle();
+    expect(t.room.subtitleOffset).toBe(0.75);
+
+    // Something else plays, then a different stream link of the same episode
+    a.emit("CMD:host", "https://example.com/other.mp4");
+    await settle();
+    expect(t.room.subtitleOffset).toBe(0);
+    const OTHER_LINK = "https://aio.example.com/playback/two.mkv";
+    a.emit("CMD:host", OTHER_LINK);
+    await settle();
+    const restored = next<{ offset: number }>(b, "REC:subtitleOffset");
+    a.emit("CMD:videoMeta", { url: OTHER_LINK, meta });
+    expect((await restored).offset).toBe(0.75);
+    expect(t.room.subtitleOffset).toBe(0.75);
+  });
+
   it("sends the current metadata to a joining client", async () => {
     const t = await setup();
     cleanups.push(t.close);

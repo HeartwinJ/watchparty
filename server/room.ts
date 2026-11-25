@@ -404,7 +404,7 @@ export class Room {
     this.subtitle = "";
     this.loop = false;
     this.playbackRate = 1;
-    this.subtitleOffset = this.loadSubtitleOffset(data);
+    this.subtitleOffset = this.loadSubtitleOffset(data, meta);
     this.tsMap = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
@@ -776,6 +776,12 @@ export class Room {
     }
     this.videoMeta = data.meta;
     this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
+    // The metadata gives the video a stable identity, so restore the offset saved for this title/episode
+    const offset = this.loadSubtitleOffset(this.video, this.videoMeta);
+    if (offset !== this.subtitleOffset) {
+      this.subtitleOffset = offset;
+      this.io.of(this.roomId).emit("REC:subtitleOffset", { offset });
+    }
   };
 
   // CMD:playbackIssue {reason}: this viewer's browser can't play the video. Rate limited, then shown to everyone.
@@ -835,8 +841,11 @@ export class Room {
   // --- Subtitle offset (PLAN 6b) ---
 
   /** The saved offset for a video (0 when none was saved or it has no stable key) */
-  private loadSubtitleOffset = (video: string | null) => {
-    const key = subtitleOffsetKey(video);
+  private loadSubtitleOffset = (
+    video: string | null,
+    meta: VideoMeta | null = null,
+  ) => {
+    const key = subtitleOffsetKey(video, meta);
     if (!key) {
       return 0;
     }
@@ -862,7 +871,7 @@ export class Room {
       offset,
       actor: this.getActor(socket),
     });
-    const key = subtitleOffsetKey(this.video);
+    const key = subtitleOffsetKey(this.video, this.videoMeta);
     if (key) {
       try {
         saveSubtitleOffset(this.db, key, offset);

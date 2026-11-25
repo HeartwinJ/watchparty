@@ -23,10 +23,17 @@ export function normalizeSubtitleOffset(value: unknown): number | undefined {
 /**
  * The key a video's subtitle offset is saved under (subtitle_offsets table), or undefined when the video has no
  * stable identity (nothing playing, screen/file shares).
- * TODO: once the room stores AIOStreams metadata (PLAN 6c), key by IMDb id + episode instead, so the offset survives a
- * new debrid link for the same release.
+ * AIOStreams picks are keyed by their title/episode id (`meta:tt0903747:2:4`), because their playback URLs change
+ * per pick and embed a credential. Other videos are keyed by a hash of the URL without its `#fragment` (the picker
+ * stores the display name there).
  */
-export function subtitleOffsetKey(video: string | null | undefined) {
+export function subtitleOffsetKey(
+  video: string | null | undefined,
+  meta?: { id?: unknown } | null,
+) {
+  if (meta && typeof meta.id === "string" && meta.id) {
+    return "meta:" + meta.id;
+  }
   if (
     !video ||
     video.startsWith("screenshare://") ||
@@ -34,5 +41,6 @@ export function subtitleOffsetKey(video: string | null | undefined) {
   ) {
     return undefined;
   }
-  return "url:" + createHash("sha256").update(video).digest("hex");
+  const withoutFragment = video.split("#")[0];
+  return "url:" + createHash("sha256").update(withoutFragment).digest("hex");
 }

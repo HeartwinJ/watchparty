@@ -14,6 +14,7 @@ import { useSlashShortcut } from "./shell/shortcuts";
 import { shortMediaTitle } from "./shell/roomInfo";
 import { recordRecentRoom } from "../../utils/recentRooms";
 import styles from "./App.module.css";
+import { SourcePicker } from "./picker/SourcePicker";
 
 /** Phone layout cut-off (design README: ≤ 768 px) */
 export const PHONE_QUERY = "(max-width: 768px)";
@@ -100,7 +101,7 @@ const RoomLayout = ({ room, roomId }: { room: Room; roomId: string }) => {
       </aside>
       <RoomMessages room={room} />
       <RoomSettingsModal room={room} />
-      {/* SLOT(C): <SourcePicker room={room} /> */}
+      <SourcePicker room={room} />
     </div>
   );
 };

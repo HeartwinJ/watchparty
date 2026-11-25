@@ -44,6 +44,25 @@ describe("subtitleOffsetKey", () => {
     expect(subtitleOffsetKey("https://example.com/b.mp4")).not.toBe(key);
   });
 
+  it("ignores the #fragment (display name) when hashing", () => {
+    expect(subtitleOffsetKey("https://example.com/a.mp4#wp-name=Movie")).toBe(
+      subtitleOffsetKey("https://example.com/a.mp4"),
+    );
+  });
+
+  it("keys AIOStreams picks by title/episode id, not the URL", () => {
+    const meta = { id: "tt0903747:2:4" };
+    expect(subtitleOffsetKey("https://aio.example.com/x/1.mkv", meta)).toBe(
+      "meta:tt0903747:2:4",
+    );
+    expect(subtitleOffsetKey("https://aio.example.com/y/2.mkv", meta)).toBe(
+      "meta:tt0903747:2:4",
+    );
+    expect(subtitleOffsetKey("https://example.com/a.mp4", { id: "" })).toMatch(
+      /^url:/,
+    );
+  });
+
   it("has no key for nothing playing or shares", () => {
     expect(subtitleOffsetKey("")).toBeUndefined();
     expect(subtitleOffsetKey(null)).toBeUndefined();
