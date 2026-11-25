@@ -73,9 +73,10 @@ Each phase ends with a green `npm run build` and a manual smoke test. Each is on
 
 Done after Phase 1, so there's less code to migrate:
 
-- React 18 → **19**, react-router 5 → **7** (or a tiny custom router, since there are only ~3 routes), Mantine 8 → **9**, Vite 7 → **8**, latest hls.js, dashjs (lazy), mediabunny, socket.io, express, and `@types/*`.
-- Split `App.tsx` (2.8k-line class component) into hooks: `useRoomSocket`, `usePlayer`, `useScreenShare`, `useFileShare`, `useChat`, plus presentational components. This is the main enabler for the redesign.
-- Code-split: hls/dash/mediabunny/AC3 load only when needed (mostly done already; verify), and emoji-mart loads lazily.
+- [x] (client) React 18 → **19**, Mantine 8 → **9** (8.x look kept until Phase 4), Vite 7 → **8** (Rolldown), latest hls.js, dashjs (lazy), mediabunny, socket.io-client, `@tabler/icons-react`, emoji-mart, `@types/*`. react-router v5 replaced by a ~60-line History API router (`src/router.ts`). Dropped `@emoji-mart/react` (no React 19 support; the picker is now a lazy wrapper around emoji-mart's web component), `react-linkify` + `react-secure-link` (high-severity `linkify-it` advisory; replaced by a small linkifier), `react-router-dom`, and the unused `SearchComponent`/`SearchResult`. `npm audit`: 0 vulnerabilities.
+- [x] (client) Split `App.tsx` (1.8k-line class component) into hooks: `useRoom` composing `useRoomSocket`, `usePlayer`, `useConvert`, `useShare` (screen + file share), `useChat`, `usePlaylist`, `useSubtitles`, plus presentational components (`RoomToolbar`, `PlayerArea`, `RoomSidebar`, `RoomMessages`). Pure logic in `components/App/logic/` with unit tests. See `src/components/App/README.md`.
+- [x] Code-split: hls/dash/mediabunny/AC3 and emoji-mart load only via dynamic `import()`. Main chunk 681 KB → 655 KB (gzip 218 → 199 KB).
+- [ ] (server) express/socket.io server deps (left to the server workstream).
 
 ### Phase 4: UI redesign
 
