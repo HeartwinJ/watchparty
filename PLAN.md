@@ -124,6 +124,8 @@ Fullscreen and subtitles are built _with_ the Phase 4 player rather than after i
 
 #### 6a. Fullscreen experience (requested)
 
+- [x] Done with the Phase 4 player (`src/components/App/player/`): container fullscreen, overlay controls, auto-hide controls + cursor, chat bubbles + `c` quick chat, keyboard, double-click, phone gestures and landscape lock.
+
 - Fullscreen the **player container** (video + overlay controls + optional chat overlay), not the bare `<video>`. The custom controls and chat then still work in fullscreen, and it behaves the same for YouTube and HTML5 sources.
 - Overlay controls: play/pause, seek bar with buffered ranges and hover time preview, volume, speed, subtitles menu (incl. offset), loop, PiP, exit fullscreen.
 - **Auto-hide** controls _and cursor_ (`cursor: none`) after ~2.5s without mouse movement. They reappear on mouse move, tap or key press, and stay visible while paused or hovering the controls.
@@ -132,6 +134,8 @@ Fullscreen and subtitles are built _with_ the Phase 4 player rather than after i
 - Mobile: tap toggles controls, double-tap left/right seeks, and the screen locks to landscape when entering fullscreen where the browser supports it.
 
 #### 6b. Subtitle offset (requested)
+
+- [x] Done: cue re-timing (`logic/subtitles.ts`), `CMD:subtitleOffset` → `REC:subtitleOffset`, `subtitle_offsets` table (keyed by a URL hash for now; TODO: IMDb id + episode once the room stores AIOStreams metadata), "Just me" override, size/background per device.
 
 - Shift all cues by ±N seconds (0.1s steps, `[`/`]` keys, plus a slider and a reset button in the subtitles menu). It's applied client-side by re-timing the `TextTrack` cues, so no re-download is needed.
 - **Synced across the room by default** (the offset is a property of the file, so everyone needs the same shift), stored in room state, with a local "override for me only" option.
@@ -172,7 +176,7 @@ What the configured manifest provides (probed 2026-11-26): `stream` only, for `m
 
 - [ ] **Next episode:** when an AIOStreams episode ends, offer "Next episode in 10s" (cancelable) for the whole room. It re-resolves streams for `s:e+1`, preferring the same `bingeGroup` so quality and source stay consistent. _Server done:_ `GET /addon/next/:type/:id` and `?bingeGroup=` on `/addon/streams`. The client is still to do.
 - [ ] **Auto subtitles for AIOStreams titles:** a Stremio subtitle addon (OpenSubtitles v3, keyless, by IMDb id/episode) fills the subtitle menu automatically, with the offset from 6b applied. _Server done:_ `GET /addon/subtitles/:type/:id` (kitsu ids are mapped to IMDb episodes; the SRT URLs allow CORS `*`). The client is still to do.
-- [ ] **Smoother sync:** fix drift under ~2s by briefly nudging `playbackRate` (0.95–1.05x) and hard-seek only beyond that. A sync indicator shows in the controls.
+- [x] **Smoother sync:** fix drift under ~2s by briefly nudging `playbackRate` (0.95–1.05x) and hard-seek only beyond that. A sync indicator shows in the controls. _Done:_ `nextDriftAction` in `logic/sync.ts` (proportional, hysteresis, seek cooldown, YouTube-supported rates only) and `SyncIndicator` (pill + per-person popover + "Resync me").
 - [ ] **Ready check:** optional room toggle. When anyone buffers or joins mid-play, the room auto-pauses until all viewers report enough buffer, then resumes.
 - [ ] **Continue watching / history:** per-room list of recent titles (AIOStreams metadata + poster) with resume position, stored in SQLite.
 - [x] **Nightly SQLite backup:** `sqlite3 .backup` via a tiny sidecar in the compose stack, keeping the last 7 copies in `./data/backups` (done in Phase 5).

@@ -52,12 +52,13 @@ async function uploadSubtitleFile(): Promise<string | undefined> {
 
 let openSubtitlesProbe: Promise<boolean> | undefined;
 /**
- * Whether the server has an OpenSubtitles key. `/downloadSubtitles` answers 503 opensubtitles_not_configured without
- * one, and 400 for file_id=0 otherwise, without calling OpenSubtitles. Checked once per page load.
+ * Whether the server has an OpenSubtitles key (the search routes answer 503 opensubtitles_not_configured without one).
+ * Checked once per page load; errors from an actual search still show as toasts from the modal.
  */
 function isOpenSubtitlesConfigured(): Promise<boolean> {
-  openSubtitlesProbe ??= apiFetch("/downloadSubtitles?file_id=0")
-    .then((r) => r.status !== 503)
+  openSubtitlesProbe ??= apiFetch("/searchSubtitles/status")
+    .then((r) => (r.ok ? r.json() : { configured: true }))
+    .then((j: { configured?: unknown }) => j.configured !== false)
     .catch(() => true);
   return openSubtitlesProbe;
 }
