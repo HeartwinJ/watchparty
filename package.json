@@ -22,6 +22,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@mantine/notifications": "^9.8.2",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^5.2.1",
