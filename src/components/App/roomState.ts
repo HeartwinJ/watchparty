@@ -1,5 +1,4 @@
 import type { AudioTrackInfo } from "../../utils/clientTranscode";
-import { isMobile } from "../../utils/utils";
 import type { Store } from "./hooks/useStore";
 
 /** Everything the room page renders. Hooks read/write it through a shared Store (see hooks/useStore.ts). */
@@ -22,6 +21,7 @@ export interface RoomState {
   /** Changes when the chat should scroll to the bottom (if the user is near it) */
   scrollTimestamp: number;
   unreadCount: number;
+  /** The visible sidebar tab ("chat" | "queue" | "people"), or "none" when the sidebar/sheet is hidden */
   currentTab: string;
   myName: string;
   // Local player state
@@ -43,14 +43,11 @@ export interface RoomState {
   errorMessage: string;
   successMessage: string;
   warningMessage: string;
-  // Layout
+  // Layout (sidebar collapse, picker and settings live in ui/RoomUi.tsx)
   fullScreen: boolean;
-  showChatColumn: boolean;
-  showPeopleColumn: boolean;
   isScreenShareModalOpen: boolean;
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
-  settingsModalOpen: boolean;
 }
 
 export type RoomStore = Store<RoomState>;
@@ -89,17 +86,8 @@ export function createInitialRoomState(): RoomState {
     successMessage: "",
     warningMessage: "",
     fullScreen: false,
-    showChatColumn: isMobile()
-      ? true
-      : Boolean(
-          Number(
-            window.localStorage.getItem("watchparty-showchatcolumn") ?? "1",
-          ),
-        ),
-    showPeopleColumn: false,
     isScreenShareModalOpen: false,
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
-    settingsModalOpen: false,
   };
 }

@@ -1,60 +1,255 @@
-.container {
-  display: flex;
-  flex-direction: column;
-  color: white;
-  /* background-image: linear-gradient(to bottom, #222222, #008cdd); */
+.page {
+  min-height: 100dvh;
+  background: var(--wp-bg);
+}
+
+.home {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--wp-sp-6) var(--wp-sp-5) 96px;
+}
+
+.home :focus-visible {
+  outline: 2px solid var(--wp-accent-text);
+  outline-offset: 2px;
 }
 
 .hero {
-  color: white;
-  width: 100%;
-  background-image: linear-gradient(to bottom, #222222, #006199);
-  border-bottom-left-radius: 0%;
-  border-bottom-right-radius: 50%;
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--wp-sp-5);
+  align-items: stretch;
 }
 
-.heroInner {
-  padding: 30px;
-  max-width: 1200px;
+.heroMain,
+.heroPaste {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--wp-sp-4);
+  min-width: 0;
+  padding: var(--wp-sp-6);
+  border-radius: var(--wp-r-xl);
+  border: 1px solid var(--wp-border);
+  background: var(--wp-surface-1);
+}
+
+.heroMain {
+  background:
+    radial-gradient(
+      80% 120% at 0% 0%,
+      color-mix(in srgb, var(--wp-accent) 28%, transparent),
+      transparent 60%
+    ),
+    var(--wp-surface-1);
+}
+
+.heroMain h1 {
+  margin: 0;
+  font-size: var(--wp-fs-3xl);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.heroMain p {
+  margin: 0;
+  color: var(--wp-text-2);
+  font-size: var(--wp-fs-lg);
+}
+
+.cta {
+  align-self: flex-start;
+}
+
+.heroPaste h2 {
+  margin: 0;
+  font-size: var(--wp-fs-lg);
+}
+
+.detect {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--wp-sp-2);
+  min-height: 22px;
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text-2);
 }
 
-@media only screen and (max-width: 600px) {
-  .heroInner {
-    flex-direction: column;
-  }
-}
-
-.heroText {
-  font-size: 32px;
-  line-height: 1.2em;
+.badge {
+  padding: 1px 8px;
+  border-radius: var(--wp-r-xs);
+  background: var(--wp-accent-soft);
+  color: var(--wp-accent-text);
+  font-size: var(--wp-fs-xs);
   font-weight: 600;
 }
 
-.subText {
-  color: lightgray;
-  font-size: 20px;
-  line-height: 1.5em;
-  margin-top: 8px;
-}
-
-.featureSection {
+.chips {
   display: flex;
-  max-width: 1200px;
-  justify-content: center;
-  margin: 0 auto;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--wp-fs-xs);
+  color: var(--wp-text-3);
 }
 
-.featureTitle {
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.chips button {
+  padding: 4px 10px;
+  border-radius: var(--wp-r-full);
+  border: 1px solid var(--wp-border);
+  background: none;
+  color: var(--wp-text-2);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--wp-dur-fast),
+    color var(--wp-dur-fast);
 }
 
-.featureText {
-  color: lightgray;
-  font-size: 14px;
+.chips button:hover {
+  border-color: var(--wp-border-strong);
+  color: var(--wp-text);
+}
+
+.secHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: var(--wp-sp-7) 0 var(--wp-sp-3);
+}
+
+.secHead h2 {
+  margin: 0;
+  font-size: var(--wp-fs-xl);
+}
+
+.secHead span {
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text-3);
+}
+
+.rooms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--wp-border);
+  border-radius: var(--wp-r-lg);
+  overflow: hidden;
+  background: var(--wp-surface-1);
+}
+
+.rooms li + li {
+  border-top: 1px solid var(--wp-border);
+}
+
+.roomRow {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-sp-4);
+  padding: var(--wp-sp-3) var(--wp-sp-4);
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--wp-dur-fast);
+}
+
+.roomRow:hover {
+  background: var(--wp-surface-2);
+}
+
+.roomRow:focus-visible {
+  outline-offset: -2px;
+}
+
+.still {
+  flex: none;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--wp-r-sm);
+  border: 1px solid var(--wp-border);
+  background:
+    radial-gradient(
+      30% 40% at 70% 40%,
+      rgba(255, 255, 255, 0.22),
+      transparent 70%
+    ),
+    linear-gradient(135deg, var(--g, var(--wp-avatar-1)), var(--wp-surface-3));
+}
+
+.roomInfo {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.roomName {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomSub {
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.when {
+  flex: none;
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text-3);
+}
+
+.open {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--wp-r-md);
+  border: 1px solid var(--wp-border);
+  color: var(--wp-accent-text);
+  font-size: var(--wp-fs-sm);
+  font-weight: 600;
+}
+
+.emptyRooms {
+  padding: var(--wp-sp-5);
+  border: 1px dashed var(--wp-border-strong);
+  border-radius: var(--wp-r-lg);
+  color: var(--wp-text-2);
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .home {
+    padding: var(--wp-sp-4) var(--wp-sp-4) 96px;
+  }
+  .heroMain,
+  .heroPaste {
+    padding: var(--wp-sp-5);
+  }
+  .heroMain h1 {
+    font-size: var(--wp-fs-2xl);
+  }
+  .still {
+    width: 72px;
+  }
+  .openLabel,
+  .when {
+    display: none;
+  }
+  .open {
+    padding: 0 6px;
+  }
 }

@@ -18,6 +18,10 @@ export interface RoomUi {
   /** Chat bubbles over the video when the sidebar is collapsed or in fullscreen */
   chatOverlayEnabled: boolean;
   setChatOverlayEnabled: (enabled: boolean) => void;
+  /** Room settings modal (opened from the top bar's overflow menu or the room name) */
+  settingsOpen: boolean;
+  openSettings: () => void;
+  closeSettings: () => void;
 }
 
 const RoomUiContext = createContext<RoomUi | null>(null);
@@ -41,6 +45,7 @@ function writeBool(key: string, value: boolean) {
 
 export function RoomUiProvider({ children }: { children: React.ReactNode }) {
   const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [sidebarCollapsed, setCollapsed] = React.useState(() =>
     readBool("wp-sidebar-collapsed", false),
   );
@@ -64,6 +69,8 @@ export function RoomUiProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const openPicker = useCallback(() => setPickerOpen(true), []);
   const closePicker = useCallback(() => setPickerOpen(false), []);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   const value = useMemo<RoomUi>(
     () => ({
@@ -75,6 +82,9 @@ export function RoomUiProvider({ children }: { children: React.ReactNode }) {
       toggleSidebar,
       chatOverlayEnabled,
       setChatOverlayEnabled,
+      settingsOpen,
+      openSettings,
+      closeSettings,
     }),
     [
       pickerOpen,
@@ -85,6 +95,9 @@ export function RoomUiProvider({ children }: { children: React.ReactNode }) {
       toggleSidebar,
       chatOverlayEnabled,
       setChatOverlayEnabled,
+      settingsOpen,
+      openSettings,
+      closeSettings,
     ],
   );
   return (

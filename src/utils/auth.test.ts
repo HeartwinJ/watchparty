@@ -5,6 +5,8 @@ import {
   fetchSession,
   initialAuthState,
   login,
+  loginWithDetails,
+  DEFAULT_RETRY_AFTER_SEC,
   logout,
   type AuthState,
 } from "./auth";
@@ -95,6 +97,18 @@ describe("login", () => {
     await login("wrong");
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
+  });
+
+  it("reads the retry wait from a 429", async () => {
+    mockFetch(429, { error: "rate_limited", retryAfter: 42 });
+    expect(await loginWithDetails("x")).toEqual({
+      result: "rate_limited",
+      retryAfterSec: 42,
+    });
+    mockFetch(429, { error: "rate_limited" });
+    expect((await loginWithDetails("x")).retryAfterSec).toBe(
+      DEFAULT_RETRY_AFTER_SEC,
+    );
   });
 
   it("returns error when the server is unreachable", async () => {

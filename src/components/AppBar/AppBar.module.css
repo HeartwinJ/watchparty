@@ -1,0 +1,19 @@
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--wp-z-topbar);
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--wp-sp-5);
+  background: var(--wp-surface-1);
+  border-bottom: 1px solid var(--wp-border);
+}
+
+@media (max-width: 768px) {
+  .appbar {
+    height: 56px;
+    padding: 0 var(--wp-sp-4);
+  }
+}

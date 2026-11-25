@@ -1,131 +1,239 @@
+.chat {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat :focus-visible {
+  outline: 2px solid var(--wp-accent-text);
+  outline-offset: 2px;
+}
+
 .chatContainer {
-  flex-grow: 1;
-  overflow: auto;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--wp-border-strong) transparent;
 }
 
-.light {
-  color: gainsboro;
-  font-size: 14px;
+.chatList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--wp-sp-3) var(--wp-sp-3) var(--wp-sp-2);
 }
 
-.light.emoji {
-  font-size: 24px;
+.emptyChat {
+  padding: var(--wp-sp-6) var(--wp-sp-4);
+  text-align: center;
+  color: var(--wp-text-3);
+  font-size: var(--wp-fs-sm);
 }
 
-.dark {
-  color: gray;
-}
+/* ---------- Messages ---------- */
 
-.small {
-  font-size: 12px;
-}
-
-.system {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-.comment .commentMenu {
-  display: none;
-  justify-content: center;
-  position: absolute;
-  right: 5px;
-  top: -13px;
-  padding: 4px !important;
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.comment .commentMenu:hover,
-.comment.selected .commentMenu {
-  background: rgb(46, 137, 212);
-  transition: background 0.2s ease-in-out;
+.comment {
+  position: relative;
+  display: flex;
+  gap: var(--wp-sp-3);
+  padding: 6px;
+  border-radius: var(--wp-r-md);
+  overflow-wrap: anywhere;
+  animation: fadeUp var(--wp-dur-base) var(--wp-ease);
 }
 
 .comment:hover,
 .comment.selected {
-  border-radius: 5px;
-  background: radial-gradient(
-    at top right,
-    #7eaee02a,
-    transparent 70%
-  ) !important;
+  background: var(--wp-surface-2);
+}
+
+.cont {
+  padding-top: 0;
+}
+
+.avatarSpacer {
+  width: 28px;
+  flex: none;
+}
+
+.body {
+  min-width: 0;
+  flex: 1;
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.who {
+  font-weight: 600;
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text);
+}
+
+.when {
+  font-size: 11px;
+  color: var(--wp-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.txt {
+  font-size: var(--wp-fs-md);
+  line-height: 1.45;
+  color: var(--wp-text);
+}
+
+.txt a {
+  color: var(--wp-accent-text);
+}
+
+.txt.emoji {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.image {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  margin-top: 4px;
+  border-radius: var(--wp-r-sm);
+}
+
+/* System events (changed the video, paused, ...) */
+.sys {
+  align-items: flex-start;
+  gap: var(--wp-sp-2);
+  padding: 6px 8px;
+  font-size: var(--wp-fs-xs);
+  color: var(--wp-text-3);
+}
+
+.sysIcon {
+  display: grid;
+  flex: none;
+  margin-top: 1px;
+}
+
+.sysBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.sysBody b {
+  color: var(--wp-text-2);
+  font-weight: 600;
+}
+
+/* Reply / react buttons, shown on hover or focus */
+.commentMenu {
+  position: absolute;
+  top: -12px;
+  right: 6px;
+  display: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--wp-r-sm);
+  background: var(--wp-surface-2);
+  border: 1px solid var(--wp-border);
+  box-shadow: var(--wp-sh-1);
+  z-index: 1;
 }
 
 .comment:hover .commentMenu,
+.comment:focus-within .commentMenu,
 .comment.selected .commentMenu {
   display: flex;
 }
 
+@media (hover: none) {
+  .commentMenu {
+    position: static;
+    display: flex;
+    align-self: flex-start;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    opacity: 0.7;
+  }
+}
+
 .replyMessage {
-  background: radial-gradient(
-    at top right,
-    rgba(255, 176, 96, 0.22),
-    transparent 70%
-  );
+  box-shadow: inset 2px 0 0 var(--wp-accent);
+  background: var(--wp-accent-soft);
 }
 
 .replyInfo {
-  color: rgba(180, 200, 220, 0.95);
-  font-size: 12px;
+  color: var(--wp-text-3);
+  font-size: var(--wp-fs-xs);
   margin-bottom: 2px;
 }
 
-.replyTooltip {
-  background: rgba(20, 28, 36, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: rgba(240, 248, 255, 0.94);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  max-width: 360px;
+.replyTooltip,
+.tooltip {
+  max-width: 320px;
   padding: 6px 8px;
-  font-size: 12px;
-  line-height: 1.2;
+  font-size: var(--wp-fs-xs);
+  line-height: 1.3;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   pointer-events: none;
 }
 
-.reactionMenuContainer {
+/* ---------- Reactions ---------- */
+
+.reactions {
   display: flex;
-  flex-wrap: nowrap;
-  border-radius: 5px;
-  position: fixed;
-  font-size: 24px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.91);
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.reactionMenuContainer div {
-  line-height: 30px;
-  padding: 5px;
-}
-
-.reactionMenuContainer div:hover {
-  background-color: rgb(46, 137, 212);
-  transition: background-color 0.2s ease-in-out;
+.reactions:not(:empty) {
+  margin-top: 4px;
 }
 
 .reactionContainer {
   display: inline-flex;
   align-items: center;
-  padding: 3px;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.16);
-  margin-right: 3px;
-  margin-top: 1px;
-  min-width: 39px;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--wp-r-full);
+  border: 1px solid var(--wp-border);
+  background: var(--wp-surface-2);
+  color: var(--wp-text-2);
+  font: inherit;
+  font-size: var(--wp-fs-xs);
   cursor: pointer;
-}
-
-.reactionContainer.highlighted {
-  background: rgb(66, 111, 129);
+  transition:
+    background var(--wp-dur-fast),
+    border-color var(--wp-dur-fast);
 }
 
 .reactionContainer:hover {
-  background-color: rgb(46, 137, 212);
-  transition: background-color 0.2s ease-in-out;
+  border-color: var(--wp-border-strong);
+  background: var(--wp-surface-3);
+}
+
+.reactionContainer.highlighted {
+  border-color: color-mix(in srgb, var(--wp-accent) 55%, transparent);
+  background: var(--wp-accent-soft);
+  color: var(--wp-text);
+}
+
+.reactionEmoji {
+  font-size: 14px;
+}
+
+.reactionCounter {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
 }
 
 .reaction-enter {
@@ -133,19 +241,19 @@
 }
 .reaction-enter-active {
   transform: scale(1);
-  transition: all 200ms ease-in !important;
+  transition: transform 200ms var(--wp-ease) !important;
 }
 .reaction-exit {
   transform: scale(1);
 }
 .reaction-exit-active {
   transform: scale(0);
-  transition: all 200ms ease-in !important;
+  transition: transform 200ms var(--wp-ease) !important;
 }
 
 .reactionCounter-enter {
   transform: scale(0);
-  color: rgb(255, 136, 0) !important;
+  color: var(--wp-accent-text) !important;
 }
 .reactionCounter-enter-active {
   transform: scale(1);
@@ -153,48 +261,122 @@
 }
 .reactionCounter-exit {
   transform: scale(1);
-  color: rgb(255, 136, 0) !important;
+  color: var(--wp-accent-text) !important;
 }
 .reactionCounter-exit-active {
   transform: scale(0);
   transition: all 200ms ease-in !important;
 }
 
+.reactionPicker {
+  position: fixed;
+  z-index: var(--wp-z-modal);
+}
+
 .reactionMenu-enter {
-  transform: scale(0);
+  transform: scale(0.96);
+  opacity: 0;
 }
 .reactionMenu-enter-active {
   transform: scale(1);
-  transition: all 100ms ease-out !important;
+  opacity: 1;
+  transition: all var(--wp-dur-base) var(--wp-ease) !important;
 }
 .reactionMenu-exit {
-  transform: scale(1);
+  opacity: 1;
 }
 .reactionMenu-exit-active {
-  transform: scale(0);
-  transition: all 100ms ease-out !important;
+  opacity: 0;
+  transition: opacity var(--wp-dur-fast) !important;
 }
 
-@keyframes replyComposerIn {
-  0% {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  70% {
-    opacity: 1;
-    transform: translateY(-2px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ---------- Composer ---------- */
+
+.jump {
+  position: sticky;
+  bottom: var(--wp-sp-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 auto;
+  padding: 4px 12px;
+  border-radius: var(--wp-r-full);
+  border: 1px solid var(--wp-border-strong);
+  background: var(--wp-surface-2);
+  color: var(--wp-text);
+  font: inherit;
+  font-size: var(--wp-fs-xs);
+  font-weight: 600;
+  box-shadow: var(--wp-sh-2);
+  cursor: pointer;
+}
+
+.picker {
+  position: absolute;
+  right: var(--wp-sp-3);
+  bottom: 72px;
+  z-index: var(--wp-z-popover);
+  max-width: calc(100% - 24px);
+}
+
+.composer {
+  flex: none;
+  padding: var(--wp-sp-3);
+  padding-bottom: max(var(--wp-sp-3), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--wp-border);
+}
+
+.input {
+  height: 42px;
+  background: var(--wp-surface-2);
+  border-color: var(--wp-border);
+}
+
+.inputActions {
+  display: flex;
+  gap: 2px;
+  padding-right: 4px;
 }
 
 .replyComposer {
-  animation: replyComposerIn 220ms cubic-bezier(0.22, 0.8, 0.25, 1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wp-sp-2);
+  margin-bottom: var(--wp-sp-2);
+  padding: 6px 6px 6px 10px;
+  border-left: 2px solid var(--wp-accent);
+  border-radius: var(--wp-r-sm);
+  background: var(--wp-surface-2);
+  animation: fadeUp var(--wp-dur-base) var(--wp-ease);
+}
+
+.replyComposerText {
+  min-width: 0;
+  font-size: var(--wp-fs-xs);
+  color: var(--wp-text-2);
+}
+
+.replyComposerMsg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--wp-text-3);
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .comment,
   .replyComposer {
     animation: none;
   }
