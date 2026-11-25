@@ -1,0 +1,124 @@
+/*
+ * Design tokens for the redesign (dark-only). Source of truth: PLAN.md Phase 4 decisions.
+ * Use these variables in CSS modules instead of hard-coded colours/sizes.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --wp-bg: #0b0c0f;
+  --wp-stage: #000000;
+  --wp-surface-1: #121419;
+  --wp-surface-2: #191c22;
+  --wp-surface-3: #22252d;
+  --wp-border: #262a33;
+  --wp-border-strong: #363b47;
+
+  /* Text */
+  --wp-text: #eceef2;
+  --wp-text-2: #a9aeba;
+  --wp-text-3: #8a909c;
+
+  /* Accent: copper */
+  --wp-accent: #c66b3d;
+  --wp-accent-hover: #d5804f;
+  --wp-accent-text: #e39a70;
+  --wp-accent-soft: rgba(198, 107, 61, 0.16);
+  --wp-on-accent: #1b0f08;
+
+  /* Status (deliberately away from copper's hue) */
+  --wp-success: #3dd68c;
+  --wp-success-soft: rgba(61, 214, 140, 0.14);
+  --wp-warning: #e8cf4a;
+  --wp-warning-soft: rgba(232, 207, 74, 0.14);
+  --wp-danger: #ff5c7a;
+  --wp-danger-soft: rgba(255, 92, 122, 0.12);
+
+  /* Overlays */
+  --wp-scrim: rgba(0, 0, 0, 0.62);
+  --wp-glass: rgba(16, 17, 22, 0.78);
+  --wp-glass-blur: blur(12px);
+  --wp-video-scrim: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.78) 0%,
+    rgba(0, 0, 0, 0.35) 55%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  --wp-on-video: #ffffff;
+  --wp-on-video-2: rgba(255, 255, 255, 0.72);
+
+  /* Avatar palette (never copper/yellow/rose hues) */
+  --wp-avatar-1: #3a7bd5;
+  --wp-avatar-2: #8b6cf0;
+  --wp-avatar-3: #1f8a7d;
+  --wp-avatar-4: #2f9fbf;
+
+  /* Typography */
+  --wp-font:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --wp-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --wp-fs-xs: 12px;
+  --wp-fs-sm: 13px;
+  --wp-fs-md: 14px;
+  --wp-fs-lg: 16px;
+  --wp-fs-xl: 20px;
+  --wp-fs-2xl: 28px;
+  --wp-fs-3xl: 40px;
+
+  /* Spacing (4px base) */
+  --wp-sp-1: 4px;
+  --wp-sp-2: 8px;
+  --wp-sp-3: 12px;
+  --wp-sp-4: 16px;
+  --wp-sp-5: 24px;
+  --wp-sp-6: 32px;
+  --wp-sp-7: 48px;
+
+  /* Radii */
+  --wp-r-xs: 4px;
+  --wp-r-sm: 6px;
+  --wp-r-md: 10px;
+  --wp-r-lg: 14px;
+  --wp-r-xl: 20px;
+  --wp-r-full: 999px;
+
+  /* Shadows */
+  --wp-sh-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --wp-sh-2: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --wp-sh-3: 0 24px 64px rgba(0, 0, 0, 0.6);
+
+  /* Layout */
+  --wp-topbar-h: 52px;
+  --wp-sidebar-w: 360px;
+  --wp-sidebar-min: 280px;
+  --wp-sidebar-max: 560px;
+  --wp-control-h: 36px;
+  --wp-player-btn: 40px;
+
+  /* Z-layers */
+  --wp-z-video: 0;
+  --wp-z-controls: 10;
+  --wp-z-chat-overlay: 20;
+  --wp-z-sidebar: 30;
+  --wp-z-topbar: 40;
+  --wp-z-popover: 200;
+  --wp-z-sheet: 300;
+  --wp-z-modal: 400;
+  --wp-z-toast: 500;
+  --wp-z-tooltip: 600;
+
+  /* Motion */
+  --wp-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --wp-dur-fast: 120ms;
+  --wp-dur-base: 180ms;
+  --wp-dur-slow: 280ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --wp-dur-fast: 0ms;
+    --wp-dur-base: 0ms;
+    --wp-dur-slow: 0ms;
+  }
+}

@@ -1,4 +1,5 @@
 import "@mantine/core/styles.css";
+import "./theme/tokens.css";
 import "./index.css";
 
 import React from "react";
@@ -7,25 +8,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./components/App/App";
 import { Home } from "./components/Home/Home";
 import { TopBar } from "./components/TopBar/TopBar";
-import { softWhite } from "./utils/utils";
+import { cssVariablesResolver, theme } from "./theme/theme";
 import { Create } from "./components/Create/Create";
 import { AuthGate } from "./components/AuthGate/AuthGate";
-import {
-  Anchor,
-  createTheme,
-  MantineProvider,
-  Stack,
-  Title,
-  v8CssVariablesResolver,
-} from "@mantine/core";
+import { Anchor, MantineProvider, Stack, Title } from "@mantine/core";
 import { useRoute } from "./router";
-
-const theme = createTheme({
-  /** Your theme override here */
-  white: softWhite,
-  // Keep the Mantine 8 look until the Phase 4 redesign (9.0 changed the default radius to md)
-  defaultRadius: "sm",
-});
 
 // Redirect old-style URLs
 if (window.location.hash && window.location.pathname === "/") {
@@ -65,8 +52,7 @@ const WatchParty = () => {
     <MantineProvider
       theme={theme}
       forceColorScheme="dark"
-      // Mantine 9 made the light variant opaque; keep the 8.x colors until the redesign
-      cssVariablesResolver={v8CssVariablesResolver}
+      cssVariablesResolver={cssVariablesResolver}
     >
       <AuthGate>
         <Routes />
