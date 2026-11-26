@@ -16,6 +16,7 @@ import {
 import {
   createDebouncedSearch,
   isAddonsConfigured,
+  probeAddonsStatus,
   onAddonsConfiguredChange,
   searchTitles,
   searchYouTube,
@@ -64,7 +65,12 @@ export function EnterHint() {
 
 export function useAddonsConfigured() {
   const [configured, setConfigured] = useState(isAddonsConfigured);
-  useEffect(() => onAddonsConfiguredChange(setConfigured), []);
+  useEffect(() => {
+    const off = onAddonsConfiguredChange(setConfigured);
+    // Search/meta work without AIOStreams, so ask the server whether streams do (once per page load)
+    probeAddonsStatus().then(setConfigured);
+    return off;
+  }, []);
   return configured;
 }
 

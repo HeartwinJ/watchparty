@@ -10,6 +10,7 @@ import { navigate } from "../../router";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
 import { SubtitleModal } from "../Modal/SubtitleModal";
+import { SubtitleSearch } from "./subtitleSearch/SubtitleSearch";
 import type { Room } from "./hooks/useRoom";
 import { toast } from "./ui/toast";
 import styles from "./shell/Shell.module.css";
@@ -57,6 +58,14 @@ export const RoomMessages = ({ room }: { room: Room }) => {
           getSubtitleMode={room.player.current().getSubtitleMode}
         />
       )}
+      <SubtitleSearch
+        opened={state.isSubtitleSearchOpen}
+        onClose={() => store.set({ isSubtitleSearchOpen: false })}
+        mediaUrl={state.roomMedia}
+        videoMeta={state.videoMeta}
+        setRoomSubtitle={room.cmd.setSubtitle}
+        openFileNameSearch={room.subtitles.openModal}
+      />
       {state.warningMessage && !state.overlayMsg && (
         <div className={styles.banner} role="status">
           <IconWifiOff size={16} aria-hidden="true" />

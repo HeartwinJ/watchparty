@@ -67,10 +67,16 @@ export function useSubtitles(opts: {
           player.current().syncSubtitles(tsMap[sharer.id]);
         }
       },
-      /** Opens the OpenSubtitles search / URL modal (native player only) */
+      /** Opens the OpenSubtitles API (file name) search / URL modal (native player only) */
       openModal: () => {
         if (player.usingNative()) {
-          store.set({ isSubtitleModalOpen: true });
+          store.set({ isSubtitleModalOpen: true, isSubtitleSearchOpen: false });
+        }
+      },
+      /** Opens "Search subtitles…" (keyless title search; not for YouTube) */
+      openSearch: () => {
+        if (!player.usingYoutube()) {
+          store.set({ isSubtitleSearchOpen: true });
         }
       },
       getOffset,

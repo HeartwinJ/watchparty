@@ -77,6 +77,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `socketEvents.ts`                         | Typed socket events and `createRoomCommands`                                                           |
 | `Player.ts`, `HTML.ts`, `YouTube.ts`      | Player implementations (HTML.ts: subtitle track selection + cue re-timing)                             |
 | `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks               |
+| `subtitleSearch/`                         | "Search subtitles…" modal, title/episode guessing from file names, sharing a found subtitle            |
 | `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes                         |
 | `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat)                              |
 | `logic/gestures.ts`                       | Tap zones (40/20/40) and `TapDetector` (single vs double tap/click)                                    |
@@ -132,7 +133,8 @@ videoMeta})` ("Pick another"), `pickerTarget`, `pickerMode`.
 - Keyboard model (`options.tsx`): each row registers with `useOption(id, {primary, secondary})`, the input keeps
   focus with `aria-activedescendant`, ↑/↓ follow DOM order, Enter = primary, Shift+Enter = secondary.
 - `api/addons.ts` is the typed `/addon/*` + `/youtube` client (AbortSignal everywhere, `createDebouncedSearch`
-  250 ms, 503 `aiostreams_not_configured` hides Movies & Shows for the session). `useLoad.ts` caches results 5 min.
+  250 ms; `GET /addon/status` `{streams: false}` or a 503 `aiostreams_not_configured` hides Movies & Shows for the
+  session, since title search itself works without AIOStreams). `useLoad.ts` caches results 5 min.
 - **Playing a stream** hosts `withDisplayName(stream.url, "Title · S02E04")` (`logic/media.ts`: the name rides in
   the URL fragment, so `getMediaDisplayName`/`shortMediaTitle` show it and never the credential-bearing URL) and sends
   `cmd.setVideoMeta(url, meta)`. Queue items carry `{name, img, meta}` and restore the meta when played. Recent
@@ -187,6 +189,14 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   `subtitleOffset`, chat line after 1.5 s idle); "Just me" is `state.localSubtitleOffset`. Agent C's auto subtitles go
   in `state.subtitleTracks` (`SubtitleTrackOption[]`, shown first with an Auto badge; picking one sets the room
   subtitle). The converter's audio tracks show in the same menu.
+- **Search subtitles** (`subtitleSearch/`): the menu's "Search subtitles…" (non-YouTube) calls
+  `room.subtitles.openSearch()` (`state.isSubtitleSearchOpen`; `SubtitleSearch` is mounted in `RoomMessages`). It's a
+  Mantine modal (bottom sheet on phones, dark glass): search (pre-filled by `guessSubtitleSearch()` in
+  `guessTitle.ts` from `videoMeta`, the `#wp-name=` name or the file name) → series season/episode (guessed one
+  pre-selected) → subtitles grouped by language. AIOStreams picks open straight on their episode's subtitles (Back
+  searches the title). Picking one goes through `shareSubtitleFromUrl` (`shareSubtitle.ts`: download, `POST /subtitle`)
+  and `cmd.setSubtitle`, with a toast either way. "Search by file name (OpenSubtitles API)" opens the old
+  `SubtitleModal` (`subtitles.openModal()`), only when the server has `OPENSUBTITLES_KEY`.
 - **Sync (6d):** `usePlayer.onTsMap` runs `nextDriftAction` on every `REC:tsMap`: drift under 2 s nudges the playback
   rate proportionally (0.95–1.05× the room speed, start at 0.3 s, stop under 0.1 s), more seeks (3 s cooldown).
   YouTube only uses rates from `getAvailablePlaybackRates()` and otherwise seeks from 1 s. `state.syncStatus` is

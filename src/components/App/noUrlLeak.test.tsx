@@ -1,6 +1,13 @@
 // The room page must never show an AIOStreams playback URL (it carries a debrid credential): the top bar, now-playing
 // strip, player title, chat and queue all use the readable name the picker attaches to the URL.
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withDisplayName } from "./logic/media";
@@ -176,6 +183,16 @@ describe("room page", () => {
     const seen = visibleStrings(document.body);
     expect(seen).not.toContain(SECRET_HOST);
     expect(seen).not.toContain("eyFAKEBLOB");
+    // "Search subtitles…" starts from the title/episode, never the URL
+    fireEvent.click(
+      screen.getByRole("button", { name: "Subtitles and audio" }),
+    );
+    fireEvent.click(await screen.findByText("Search subtitles…"));
+    await screen.findByText("No subtitles found for this episode.");
+    expect(document.body.textContent).toContain(NAME);
+    const seenInSearch = visibleStrings(document.body);
+    expect(seenInSearch).not.toContain(SECRET_HOST);
+    expect(seenInSearch).not.toContain("eyFAKEBLOB");
     // The <video> element does get the real URL, of course
     expect(
       (document.getElementById("leftVideo") as HTMLVideoElement | null)?.src ??

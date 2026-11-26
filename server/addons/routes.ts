@@ -1,6 +1,9 @@
 /**
  * /addon/* routes: title search, metadata, AIOStreams streams, subtitles and
- * next episode. All behind the instance password (requireAuth).
+ * next episode. All behind requireAuth (server.ts passes requireMember).
+ * Only /addon/streams needs AIOStreams; search, meta, subtitles and next episode
+ * use the keyless public addons (Cinemeta, Kitsu, OpenSubtitles v3) and work
+ * without AIOSTREAMS_MANIFEST_URL. /addon/status tells the client which is which.
  */
 import express, { type RequestHandler, type Response } from "express";
 import { createAioStreams } from "./aiostreams.ts";
@@ -16,7 +19,7 @@ import { rankStreams } from "./streamParser.ts";
 import { createSubtitles, parseLangList } from "./subtitles.ts";
 
 export type AddonRouterOptions = {
-  /** AIOSTREAMS_MANIFEST_URL. Every route answers 503 while it's empty. */
+  /** AIOSTREAMS_MANIFEST_URL. /addon/streams answers 503 while it's empty; the keyless routes still work. */
   manifestUrl: string;
   /** SUBTITLE_LANGS, e.g. "en,es" */
   subtitleLangs: string;
@@ -83,12 +86,21 @@ export function createAddonRouter(
   const router = express.Router();
   const { configured, log, catalog, subtitles, aio } = services;
 
-  router.use("/addon", opts.requireAuth, (_req, res, next) => {
-    if (!configured) {
+  router.use("/addon", opts.requireAuth);
+
+  /** For routes that need AIOStreams (streams) */
+  const requireAio: RequestHandler = (_req, res, next) => {
+    if (!configured || !aio) {
       res.status(503).json({ error: "aiostreams_not_configured" });
       return;
     }
     next();
+  };
+
+  // What works on this server: the picker hides Movies & Shows without streams
+  router.get("/addon/status", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ streams: configured });
   });
 
   const fail = (res: Response, route: string, e: unknown) => {
@@ -143,24 +155,29 @@ export function createAddonRouter(
     }
   });
 
-  router.get("/addon/streams/:type/:id", validParams, async (req, res) => {
-    const { type, id } = req.params as {
-      type: "movie" | "series" | "anime";
-      id: string;
-    };
-    const bingeGroup =
-      typeof req.query.bingeGroup === "string"
-        ? req.query.bingeGroup.slice(0, BINGE_GROUP_MAX)
-        : undefined;
-    try {
-      const raw = await aio!.rawStreams(type, id);
-      // Playback URLs are per-stream links, but still don't let proxies cache them
-      res.setHeader("Cache-Control", "no-store");
-      res.json(rankStreams(raw, { bingeGroup }));
-    } catch (e) {
-      fail(res, "streams", e);
-    }
-  });
+  router.get(
+    "/addon/streams/:type/:id",
+    requireAio,
+    validParams,
+    async (req, res) => {
+      const { type, id } = req.params as {
+        type: "movie" | "series" | "anime";
+        id: string;
+      };
+      const bingeGroup =
+        typeof req.query.bingeGroup === "string"
+          ? req.query.bingeGroup.slice(0, BINGE_GROUP_MAX)
+          : undefined;
+      try {
+        const raw = await aio!.rawStreams(type, id);
+        // Playback URLs are per-stream links, but still don't let proxies cache them
+        res.setHeader("Cache-Control", "no-store");
+        res.json(rankStreams(raw, { bingeGroup }));
+      } catch (e) {
+        fail(res, "streams", e);
+      }
+    },
+  );
 
   router.get("/addon/subtitles/:type/:id", validParams, async (req, res) => {
     try {

@@ -22,7 +22,8 @@ const defaults = {
   YOUTUBE_API_KEY: "", // Optional, provide one to enable searching YouTube
   OPENSUBTITLES_KEY: "", // Optional, API key of an OpenSubtitles.com API consumer (profile -> API Consumers)
   OPENSUBTITLES_USER_AGENT: "watchparty v1", // Sent as User-Agent to OpenSubtitles; use your API consumer's app name + version
-  // Optional, AIOStreams manifest URL (https://host/stremio/<uuid>/<config>/manifest.json). Enables /addon/*.
+  // Optional, AIOStreams manifest URL (https://host/stremio/<uuid>/<config>/manifest.json). Enables /addon/streams
+  // (the other /addon/* routes use keyless public addons and work without it).
   // SECRET: it embeds the AIOStreams config and debrid credentials. Server-side only, never log/return/commit it.
   AIOSTREAMS_MANIFEST_URL: "",
   // Rooms nobody has been in for this many days are deleted (room + its watch history), checked at startup and daily.

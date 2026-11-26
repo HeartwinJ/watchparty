@@ -313,7 +313,8 @@ app.get("/youtubePlaylist/:playlistId", requireMember, async (req, res) => {
   }
 });
 
-// AIOStreams search/streams/subtitles (/addon/*). 503 when AIOSTREAMS_MANIFEST_URL is unset.
+// Title search/meta/subtitles/next episode (/addon/*, keyless public addons) and AIOStreams streams
+// (/addon/streams, 503 when AIOSTREAMS_MANIFEST_URL is unset).
 const addonServices = createAddonServices({
   manifestUrl: config.AIOSTREAMS_MANIFEST_URL,
   subtitleLangs: config.SUBTITLE_LANGS,

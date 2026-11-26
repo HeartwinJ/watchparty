@@ -156,8 +156,10 @@ export const isAbortError = (e: unknown) =>
     : (e as Error)?.name === "AbortError";
 
 /**
- * Whether the server has AIOStreams configured. Starts optimistic; the first 503 `aiostreams_not_configured`
- * flips it so the picker can hide the Movies & Shows section for the rest of the session.
+ * Whether the server has AIOStreams configured (streams for Movies & Shows). Starts optimistic; `probeAddonsStatus()`
+ * (GET /addon/status, once per page load) or the first 503 `aiostreams_not_configured` flips it so the picker can
+ * hide the Movies & Shows section for the rest of the session. Title search, meta and subtitles work either way
+ * (the subtitle search uses them).
  */
 let addonsConfigured = true;
 const configuredListeners = new Set<(configured: boolean) => void>();
@@ -173,9 +175,27 @@ export function onAddonsConfiguredChange(fn: (configured: boolean) => void) {
   };
 }
 
+let statusProbe: Promise<boolean> | undefined;
+
+/** Asks the server once whether streams are available; failures leave the optimistic value. */
+export function probeAddonsStatus(): Promise<boolean> {
+  statusProbe ??= getJson<{ streams?: unknown }>("/addon/status")
+    .then((s) => {
+      const configured = s?.streams !== false;
+      setConfigured(configured);
+      return configured;
+    })
+    .catch(() => {
+      statusProbe = undefined;
+      return addonsConfigured;
+    });
+  return statusProbe;
+}
+
 /** Test helper */
 export function resetAddonsConfigured() {
   addonsConfigured = true;
+  statusProbe = undefined;
 }
 
 function setConfigured(configured: boolean) {
