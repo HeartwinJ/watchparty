@@ -9,7 +9,11 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { Server } from "socket.io";
-import { searchYoutube, youtubePlaylist } from "./utils/youtube.ts";
+import {
+  parseYoutubeQuery,
+  searchYoutube,
+  youtubePlaylist,
+} from "./utils/youtube.ts";
 import { Room } from "./room.ts";
 import {
   getRoom,
@@ -290,16 +294,16 @@ app.get("/searchSubtitles", requireMember, async (req, res) => {
 });
 
 app.get("/youtube", requireMember, async (req, res) => {
-  if (typeof req.query.q === "string") {
-    try {
-      const items = await searchYoutube(req.query.q);
-      res.json(items);
-    } catch (e: any) {
-      console.warn("[youtube]", e?.message);
-      res.status(500).json({ error: "youtube error" });
-    }
-  } else {
-    res.status(500).json({ error: "query must be a string" });
+  const q = parseYoutubeQuery(req.query.q);
+  if (q === undefined) {
+    res.status(400).json({ error: "invalid_params" });
+    return;
+  }
+  try {
+    res.json(await searchYoutube(q));
+  } catch (e: any) {
+    console.warn("[youtube]", e?.message);
+    res.status(500).json({ error: "youtube error" });
   }
 });
 

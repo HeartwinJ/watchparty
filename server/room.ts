@@ -43,6 +43,7 @@ import { nowPlayingChatLine, type NowPlayingVia } from "./nowPlaying.ts";
 import {
   parseSubtitleSyncCommand,
   SubtitleAutoSync,
+  type SubtitleSyncEnd,
 } from "./subtitleAutoSync.ts";
 import {
   CALL_LIMITS,
@@ -234,6 +235,8 @@ export class Room {
         this.history.tick(this.historySnapshot());
       }
       this.applyReadyCheck(this.readyCheck.tick(Date.now(), memberIds));
+      // Auto-sync claims that never sent a result: announce the end so "X is syncing…" clears everywhere
+      this.announceSubtitleSyncEnds(this.subtitleSync.expireStale(Date.now()));
     }, 1000);
 
     // clientId identifies a user within rooms (chat, names, signaling). See claimClientId.
@@ -1409,6 +1412,27 @@ export class Room {
     });
   };
 
+  /**
+   * Tells everyone that running auto-sync jobs ended without a result (the claimer left, or 3 min passed):
+   * `released` (others try again) or, out of attempts, a final `done` with no offset. Clients clear "X is syncing…".
+   */
+  private announceSubtitleSyncEnds(ends: SubtitleSyncEnd[]) {
+    const video = this.subtitleSync.getVideo();
+    if (!video) {
+      return;
+    }
+    for (const { key, status } of ends) {
+      this.io
+        .of(this.roomId)
+        .emit(
+          "REC:subtitleSync",
+          status === "released"
+            ? { status, video, key }
+            : { status, video, key, offset: null },
+        );
+    }
+  }
+
   // --- Ready check (see readyCheck.ts) ---
 
   private isReadyCheckOn = () => this.roomSettings.readyCheck;
@@ -1614,14 +1638,7 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       this.applyReadyCheck(this.readyCheck.leave(clientId, Date.now()));
-      const video = this.subtitleSync.getVideo();
-      for (const key of this.subtitleSync.leave(clientId)) {
-        if (video) {
-          this.io
-            .of(this.roomId)
-            .emit("REC:subtitleSync", { status: "released", video, key });
-        }
-      }
+      this.announceSubtitleSyncEnds(this.subtitleSync.leave(clientId));
     }
     // Keep namemap/picturemap so old chat messages still render correctly after disconnect
     // When serializing we only write values with messages in chat
@@ -1686,6 +1703,10 @@ export class Room {
       return;
     }
     if (!this.settingsLimiter.allow()) {
+      socket.emit(
+        "errorMessage",
+        "Too many changes at once. Wait a few seconds and try again.",
+      );
       return;
     }
     const epoch = this.access.epoch;

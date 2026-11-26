@@ -33,7 +33,7 @@ export interface RoomLookup {
 
 /** What a socket connecting to a room's namespace is: an owner, a guest (with their grant's id), or refused */
 export type SocketAdmission =
-  { owner: true } | { owner: false; guestId: string | null } | null;
+  { owner: true } | { owner: false; guestId: string } | null;
 
 /** Room ids in URLs: the generated names are adjective-noun-verb, older ones may use other word characters */
 const ROOM_ID_RE = /^[\w.~-]{1,200}$/;
@@ -122,17 +122,8 @@ export function createRoomAuth(opts: {
     if (grant && room.access.isGrantValid(grant)) {
       return { owner: false, guestId: grant.guestId };
     }
-    // An open room lets anyone with the link in, except a guest whose grant was revoked (kicked)
-    if (
-      !room.access.enabled &&
-      !(
-        grant &&
-        grant.epoch === room.access.epoch &&
-        room.access.isRevoked(grant.guestId)
-      )
-    ) {
-      return { owner: false, guestId: null };
-    }
+    // No grant, or a revoked one (kicked), even while the password is off: the join route hands out grants without a
+    // password then, so every guest has an id a kick can revoke
     return null;
   };
 
@@ -247,8 +238,8 @@ export function createRoomAuth(opts: {
 
 /**
  * Socket.IO admission. The main namespace is for owners only; each room's namespace (created later, so call this
- * before creating any room and its middleware runs first) admits owners, guests with a valid grant for that room,
- * and anyone while the room's password is off. Sets socket.data.owner / socket.data.guestId, which room.ts uses to
+ * before creating any room and its middleware runs first) admits owners and guests with a valid grant for that room
+ * (with the password off, the join screen gets one without a password). Sets socket.data.owner / socket.data.guestId, which room.ts uses to
  * decide who may manage the room. Refused sockets get a connect_error with message "unauthorized".
  */
 export function admitRoomSockets(

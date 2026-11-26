@@ -130,11 +130,12 @@ describe("room namespace admission", () => {
     await expect(t.join(other)).rejects.toThrow("unauthorized");
   });
 
-  it("admits anyone while the room's password is off", async () => {
+  it("while the room's password is off, guests still need a grant (the join route gives one without a password)", async () => {
     const t = await setup();
     cleanups.push(t.close);
     t.room.access.apply({ action: "enable", enabled: false });
-    await t.join();
+    await t.join(t.guestCookie().cookie);
+    await expect(t.join()).rejects.toThrow("unauthorized");
   });
 
   it("the main namespace is for owners only", async () => {
@@ -309,6 +310,25 @@ describe("changing the room password", () => {
     owner.emit("CMD:roomPassword", { action: "set", password: "ab" });
     expect(await err).toMatch(/4–64/);
   });
+
+  it("says so when changes are over the rate limit", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    const owner = await t.join(t.ownerCookie);
+    const errors: string[] = [];
+    owner.on("errorMessage", (m: string) => errors.push(m));
+    // 20 changes per 10 s per room (shared with the room settings)
+    for (let i = 0; i < 20; i++) {
+      owner.emit("CMD:roomPassword", { action: "regenerate" });
+    }
+    await settle(150);
+    expect(errors).toEqual([]);
+    const epoch = t.room.access.epoch;
+    owner.emit("CMD:roomPassword", { action: "regenerate" });
+    await settle();
+    expect(errors).toEqual([expect.stringMatching(/Too many changes/)]);
+    expect(t.room.access.epoch).toBe(epoch);
+  });
 });
 
 describe("kicking", () => {
@@ -333,6 +353,34 @@ describe("kicking", () => {
     expect(JSON.parse(getRoom(t.db, ROOM)!.data!).access.revoked).toEqual([
       guestId,
     ]);
+  });
+
+  it("a guest kicked while the password is off stays out until it's turned on", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    t.room.access.apply({ action: "enable", enabled: false });
+    const owner = await t.join(t.ownerCookie);
+    const { cookie, guestId } = t.guestCookie();
+    const guest = await t.join(cookie);
+    const other = await t.join(t.guestCookie().cookie);
+    const kicked = next(guest, "kicked");
+    const disconnected = next(guest, "disconnect");
+    owner.emit("CMD:kickUser", {
+      userToBeKicked: (guest.io.opts.query as { clientId: string }).clientId,
+    });
+    await kicked;
+    await disconnected;
+    expect(t.room.access.isRevoked(guestId)).toBe(true);
+    // Reconnecting with the same browser's grant is refused, the other guest stays
+    await expect(t.join(cookie)).rejects.toThrow("unauthorized");
+    expect(other.connected).toBe(true);
+    await t.join(t.guestCookie().cookie);
+    // Turning the password on clears the kick list (a new epoch): a fresh grant from the password works again
+    const access = next<RoomAccessInfo>(owner, "REC:roomAccess");
+    owner.emit("CMD:roomPassword", { action: "enable", enabled: true });
+    await access;
+    expect(t.room.access.isRevoked(guestId)).toBe(false);
+    await t.join(t.guestCookie(guestId).cookie);
   });
 
   it("kicking an owner just disconnects them", async () => {

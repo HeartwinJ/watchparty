@@ -36,7 +36,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 
 - Room settings: title, ready check, when the next-episode card appears, subtitle auto-sync and skip intro.
 - Resizable sidebar on desktop, and a bottom sheet on phones.
-- No user accounts: the owner logs in with the instance password; guests get a room link plus that room's auto-generated password (or a link with the password built in), can only use that one room, and can't change its settings or remove people. The owner can regenerate, set or turn off each room's password, and removing a guest revokes their access.
+- No user accounts: the owner logs in with the instance password; guests get a room link plus that room's auto-generated password (or a link with the password built in), can only use that one room, and can't change its settings or remove people. The owner can regenerate, set or turn off each room's password, and removing a guest revokes their access (also while the password is off) until the password is changed or turned on. Someone who clears their browser's cookies can rejoin an open room.
 - Everything is stored in one SQLite file, so rooms survive restarts. A sidecar container takes a nightly backup.
 - Owners can delete a room (room menu or Home's recent rooms), and rooms nobody has used for 60 days are deleted automatically (`ROOM_MAX_IDLE_DAYS`, `0` keeps them forever).
 - One `docker compose up -d` with a Cloudflare Tunnel, so the host doesn't need to open any ports.

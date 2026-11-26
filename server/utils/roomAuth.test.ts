@@ -272,6 +272,41 @@ describe("POST /rooms/:roomId/join", () => {
       (await t.join("locked-room-here", "new-password", { cookie })).status,
     ).toBe(200);
   });
+  it("refuses a guest kicked while the password is off until it's turned on", async () => {
+    const t = await setup();
+    const join = await t.join("open-room-here");
+    expect(join.status).toBe(200);
+    const cookie = t.cookieOf(join.setCookie);
+    const [grant] = verifyGuestGrants(
+      t.auth.guestKey,
+      parseCookies(cookie)[GUEST_COOKIE],
+      t.now(),
+    );
+    const room = t.rooms.get("/open-room-here")!;
+    room.access.revoke(grant.guestId);
+    // No way back in from this browser: not by joining again, not over the socket
+    const kicked = await t.join("open-room-here", undefined, { cookie });
+    expect(kicked.status).toBe(403);
+    expect(kicked.body).toEqual({ error: "kicked" });
+    expect(t.roomAuth.admitSocket(cookie, "/open-room-here")).toBeNull();
+    expect((await t.call("GET", "/member", { cookie })).status).toBe(401);
+    // Other guests of the open room are unaffected
+    const other = t.cookieOf((await t.join("open-room-here")).setCookie);
+    expect(t.roomAuth.admitSocket(other, "/open-room-here")).toEqual({
+      owner: false,
+      guestId: expect.any(String),
+    });
+    // Turning the password on starts a new epoch: the kicked guest can join with it
+    room.access.apply({ action: "enable", enabled: true });
+    expect(
+      (await t.join("open-room-here", "wrong-password", { cookie })).status,
+    ).toBe(401);
+    const back = await t.join("open-room-here", "open-sesame-11", { cookie });
+    expect(back.status).toBe(200);
+    expect(
+      t.roomAuth.admitSocket(t.cookieOf(back.setCookie), "/open-room-here"),
+    ).toEqual({ owner: false, guestId: expect.any(String) });
+  });
 });
 
 describe("guest access to the APIs", () => {
@@ -382,17 +417,15 @@ describe("guest access to the APIs", () => {
 });
 
 describe("admitSocket", () => {
-  it("admits owners, valid guests of that room, anyone for an open room; refuses the rest", async () => {
+  it("admits owners and valid guests of that room (also when it's open); refuses the rest", async () => {
     const t = await setup();
     const owner = await t.ownerCookie();
     expect(t.roomAuth.admitSocket(owner, "/locked-room-here")).toEqual({
       owner: true,
     });
     expect(t.roomAuth.admitSocket(undefined, "/locked-room-here")).toBeNull();
-    expect(t.roomAuth.admitSocket(undefined, "/open-room-here")).toEqual({
-      owner: false,
-      guestId: null,
-    });
+    // No grant: refused even while the password is off (the join screen gets one without a password)
+    expect(t.roomAuth.admitSocket(undefined, "/open-room-here")).toBeNull();
     expect(t.roomAuth.admitSocket(undefined, "/unknown-room")).toBeNull();
 
     const guest = t.cookieOf(

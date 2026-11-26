@@ -309,7 +309,7 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   10 ms for the offset. The result is `{offset, scale, confidence, peakZ, candidate}`;
   `syncResultToTiming()` (`logic.ts`) turns it into what the player applies. No piecewise mapping.
 - **Audio** (`audio.ts` in `worker.ts`, started by `run.ts` `runAutoSync`, cancelled by terminating the worker):
-  mediabunny reads the direct link via range requests (`UrlSource`, 2 retries, 20 s stall timeout) or the sharer's
+  mediabunny reads the direct link via range requests (`UrlSource`, 3 retries, 20 s stall timeout) or the sharer's
   `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
   (first to last cue); audio is interleaved with video, so listening costs about bitrate × seconds:
   `windowSecondsForBitrate` shortens the windows to stay near 300 MB, never below 4 × 60 s. After the 3rd window a very
@@ -330,7 +330,8 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   per (video, subtitle) does the work; everyone else sees "Bob is syncing subtitles for the room…"
   (`state.subtitleSyncRemote`). The result goes back to the server, which applies it room-wide unless an offset was
   set by hand (a saved non-zero offset or any manual change wins; the wand always works). A failed or departed
-  claimer releases the job and the others claim again.
+  claimer, or one with no result after 3 min, releases the job and the others claim again; after the 3rd attempt the
+  server sends a final `done` with no offset. Either way `subtitleSyncRemote` clears.
 - Tuned on Tears of Steel (CC-BY Blender Foundation, Wikimedia Commons subtitles): known shifts from −250 s to +480 s
   are found to within 0.1 s, and subtitles drifted by 25/23.976 or 23.976/25 get that exact scale (offset within
   0.05 s); reversed cues and Sintel (26 lines over a loud score) are refused.

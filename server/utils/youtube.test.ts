@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchYoutubeVideo,
   getVideoDuration,
+  parseYoutubeQuery,
   searchYoutube,
   setYoutubeClient,
   youtubePlaylist,
@@ -116,5 +117,16 @@ describe("youtube client", () => {
   it("parses ISO 8601 durations", () => {
     expect(getVideoDuration("PT4M13S")).toBe(253);
     expect(getVideoDuration("")).toBe(0);
+  });
+});
+
+describe("parseYoutubeQuery", () => {
+  it("accepts a search string and rejects missing, blank, repeated or huge ones", () => {
+    expect(parseYoutubeQuery("cats & dogs")).toBe("cats & dogs");
+    for (const raw of [undefined, "", "   ", ["a", "b"], { q: "a" }]) {
+      expect(parseYoutubeQuery(raw)).toBeUndefined();
+    }
+    expect(parseYoutubeQuery("a".repeat(500))).toBe("a".repeat(500));
+    expect(parseYoutubeQuery("a".repeat(501))).toBeUndefined();
   });
 });

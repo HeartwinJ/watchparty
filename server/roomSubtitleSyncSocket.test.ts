@@ -1,11 +1,12 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Server } from "socket.io";
 import { io as connect, type Socket as ClientSocket } from "socket.io-client";
 import { openDatabase } from "./utils/db.ts";
 import { Room } from "./room.ts";
+import { SUBTITLE_SYNC_CLAIM_TTL_MS } from "./subtitleAutoSync.ts";
 
 const V = "https://cdn.example.com/movie.mkv";
 const K = "room:https://subs.example.com/movie.srt";
@@ -207,6 +208,63 @@ describe("Room subtitle auto-sync", () => {
     t.a.disconnect();
     await settle();
     expect(bSync.at(-1)).toEqual({ status: "released", video: V, key: K });
+    t.b.emit("CMD:subtitleSync", { action: "claim", video: V, key: K });
+    await settle();
+    expect(bSync.at(-1)).toMatchObject({ status: "running", key: K });
+  });
+
+  it("announces a final done when the claimer leaves on the last attempt", async () => {
+    const t = await playing();
+    cleanups.push(t.close);
+    const bSync = collect<SubtitleSyncEvent>(t.b, "REC:subtitleSync");
+    // Two failed attempts...
+    for (const s of [t.a, t.b]) {
+      s.emit("CMD:subtitleSync", { action: "claim", video: V, key: K });
+      await settle();
+      s.emit("CMD:subtitleSync", { action: "failed", video: V, key: K });
+      await settle();
+    }
+    // ...and the third claimer disconnects mid-job
+    const c = await t.join();
+    c.emit("CMD:subtitleSync", { action: "claim", video: V, key: K });
+    await settle();
+    expect(bSync.at(-1)).toMatchObject({ status: "running", key: K });
+    c.disconnect();
+    await settle();
+    expect(bSync.at(-1)).toEqual({
+      status: "done",
+      video: V,
+      key: K,
+      offset: null,
+    });
+  });
+
+  it("announces a claim that expires without a result", async () => {
+    const t = await playing();
+    cleanups.push(t.close);
+    const bSync = collect<SubtitleSyncEvent>(t.b, "REC:subtitleSync");
+    t.a.emit("CMD:subtitleSync", { action: "claim", video: V, key: K });
+    await settle();
+    expect(bSync.at(-1)).toMatchObject({ status: "running", key: K });
+    // 3 min later (the room's 1 s timer notices)
+    const realNow = Date.now;
+    const later = realNow() + SUBTITLE_SYNC_CLAIM_TTL_MS + 1000;
+    vi.spyOn(Date, "now").mockImplementation(() => later);
+    try {
+      await settle(1200);
+    } finally {
+      vi.restoreAllMocks();
+    }
+    expect(bSync.at(-1)).toEqual({ status: "released", video: V, key: K });
+    // The late result is ignored; someone else can take it
+    t.a.emit("CMD:subtitleSync", {
+      action: "result",
+      video: V,
+      key: K,
+      offset: 3,
+    });
+    await settle();
+    expect(t.room.subtitleOffset).toBe(0);
     t.b.emit("CMD:subtitleSync", { action: "claim", video: V, key: K });
     await settle();
     expect(bSync.at(-1)).toMatchObject({ status: "running", key: K });
