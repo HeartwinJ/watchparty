@@ -349,6 +349,8 @@ export function useRoom(roomId: string) {
         store.set({ playbackIssue: { ...issue, at: Date.now() } }),
       "REC:roomSettings": (roomSettings) => store.set({ roomSettings }),
       "REC:readyCheck": readyCheck.onState,
+      "REC:nextEpisode": (nextEpisode) =>
+        store.set({ nextEpisode: { ...nextEpisode, at: Date.now() } }),
       signalSS: share.handleSignal,
     };
 

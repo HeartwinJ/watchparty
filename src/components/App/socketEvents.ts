@@ -42,6 +42,8 @@ export interface ServerToClientEvents {
   "REC:roomSettings": (settings: RoomSettings) => void;
   /** Ready check state (sent on connect and whenever it changes) */
   "REC:readyCheck": (state: ReadyCheckState) => void;
+  /** The room-wide next-episode card (also sent on connect) */
+  "REC:nextEpisode": (state: NextEpisodeState) => void;
   signalSS: (data: {
     msg: SignalMessage;
     from: string;
@@ -58,6 +60,16 @@ export type PlaylistAddItem = {
   img?: string;
   meta?: VideoMeta;
 };
+
+/**
+ * `offer`: this player is within the card's window of the end (the server keeps the first one per video).
+ * `ended`: this player reached the end. `playNow` / `cancel`: the card's buttons, for the whole room.
+ */
+export type NextEpisodeCommand =
+  | { action: "offer"; url: string; time: number; duration: number }
+  | { action: "ended"; url: string }
+  | { action: "playNow" }
+  | { action: "cancel" };
 
 export interface ClientToServerEvents {
   "CMD:name": (name: string) => void;
@@ -98,6 +110,8 @@ export interface ClientToServerEvents {
   }) => void;
   /** "Resume now": end the ready check and play for everyone */
   "CMD:readyCheckSkip": () => void;
+  /** Next-episode card: see server/nextEpisodeController.ts */
+  "CMD:nextEpisode": (data: NextEpisodeCommand) => void;
   signalSS: (data: {
     to: string;
     msg: SignalMessage;
@@ -154,6 +168,7 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
       time?: number;
     }) => emit("CMD:readyState", data),
     skipReadyCheck: () => emit("CMD:readyCheckSkip"),
+    nextEpisode: (data: NextEpisodeCommand) => emit("CMD:nextEpisode", data),
     signal: (to: string, msg: SignalMessage, sharer?: boolean) =>
       emit("signalSS", { to, msg, sharer }),
   };

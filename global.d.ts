@@ -133,3 +133,21 @@ interface ReadyCheckState {
   /** Who pressed "Resume now" (outcome "skipped") */
   actorId?: string;
 }
+
+/** The episode the next-episode card offers. No stream URL: the server keeps that until it plays. */
+interface NextEpisodeInfo {
+  /** VideoMeta of the next episode (what the room gets when it plays) */
+  meta: VideoMeta;
+  thumbnail: string | null;
+}
+
+/** REC:nextEpisode: the room-wide next-episode card (see server/nextEpisodeController.ts) */
+type NextEpisodeState =
+  | { state: "none" }
+  /** Show the card. `startAt` is in video seconds (the video's end): countdown = startAt - currentTime */
+  | { state: "offered"; next: NextEpisodeInfo; startAt: number }
+  | { state: "cancelled"; by: PlaybackActor | null }
+  /** The next episode is being hosted (REC:host follows) */
+  | { state: "starting"; next: NextEpisodeInfo; by: PlaybackActor | null }
+  /** It couldn't be found or has no playable stream (`next` is set when the episode itself is known) */
+  | { state: "failed"; next: NextEpisodeInfo | null };

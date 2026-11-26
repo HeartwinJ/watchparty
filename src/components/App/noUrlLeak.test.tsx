@@ -127,8 +127,29 @@ describe("room page", () => {
           type: "file",
         },
       ]);
+      // The next-episode card never gets a URL, only the episode's metadata
+      socket.receive("REC:nextEpisode", {
+        state: "offered",
+        next: {
+          meta: {
+            source: "aiostreams",
+            type: "series",
+            id: "tt0000002:2:5",
+            imdbId: "tt0000002",
+            season: 2,
+            episode: 5,
+            title: "Example Show",
+            episodeTitle: "Five",
+            poster: null,
+            bingeGroup: null,
+          },
+          thumbnail: null,
+        },
+        startAt: 1000,
+      });
     });
     await waitFor(() => expect(document.body.textContent).toContain(NAME));
+    expect(document.body.textContent).toContain("Up next · S02E05 · Five");
     const seen = visibleStrings(document.body);
     expect(seen).not.toContain(SECRET_HOST);
     expect(seen).not.toContain("eyFAKEBLOB");
