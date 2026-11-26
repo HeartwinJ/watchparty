@@ -2,7 +2,7 @@
 
 `App.tsx` is a thin layout. State and behavior live in hooks, pure logic lives in `logic/` with unit tests. The room
 shell (top bar, sidebar, bottom sheet, settings) lives in `shell/`; the player is in
-`player/` (re-exported from `PlayerArea.tsx`), the source picker in `picker/` (picker work).
+`player/` (re-exported from `PlayerArea.tsx`), the source picker in `picker/`.
 
 ## Data flow
 
@@ -14,9 +14,13 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
  ├ useConvert                            probe → direct/convert/fail per device (auto-convert), audio tracks
  ├ useShare                              screen + file share over WebRTC (/iceServers), signalSS
  ├ useChat / usePlaylist / useSubtitles  REC:* handlers and actions for each feature
- ├ useCall (call/)                       voice call: membership, mic, peer connections, speaking, ducking
+ ├ useSubtitleSync (subsync/)            subtitle auto-sync: the wand + room claims
+ ├ useReadyCheck                         ready-state polling/reporting, REC:readyCheck
+ ├ useCall (call/)                       voice/video call: membership, mic, camera, peer connections, speaking, ducking
  └ handlers                              maps every server event to the hooks above (REC:host loads media)
 ```
+
+`useNextEpisode` isn't part of `useRoom`: it runs inside `NextEpisodeCard`.
 
 - **Store** (`hooks/useStore.ts`): socket handlers, timers and player callbacks run outside React's render, so they
   read state with `store.get()` (always current, even right after `store.set()`) instead of a stale closure. Rendering
@@ -56,12 +60,15 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `App.tsx`                                 | Layout: CSS grid (top bar / stage / sidebar), phone layout with the bottom sheet                                    |
 | `RoomMessages.tsx`                        | Share/subtitle modals, loading + error overlays, reconnecting banner, error/success toasts                          |
 | `PlayerArea.tsx`                          | Re-exports `PlayerArea` and `SyncIndicator` from `player/`                                                          |
-| `player/PlayerArea.tsx`                   | The player: media, cues, gestures, auto-hide, keyboard, OSD, chat overlay, quick chat                               |
+| `player/PlayerArea.tsx`                   | The player: media, cues, gestures, auto-hide, keyboard, OSD, chat overlay/panel, quick chat, call tiles, cards      |
 | `player/ControlBar.tsx`                   | Overlay controls + speed menu; `SeekBar.tsx`, `SubtitlesMenu.tsx`, `PlayerMenu.tsx` (portal)                        |
 | `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar                            |
 | `player/SubtitleCues.tsx`                 | Renders the cues at the video's current time (`cuesAt`, not stale-prone `activeCues`) with the device's style       |
 | `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input (closes after 5 s empty)                   |
 | `player/ChatPanel.tsx`, `chatPanel.ts`    | The full chat over the video (fullscreen / sidebar collapsed), `useChatPanel`; pure: availability, width, unread    |
+| `player/ShortcutsOverlay.tsx`             | The `?` shortcuts overlay (`ReadyCheckPill.tsx`: the ready-check pill)                                              |
+| `player/use*.ts`                          | `usePlaybackState` (control state), `useTextTracks`, `useSubtitleStyle` (per device), `useChatPanel`                |
+| `player/quickChatIdle.ts`                 | Quick chat's 5 s empty auto-close (pure)                                                                            |
 | `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: system line text incl. `subtitleOffset`, `roomSettings`, `nowPlaying`              |
 | `ui/RoomUi.tsx`                           | `useRoomUi()`: picker open, sidebar collapsed, chat overlay, settings modal                                         |
 | `ui/toast.tsx`                            | `toast(message, {tone, action})`                                                                                    |
@@ -72,21 +79,25 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `shell/SidebarResize.tsx`                 | Drag/keyboard resize of the desktop sidebar (`sidebarWidth.ts`: clamp + localStorage)                               |
 | `shell/BottomSheet.tsx`                   | Phone sheet snap points min/docked/full (`sheet.ts`: pure snap logic)                                               |
 | `shell/NowPlayingStrip.tsx`               | Phone: title + "Change" under the video                                                                             |
-| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, next-episode, skip intro, room password)               |
+| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, auto-sync, next-episode, skip intro, room password)    |
 | `shell/shortcuts.ts`                      | `/` opens the picker; `wp:show-shortcuts` event for the shortcuts overlay                                           |
 | `shell/invite.ts`, `roomInfo.ts`          | Invite links (+ `#pw=`), copy + toast; short media titles, per-person playback state                                |
+| `shell/roomSettingsForm.ts`               | Pure helpers for the settings form (title, next-episode seconds, room password, skip intro chips/custom)            |
+| `hooks/`                                  | `useRoom` and the hooks it composes (see Data flow), `useStore`, `useReadyCheck`                                    |
+| `picker/`                                 | Source picker (see below)                                                                                           |
 | `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                                               |
 | `socketEvents.ts`                         | Typed socket events and `createRoomCommands`                                                                        |
 | `Player.ts`, `HTML.ts`, `YouTube.ts`      | Player implementations (HTML.ts: subtitle track selection + cue re-timing)                                          |
 | `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks                            |
 | `subtitleSearch/`                         | "Search subtitles…" modal, title/episode guessing from file names, sharing a found subtitle                         |
 | `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes                                      |
-| `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat)                                           |
+| `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat, chat panel)                               |
 | `logic/gestures.ts`                       | Tap zones (40/20/40) and `TapDetector` (single vs double tap/click)                                                 |
 | `logic/shortcuts.ts`                      | `resolveShortcut(event)` (ignored while typing / in modals) and the overlay's rows                                  |
 | `logic/media.ts`                          | `classifyMedia(url)`, display names, sharer lookup                                                                  |
 | `logic/chat.ts`                           | Immutable chat updates (append with 100 cap, reactions), chat sound rule                                            |
 | `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                                              |
+| `logic/playback.ts`                       | `decidePlayback()`: direct / convert / fail per device, `chooseAudioTrack` (auto-convert)                           |
 | `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s                             |
 | `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)                            |
 | `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic                                      |
@@ -107,9 +118,8 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 - The panels stay at the same place in the React tree at every breakpoint, so `Chat` (and `room.chatRef`) keeps its
   state. `SidePanels` sets `state.currentTab` to the visible tab or `"none"` so `useChat` counts unread messages.
 - Breakpoints: ≤ 1100px hides the avatars, ≤ 960px turns Invite into an icon, ≤ 768px is the phone layout.
-- **Slots for the other workstreams:** `{/* SLOT(B): <SyncIndicator room={room} /> */}` in `RoomTopBar.tsx` (start of
-  the right-hand group) and `{/* SLOT(C): <SourcePicker room={room} /> */}` at the end of `RoomLayout` in `App.tsx`.
-  The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
+- `<SyncIndicator room={room} />` sits at the start of the top bar's right-hand group (`RoomTopBar.tsx`) and
+  `<SourcePicker room={room} />` at the end of `RoomLayout` in `App.tsx`. The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
   queue" uses `openPicker({ mode: "queue" })`.
 - **Room settings:** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`, `autoSyncSubtitles`, `skipIntro`) comes
   from `REC:roomSettings` (on connect and after every change) and starts as `DEFAULT_ROOM_SETTINGS` (`roomState.ts`).
@@ -187,8 +197,9 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   it shows in fullscreen) shows "Skipped intro (1:30) · Watch from start" for 10 s (`showIntroSkipNotice`: not for
   live streams). The button is `player.roomSeek(0)`, a normal seek with a chat line; the server then sends
   `REC:introSkip null` to everyone, which hides it.
-- Too short for the skip (the first `CMD:duration`, before anyone touched playback): the server sends `REC:seek 0`
-  and `REC:introSkip null`.
+- Too short for the skip (a `CMD:duration` under 5 min or under 2× the skip, while nobody has played/paused/seeked
+  and the room is within 30 s of the skip point): the server clears `tsMap` and sends `REC:introSkip null`,
+  `REC:seek 0` and, if the room is playing, `REC:play`.
 
 ## Player
 
@@ -205,19 +216,34 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   Esc always reaches it): space/k, ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c
   (the open chat panel's input, else quick chat in fullscreen or with the sidebar collapsed, else
   `chatRef.current.focusInput()`; `chatKeyTarget`), Shift+C (the chat panel), `[`/`]`, `?` (also `wp:show-shortcuts`).
-- **Quick chat** (`QuickChat.tsx`, `c`): a one-line input over the video. Enter sends and closes it; Esc closes it
-  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). It also closes by itself after
+- **Quick chat** (`QuickChat.tsx`, `c`): a one-line input over the video. Enter sends and closes it, and it closes on blur when empty; Esc closes it
+  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). Backspace in the already empty input
+  closes it too (not the Backspace that deletes the last character, not a held-down repeat, not with the emoji picker
+  open). It also closes by itself after
   **5 s empty** (`quickChatIdle.ts`, pure): the countdown starts when it opens and again whenever the input becomes
-  empty, and any text cancels it. A small ring next to the input empties over those 5 s (`aria-hidden`; a still ring
-  with reduced motion) and is hidden while there's text.
+  empty, and any text (not just spaces) cancels it. A small ring next to the input empties over those 5 s (`aria-hidden`; a still ring
+  with reduced motion) and is hidden while there's text. The bar shows only an Enter hint. The emoji button ("Insert
+  emoji") opens the Chat's emoji-mart picker (`Chat/EmojiPicker.tsx`), portaled into the player container (the
+  fullscreen element) above the bar; it shrinks to fit short players and shows 7 per row on phones. Picks go in at the
+  caret (replacing a selection, `insertText.ts`, pure), focus stays in the input and the picker stays open for more.
+  While it's open the countdown is paused and the ring hidden; closing it with the input empty restarts the full 5 s
+  (`emptySinceAfterPicker`). Esc closes only the picker first (outside fullscreen), a click outside it (but not on the
+  bar) closes it, and the picker is a `data-no-shortcuts` zone, so typing in its search box never triggers player
+  shortcuts. Just above the bar, the **last 3 messages** people typed (older history too, oldest first, "You" for your
+  own, clamped to 2 lines, same look as the bubbles) give context for the reply: `recentConversation()`
+  (`quickChatPreview.ts`, pure) skips system and personless lines, so nothing shows without conversation. It's a
+  labelled `role="log"` region, updates live (a new message pushes the oldest out), and goes away with the quick chat.
+  While quick chat is open the 8 s bubbles (`ChatOverlay`) aren't shown, to avoid duplicates; they resume for new
+  messages when it closes. The emoji picker opens over it.
 - **Chat panel** (`ChatPanel.tsx`, `useChatPanel.ts`, pure logic in `chatPanel.ts`): the real `Chat` in a translucent
   panel over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control
   bar so both stay usable. Offered where quick chat is (`fullscreen || sidebarCollapsed`, not on the phone layout's
-  page, and only on players ≥ 480 px wide: `chatPanelAllowed`); 40 % of the player, 260–380 px (`chatPanelWidth`).
+  page, and only on players ≥ 480 px wide: `chatPanelAllowed`); 40 % of the player, 260–380 px and at most the player width − 24 px (`chatPanelWidth`).
   **Starts collapsed every time** it becomes available and closes when it stops (`chatPanelReducer`; open state isn't
-  remembered). Toggle: the control bar's chat button (auto-hides with the controls) or Shift+C; close: its × button,
-  clicking/tapping the video (that click doesn't pause), Esc outside fullscreen (an open emoji or reaction picker
-  closes first, the next Esc closes the panel; in fullscreen the browser takes Esc and
+  remembered). Toggle: the control bar's chat button (auto-hides with the controls) or Shift+C (which acts like `c` where the
+  panel isn't offered); close: its × button,
+  clicking/tapping the video (that click doesn't pause), Esc outside fullscreen (Esc closes the shortcuts overlay, then quick chat, then an open emoji or reaction picker,
+  then the panel, and never while a player menu is open; in fullscreen the browser takes Esc and
   exits fullscreen, which closes it too). Opening focuses its input (not on touch screens, where that would pop the
   keyboard over the video), hides the bubbles and closes quick chat; `c` then focuses its input. The panel's `Chat` has
   its own ref (`room.chatRef` stays the sidebar's) and its own draft; it's mounted on the first open and unmounted when
@@ -246,7 +272,7 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   (offset only) or `CMD:subtitleTiming {offset, scale}`
   (server: validated, no practical limit (±24 h sanity bound), 0.05 s steps, saved per video in `subtitle_offsets`, restored with `REC:host`
   `subtitleOffset`, chat line after 1.5 s idle); "Just me" is `state.localSubtitleOffset` + `localSubtitleScale`; the room's
-  scale is `state.roomSubtitleScale`. Agent C's auto subtitles go
+  scale is `state.roomSubtitleScale`. The picker's auto subtitles go
   in `state.subtitleTracks` (`SubtitleTrackOption[]`, shown first with an Auto badge; picking one sets the room
   subtitle). The converter's audio tracks show in the same menu.
 - **Search subtitles** (`subtitleSearch/`): the menu's "Search subtitles…" (non-YouTube) calls
@@ -258,7 +284,9 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   and `cmd.setSubtitle`, with a toast either way. "Search by file name (OpenSubtitles API)" opens the old
   `SubtitleModal` (`subtitles.openModal()`), only when the server has `OPENSUBTITLES_KEY`.
 - **Sync (6d):** `usePlayer.onTsMap` runs `nextDriftAction` on every `REC:tsMap`: drift under 2 s nudges the playback
-  rate proportionally (0.95–1.05× the room speed, start at 0.3 s, stop under 0.1 s), more seeks (3 s cooldown).
+  rate proportionally (0.95–1.05× the room speed, start at 0.3 s, stop under 0.1 s), more seeks (3 s cooldown). A
+  seek resets the server's `tsMap` (`REC:tsMap {}`) and ignores `CMD:ts` for 1 s, so nobody is pulled back to the old
+  position.
   YouTube only uses rates from `getAvailablePlaybackRates()` and otherwise seeks from 1 s. `state.syncStatus` is
   `in-sync` / `catching-up` (seconds behind) / `buffering` / `reconnecting`; `SyncIndicator({ room })` shows it.
 
@@ -272,15 +300,16 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   a cue at its ORIGINAL time, 0 outside) → `alignWindows`: per audio window, the activity is detrended (5 s) and
   FFT-cross-correlated with the cue signal over ±10 min, normalized per lag like a Pearson correlation (+ shrinkage, so a
   stretch with one stray cue can't win); the window curves are summed, the best lag is refined parabolically and
-  rounded to 0.05 s. **Confidence:** `peakZ` (best vs. all lags in std devs) ≥ 6 and `confidence` = 1 − runner-up /
-  best (outside ±1.5 s) ≥ 0.3, with at least two windows contributing; otherwise `offset` is null and nothing changes.
+  rounded to 0.05 s. **Confidence:** `peakZ` (best vs. all lags in std devs) ≥ 6 and `confidence` = 1 − (runner-up − mean) /
+  (best − mean) (runner-up outside ±1.5 s) ≥ 0.3, with at least two windows contributing (one when a short video is a
+  single window); otherwise `offset` is null and nothing changes.
   **Drift** (`alignWithDrift`): every ratio in `DRIFT_SCALES` (1, 1000/1001, 1001/1000, 24/25, 25/24, 23.976/25,
   25/23.976; scale = subtitle fps / video fps) is tried on 50 ms frames with the cues stretched to original × scale;
   `pickScale` keeps 1 unless another scale's peakZ beats it by max(1, 10 %); the chosen scale is aligned again at
-  10 ms for the offset (≈ 0.3 s in total). The result is `{offset, scale, confidence, peakZ, candidate}`;
+  10 ms for the offset. The result is `{offset, scale, confidence, peakZ, candidate}`;
   `syncResultToTiming()` (`logic.ts`) turns it into what the player applies. No piecewise mapping.
 - **Audio** (`audio.ts` in `worker.ts`, started by `run.ts` `runAutoSync`, cancelled by terminating the worker):
-  mediabunny reads the direct link via range requests (`UrlSource`, 3 retries, 20 s stall timeout) or the sharer's
+  mediabunny reads the direct link via range requests (`UrlSource`, 2 retries, 20 s stall timeout) or the sharer's
   `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
   (first to last cue); audio is interleaved with video, so listening costs about bitrate × seconds:
   `windowSecondsForBitrate` shortens the windows to stay near 300 MB, never below 4 × 60 s. After the 3rd window a very
@@ -290,8 +319,8 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   HLS/DASH or live streams; `autoSyncAvailability()` gives the reason the wand shows instead. Needs `Worker` +
   WebCodecs `AudioDecoder`.
 - **The wand** (`AutoSyncButton` in the subtitles menu's Timing offset section): `room.subsync.syncNow()` aligns the
-  selected track's original cues (`HTML.getOriginalCues`) and applies the offset through `subtitles.setOffset`, so it
-  respects Everyone / Just me and can be fine-tuned with ±0.1 s. Progress ("Listening… 40%") comes from
+  selected track's original cues (`HTML.getOriginalCues`) and applies offset and scale through `subtitles.setTiming`,
+  so it respects Everyone / Just me; ±0.1 s then fine-tunes the offset and keeps the scale. Progress ("Listening… 40%") comes from
   `state.subtitleSyncJob`; closing the menu or a new video cancels it; a toast says "Subtitles synced: +2.35 s" or
   "Couldn't find a confident match, offset unchanged".
 - **Room auto-sync** (`roomSettings.autoSyncSubtitles`, owners, default off): whenever a subtitle with cues is
@@ -312,13 +341,13 @@ Voice, plus an optional camera (see **Camera** below).
 
 - **Membership** is the server's (`server/callState.ts`): `REC:callState` lands in `state.call.members` via
   `callReducer.ts` (pure, tested), which also holds this device's `status` (`idle` → `joining` → `joined`), `muted`,
-  `pttHeld`, `peers` (per-member `connecting`/`connected`/`reconnecting`), `speaking`, `micError`, `busy` and the
+  `pttHeld`, `camera`/`cameraBusy`/`cameraError`, `tilesHidden`, `audioBlocked`, `session`, `peers` (per-member `connecting`/`connected`/`reconnecting`), `speaking`, `micError`, `busy` and the
   per-device prefs (`pushToTalk`, `ducking`). We're `joined` once the server lists us with our session; a state
   without us while `joined` means we're out (timed out, removed, another tab).
 - **`useCall`** (`room.call`): `join()`, `leave()`, `toggleMute()`/`setMuted()`, `pttDown()`/`pttUp()`,
-  `setDevice(id)`, `setDucking()`/`setPushToTalk()`, `moderate(clientId, "mute"|"remove")` (owners),
+  `setDevice(id)`, `setDucking()`/`setPushToTalk()`, `moderate(clientId, "mute"|"camera"|"remove")` (owners),
   `startPreview()`/`stopPreview()` (the pre-join panel opens the mic for the level meter; joining reuses that track),
-  `getLevel()`. Socket handlers `onState`/`onSignal`/`onModerated`/`onConnect`/`onDisconnect` are wired in `useRoom`.
+  `getLevel()`, plus the camera API (see **Camera**) and device lists/checks. Socket handlers `onState`/`onSignal`/`onModerated`/`onConnect`/`onDisconnect` are wired in `useRoom`.
   Media lives in a mutable session, not in React state.
 - **Joining**: `openMic()` (`audio.ts`: echo cancellation, noise suppression, auto gain; a remembered device that's
   gone falls back to the default) → `getIceServers()` → transport → `CMD:call join`. **Join-muted rule**
@@ -352,10 +381,10 @@ Voice, plus an optional camera (see **Camera** below).
   room change sends `leave` (layout effect, before the socket closes).
 - **UI**: `CallControl` in the top bar ("Voice" + call avatars with speaking rings; when joined a mic button, a camera
   button on desktop, and a warning dot while reconnecting) opens `CallPanel` (popover; bottom drawer on phones): members (speaking ring, muted
-  icon, "Reconnecting…", owners' ⋯ Mute in call / Remove from call), mic picker + live level, "Headphones
-  recommended", Join, and in the call: ducking and push-to-talk switches, Mute, Leave call. The People panel shows a
-  headset / muted-mic icon per call member and the speaking ring; owners' person menu has "Mute in call" and "Remove
-  from call". `REC:callModerated` toasts "Alex muted you…" (you mute yourself) or "…removed you from the voice call".
+  icon, "Reconnecting…", owners' ⋯ Mute in call / Turn off camera / Remove from call), mic picker + live level, "Headphones
+  recommended", Join (joining times out after 8 s), and in the call: ducking and push-to-talk switches, Mute, Leave call. The People panel shows a
+  headset / muted-mic icon per call member and the speaking ring; owners' person menu has "Mute in call", "Turn off
+  camera" and "Remove from call". `REC:callModerated` toasts "Alex muted you…" (you mute yourself) or "…removed you from the voice call".
 - **Camera** (`video.ts`, `videoStreams.ts`): off by default. `room.call.setCamera(on)` / `toggleCamera()` (V, the
   desktop top-bar camera button, the call panel) open `openCamera()` (720p ideal, the remembered `wp-call-camera` or the
   front camera; a device that's gone falls back to the default). Before joining the panel's "Turn camera on" is a live
@@ -400,7 +429,8 @@ Voice, plus an optional camera (see **Camera** below).
 
 ## Notes for the redesign
 
-- Build new views on `const room = useRoom(roomId)`: everything is on `room.state`, `room.player`, `room.cmd`,
-  `room.share`, `room.convert`, `room.playlist`, `room.subtitles`, `room.chatRef`.
+- Build new views on `const room = useRoom(roomId)`: everything is on `room.state`, `room.store`, `room.player`,
+  `room.cmd`, `room.share`, `room.convert`, `room.playlist`, `room.subtitles`, `room.subsync`, `room.readyCheck`,
+  `room.call`, `room.chatRef` (plus `clientId`, `socket`, `showError`, `updateName`, `getMediaDisplayName`).
 - The player depends on the element ids `leftVideo`/`leftYt` (`VIDEO_ELEMENT_ID`/`YOUTUBE_ELEMENT_ID` in
   `usePlayer.ts`). Keep them, or switch `HTML.ts` to a ref.

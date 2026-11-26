@@ -1,5 +1,5 @@
 /**
- * ICE servers for P2P screen/file share. Uses short-lived Cloudflare Realtime TURN
+ * ICE servers for P2P WebRTC (voice/video calls, screen/file share). Uses short-lived Cloudflare Realtime TURN
  * credentials when configured, otherwise STUN only.
  * https://developers.cloudflare.com/realtime/turn/generate-credentials/
  */

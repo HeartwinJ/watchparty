@@ -583,7 +583,8 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         </div>
       )}
 
-      {showChatOverlay && (
+      {/* Quick chat shows the last messages itself; the bubbles resume (new messages only) when it closes */}
+      {showChatOverlay && !quickChat && (
         <ChatOverlay
           chat={state.chat}
           nameMap={state.nameMap}
@@ -596,6 +597,11 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         <QuickChat
           onSend={(msg) => cmd.sendChat(msg)}
           onClose={() => setQuickChat(false)}
+          container={container}
+          compact={phone}
+          chat={state.chat}
+          nameMap={state.nameMap}
+          clientId={room.clientId}
         />
       )}
 

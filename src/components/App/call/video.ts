@@ -14,8 +14,8 @@ export interface VideoCaps {
 
 /**
  * Caps by how many people we send our camera to. In a full mesh every sender uploads one copy per peer, so the total
- * upload is roughly `peers × maxBitrate`: 1.2 Mbps for one peer, 1.4 for two, 1.2–1.6 for three or four, ~1 Mbps for
- * more (the call allows 8). Home uplinks of a few Mbps keep headroom for voice and everything else.
+ * upload is roughly `peers × maxBitrate`: 1.2 Mbps for one peer, 1.4 for two, 1.2–1.6 for three or four, 1–1.4 Mbps
+ * for five to seven (the call allows 8). Home uplinks of a few Mbps keep headroom for voice and everything else.
  */
 export function videoCapsFor(peerCount: number): VideoCaps {
   if (peerCount <= 1) {
