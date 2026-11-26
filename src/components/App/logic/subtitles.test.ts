@@ -4,6 +4,7 @@ import {
   effectiveOffset,
   formatOffset,
   normalizeOffset,
+  parseOffsetInput,
   retimeCues,
   stepOffset,
   toWebVtt,
@@ -41,9 +42,10 @@ describe("offset math", () => {
     expect(v).toBe(-0.3);
   });
 
-  it("clamps to ±30 and normalizes junk", () => {
-    expect(stepOffset(29.95, 0.1)).toBe(30);
-    expect(normalizeOffset(-100)).toBe(-30);
+  it("allows large offsets (only a ±24 h sanity bound) and normalizes junk", () => {
+    expect(stepOffset(29.95, 0.1)).toBe(30.05);
+    expect(normalizeOffset(-100)).toBe(-100);
+    expect(normalizeOffset(1e9)).toBe(86400);
     expect(normalizeOffset(NaN)).toBe(0);
     expect(Object.is(normalizeOffset(-0.001), -0)).toBe(false);
   });
@@ -101,5 +103,26 @@ describe("retimeCues", () => {
     retimeCues(cues.slice(0, 1), 1, originals);
     retimeCues(cues, 1, originals);
     expect(cues.map((c) => c.startTime)).toEqual([2, 6]);
+  });
+});
+
+describe("parseOffsetInput", () => {
+  it("reads seconds, signs, units and minutes:seconds", () => {
+    expect(parseOffsetInput("2.5")).toBe(2.5);
+    expect(parseOffsetInput("+2.5")).toBe(2.5);
+    expect(parseOffsetInput(" -1.25 s ")).toBe(-1.25);
+    expect(parseOffsetInput("\u22123")).toBe(-3);
+    expect(parseOffsetInput("45 sec")).toBe(45);
+    expect(parseOffsetInput("1:30")).toBe(90);
+    expect(parseOffsetInput("-1:05.5")).toBe(-65.5);
+    expect(parseOffsetInput("0,4")).toBe(0.4);
+    expect(parseOffsetInput(".5")).toBe(0.5);
+    expect(parseOffsetInput("0")).toBe(0);
+  });
+
+  it("rejects anything else", () => {
+    for (const bad of ["", "abc", "1:75", "1..2", "--1", "1:2:3", "1e3"]) {
+      expect(parseOffsetInput(bad)).toBeUndefined();
+    }
   });
 });

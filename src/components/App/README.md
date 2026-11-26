@@ -183,7 +183,7 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
 - **Subtitles:** the selected TextTrack is kept in `hidden` mode and `SubtitleCues` draws the active cues (size S–XL in
   container units, background none/shadow/box, per device in `localStorage` `wp-subtitle-style`). The offset re-times
   cues from their original times (`retimeCues`), so nothing is re-downloaded. "Everyone" sends `CMD:subtitleOffset`
-  (server: validated, ±30 s, 0.05 s steps, saved per video in `subtitle_offsets`, restored with `REC:host`
+  (server: validated, no practical limit (±24 h sanity bound), 0.05 s steps, saved per video in `subtitle_offsets`, restored with `REC:host`
   `subtitleOffset`, chat line after 1.5 s idle); "Just me" is `state.localSubtitleOffset`. Agent C's auto subtitles go
   in `state.subtitleTracks` (`SubtitleTrackOption[]`, shown first with an Auto badge; picking one sets the room
   subtitle). The converter's audio tracks show in the same menu.

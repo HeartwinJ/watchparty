@@ -1137,7 +1137,7 @@ export class Room {
   };
 
   /**
-   * CMD:subtitleOffset: sets the room-wide offset (validated, clamped to ±30 s, rounded to 0.05 s), tells the others
+   * CMD:subtitleOffset: sets the room-wide offset (validated, clamped to ±24 h, rounded to 0.05 s), tells the others
    * (REC:subtitleOffset), saves it for this video, and announces it in chat once it stops changing.
    */
   private setSubtitleOffset = (socket: Socket, data: unknown) => {

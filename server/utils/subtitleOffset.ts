@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
-/** Room-wide subtitle offsets are clamped to ±30 s (the UI slider covers ±10 s, keys can go further). */
-export const SUBTITLE_OFFSET_MAX = 30;
+/**
+ * Not a usability limit (offsets can be anything a video could need), just a sanity bound on what's stored: ±24 h.
+ */
+export const SUBTITLE_OFFSET_MAX = 24 * 60 * 60;
 
 /**
- * Validates a CMD:subtitleOffset payload: a finite number, clamped to ±30 s and rounded to 0.05 s.
+ * Validates a CMD:subtitleOffset payload: a finite number, clamped to ±24 h and rounded to 0.05 s.
  * Returns undefined for anything else.
  */
 export function normalizeSubtitleOffset(value: unknown): number | undefined {

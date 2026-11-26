@@ -101,7 +101,7 @@ export interface ClientToServerEvents {
   "CMD:joinScreenShare": (data: { file: boolean }) => void;
   "CMD:leaveScreenShare": () => void;
   "CMD:subtitle": (url: string) => void;
-  /** Room-wide subtitle offset in seconds (server clamps to ±30 s, rounds to 0.05 s) */
+  /** Room-wide subtitle offset in seconds (server clamps to ±24 h, rounds to 0.05 s) */
   "CMD:subtitleOffset": (offset: number) => void;
   "CMD:askHost": () => void;
   "CMD:playlistNext": (endedUrl: string) => void;

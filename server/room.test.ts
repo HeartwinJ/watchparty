@@ -125,11 +125,16 @@ describe("CMD:subtitleOffset", () => {
 
     rec = next(sam.socket, "REC:subtitleOffset");
     alex.socket.emit("CMD:subtitleOffset", 99);
-    expect((await rec)[0].offset).toBe(30);
+    expect((await rec)[0].offset).toBe(99);
 
     rec = next(sam.socket, "REC:subtitleOffset");
     alex.socket.emit("CMD:subtitleOffset", -45.5);
-    expect((await rec)[0].offset).toBe(-30);
+    expect((await rec)[0].offset).toBe(-45.5);
+
+    // Only a ±24 h sanity bound
+    rec = next(sam.socket, "REC:subtitleOffset");
+    alex.socket.emit("CMD:subtitleOffset", 1e12);
+    expect((await rec)[0].offset).toBe(86400);
   });
 
   it("ignores invalid payloads", async () => {

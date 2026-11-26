@@ -835,6 +835,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+.offsetInput {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wp-r-sm);
+  background: transparent;
+  color: var(--wp-text);
+  font: inherit;
+  text-align: center;
+  cursor: text;
+}
+
+.offsetInput:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.offsetInput:focus-visible {
+  outline: 2px solid var(--wp-accent-text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .offsetValue small {
   display: block;
   font: 500 11px var(--wp-font);
@@ -996,6 +1017,7 @@
   place-items: center;
   z-index: calc(var(--wp-z-controls) + 5);
   background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
 }
 
 /* ---------- shortcuts overlay ---------- */

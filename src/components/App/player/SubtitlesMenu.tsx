@@ -15,6 +15,7 @@ import {
   describeOffset,
   effectiveOffset,
   formatOffset,
+  parseOffsetInput,
   type SubtitleBackground,
   type SubtitleSize,
 } from "../logic/subtitles";
@@ -303,9 +304,12 @@ export function SubtitlesMenu(props: {
             >
               −0.1
             </button>
-            <div className={styles.offsetValue} aria-live="polite">
-              {formatOffset(offset)}
-              <small>{describeOffset(offset)}</small>
+            <div className={styles.offsetValue}>
+              <OffsetInput
+                offset={offset}
+                onChange={(v) => subtitles.setOffset(v)}
+              />
+              <small aria-live="polite">{describeOffset(offset)}</small>
             </div>
             <button
               className={styles.step}
@@ -343,8 +347,8 @@ export function SubtitlesMenu(props: {
           <div className={styles.hintRow}>
             <span>Keyboard</span>
             <span>
-              <kbd className={styles.kbd}>[</kbd> earlier ·{" "}
-              <kbd className={styles.kbd}>]</kbd> later · 0.1 s
+              <kbd className={styles.kbd}>[</kbd>{" "}
+              <kbd className={styles.kbd}>]</kbd> ±0.1 s · or type a value
             </span>
           </div>
           <div
@@ -416,5 +420,58 @@ export function SubtitlesMenu(props: {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The offset value, editable: click it and type seconds ("-45.5") or minutes:seconds ("1:30"), then Enter. Esc or an
+ * invalid value puts the current offset back. Larger than the slider's ±10 s is fine.
+ */
+function OffsetInput({
+  offset,
+  onChange,
+}: {
+  offset: number;
+  onChange: (offset: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null) {
+      const parsed = parseOffsetInput(draft);
+      if (parsed !== undefined && parsed !== offset) {
+        onChange(parsed);
+      }
+    }
+    setDraft(null);
+  };
+  return (
+    <input
+      className={styles.offsetInput}
+      type="text"
+      inputMode="decimal"
+      spellCheck={false}
+      aria-label="Subtitle offset in seconds"
+      title="Type an offset in seconds (e.g. -45.5) or minutes:seconds (1:30)"
+      value={draft ?? formatOffset(offset)}
+      onFocus={(e) => {
+        setDraft(offset === 0 ? "0" : String(offset));
+        const el = e.currentTarget;
+        requestAnimationFrame(() => el.select());
+      }}
+      onChange={(e) => setDraft(e.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+          e.currentTarget.blur();
+        } else if (e.key === "Escape") {
+          // Revert without closing the menu
+          e.stopPropagation();
+          setDraft(null);
+          e.currentTarget.blur();
+        }
+      }}
+    />
   );
 }

@@ -373,16 +373,18 @@ export const PlayerArea = ({ room }: { room: Room }) => {
       )}
 
       {!state.isAutoPlayable && hasMedia && (
-        <div className={styles.unmute}>
-          <Button
-            size="lg"
-            leftSection={<IconVolume />}
-            onClick={() => {
-              store.set({ isAutoPlayable: true });
-              player.localSetMute(false);
-              player.localSetVolume(1);
-            }}
-          >
+        // The browser blocked sound until this page is interacted with. The scrim covers the controls, so a click
+        // anywhere on it unmutes (not just on the button), instead of silently swallowing clicks.
+        <div
+          className={styles.unmute}
+          onClick={(e) => {
+            e.stopPropagation();
+            store.set({ isAutoPlayable: true });
+            player.localSetMute(false);
+            player.localSetVolume(1);
+          }}
+        >
+          <Button size="lg" leftSection={<IconVolume />}>
             Unmute
           </Button>
         </div>
