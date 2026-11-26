@@ -152,7 +152,6 @@ describe("Room skip intro", () => {
       url: "https://www.youtube.com/watch?v=short",
       type: "youtube",
     });
-    await settle(1100); // the queue ignores "ended" reports for a second after a host change
     a.emit("CMD:playlistNext", EP2);
     await settle();
     expect(t.room.video).toBe("https://www.youtube.com/watch?v=short");
@@ -210,6 +209,24 @@ describe("Room skip intro", () => {
     expect(t.room.videoTS).toBe(0);
     // Not a person's seek: no chat line
     expect(t.room.serialize()).not.toContain('"cmd":"seek"');
+  });
+
+  it("ignores an 'ended' from the start past the end right after the undo", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    const a = await t.join();
+    a.emit("CMD:host", EP2);
+    await settle(1100);
+    a.emit("CMD:playlistAdd", { url: EP3, name: "Three" });
+    await settle();
+    // Adding to the queue while something plays doesn't change the video
+    expect(t.room.video).toBe(EP2);
+    a.emit("CMD:duration", 60);
+    // A player that sat at the end of the 60 s video reports it a moment later: not a real end
+    a.emit("CMD:playlistNext", EP2);
+    await settle();
+    expect(t.room.video).toBe(EP2);
+    expect(t.room.videoTS).toBe(0);
   });
 
   it("keeps the skip for a long video, or once someone paused", async () => {

@@ -109,8 +109,6 @@ describe("Room lifecycle", () => {
       meta: QUEUED_META,
     });
     await settle();
-    // preventTSUpdate ignores playlistNext for 1 s after a host change
-    await settle(1000);
     const line = next<ChatMessage>(
       a,
       "REC:chat",

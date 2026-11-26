@@ -99,7 +99,7 @@ describe("Room history", () => {
     cleanups.push(t.close);
     const a = await t.join();
     a.emit("CMD:host", "https://example.com/first.mp4");
-    // Timestamps and playlistNext are ignored for 1 s after a host change
+    // Timestamps are ignored for 1 s after a host change
     await settle(1100);
     a.emit("CMD:ts", 120);
     await settle();

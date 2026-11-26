@@ -548,8 +548,43 @@ describe("queue", () => {
     alex.socket.emit("CMD:playlistNext", VIDEO);
     await barrier(alex.socket);
     expect(room.video).toBe("https://example.com/n.mp4");
-    // A duplicate right after the change is ignored
-    alex.socket.emit("CMD:playlistNext", "https://example.com/n.mp4");
+    // Another viewer's report for the video that already ended is ignored
+    alex.socket.emit("CMD:playlistAdd", "https://example.com/m.mp4");
+    await vi.waitFor(() => expect(room.playlist).toHaveLength(1));
+    alex.socket.emit("CMD:playlistNext", VIDEO);
+    await barrier(alex.socket);
+    expect(room.video).toBe("https://example.com/n.mp4");
+  });
+
+  it("advances when a video ends within its first second", async () => {
+    const alex = await join();
+    alex.socket.emit("CMD:host", VIDEO);
+    alex.socket.emit("CMD:playlistAdd", "https://example.com/n.mp4");
+    await vi.waitFor(() => expect(room.playlist).toHaveLength(1));
+    // Right after the host change (no 1 s wait)
+    alex.socket.emit("CMD:playlistNext", VIDEO);
+    await barrier(alex.socket);
+    await barrier(alex.socket);
+    expect(room.video).toBe("https://example.com/n.mp4");
+  });
+
+  it("ignores a late report for the same URL right after it was hosted again", async () => {
+    const alex = await join();
+    alex.socket.emit("CMD:host", VIDEO);
+    await barrier(alex.socket);
+    await new Promise((r) => setTimeout(r, 1050));
+    alex.socket.emit("CMD:playlistAdd", "https://example.com/n.mp4");
+    await vi.waitFor(() => expect(room.playlist).toHaveLength(1));
+    // The same video again (e.g. queued twice): an "ended" for it now is the previous play's
+    alex.socket.emit("CMD:host", VIDEO);
+    alex.socket.emit("CMD:playlistNext", VIDEO);
+    await barrier(alex.socket);
+    await barrier(alex.socket);
+    expect(room.video).toBe(VIDEO);
+    expect(room.playlist).toHaveLength(1);
+    // A second later it's a real end
+    await new Promise((r) => setTimeout(r, 1050));
+    alex.socket.emit("CMD:playlistNext", VIDEO);
     await barrier(alex.socket);
     expect(room.video).toBe("https://example.com/n.mp4");
   });

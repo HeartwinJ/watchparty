@@ -137,6 +137,12 @@ export class Room {
   /** Called after the room deleted itself (app.ts removes it from its `rooms` Map) */
   public static onDeleted: ((roomId: string) => void) | null = null;
   private preventTSUpdate = false;
+  /**
+   * "Ended" reports (CMD:playlistNext) for this URL are ignored until `until` (ms): a lagging report from before a
+   * host change or an undone intro skip, when the room is now showing the same URL again (a different URL never
+   * matches the current video anyway)
+   */
+  private ignoreEnded: { url: string | null; until: number } | null = null;
   /** Positions reported before this time (ms) are ignored: they were sent before a seek reached the player */
   private ignoreTsUntil = 0;
   private db: DatabaseSync;
@@ -659,6 +665,8 @@ export class Room {
       return;
     }
     this.history.beforeHostChange(this.historySnapshot());
+    // A late "ended" for the previous video only matters when the new video is the same URL
+    this.ignoreEnded = { url: this.video, until: Date.now() + 1000 };
     this.video = data;
     this.videoMeta = meta;
     // From the beginning, or past the intro when the room skips intros (the room's start time is authoritative:
@@ -740,20 +748,19 @@ export class Room {
 
   private playlistNext = (raw: unknown) => {
     const data = raw ? String(raw) : null;
-    if (data && this.preventTSUpdate) {
+    // Clients pass the URL that just ended. If it isn't the current video, the playlist already advanced (another
+    // viewer's report, or one lagging from before a host change): ignore it. A video that ends within its first
+    // second still advances; only a report for the same URL right after it was hosted again (or an undone intro
+    // skip) can't be told apart from a stale one, and is ignored for a second.
+    if (data && this.video && !isSameVideo(data, this.video)) {
       return;
     }
-    const dataYtId = data ? getYoutubeVideoID(data) : undefined;
-    const videoYtId = this.video ? getYoutubeVideoID(this.video) : undefined;
-    // Clients may pass the URL that should be the current one.
-    // If we've already advanced the playlist, we can ignore duplicate calls
     if (
       data &&
-      this.video &&
-      data !== this.video &&
-      (!dataYtId || !videoYtId || dataYtId !== videoYtId)
+      this.ignoreEnded &&
+      Date.now() < this.ignoreEnded.until &&
+      isSameVideo(data, String(this.ignoreEnded.url))
     ) {
-      // Validation didn't match
       return;
     }
     if (data) {
@@ -986,6 +993,8 @@ export class Room {
     this.tsMap = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
+    // Players that started past the end may still report that start as "ended"
+    this.ignoreEnded = { url: this.video, until: Date.now() + 1000 };
     const ns = this.io.of(this.roomId);
     ns.emit("REC:tsMap", this.tsMap);
     ns.emit("REC:seek", 0);
@@ -1758,4 +1767,13 @@ function isValidUUID(id: string) {
   return /^[0-9A-F]{8}-[0-9A-F]{4}-[4][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i.test(
     id,
   );
+}
+
+/** The same video: the same URL, or the same YouTube video in another URL form */
+function isSameVideo(a: string, b: string) {
+  if (a === b) {
+    return true;
+  }
+  const aYt = getYoutubeVideoID(a);
+  return Boolean(aYt) && aYt === getYoutubeVideoID(b);
 }
