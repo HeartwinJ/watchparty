@@ -114,3 +114,15 @@ describe("describeChatCommand nowPlaying", () => {
     expect(isPersonlessLine({ id: "a" })).toBe(false);
   });
 });
+
+describe("describeChatCommand host for shares", () => {
+  it("says the sharer started sharing, without a name lookup", () => {
+    const name = () => "undefined's screen";
+    expect(describeChatCommand("host", "screenshare://abc", name)).toBe(
+      "started sharing their screen",
+    );
+    expect(describeChatCommand("host", "fileshare://abc", name)).toBe(
+      "started sharing a file",
+    );
+  });
+});

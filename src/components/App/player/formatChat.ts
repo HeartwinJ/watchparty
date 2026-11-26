@@ -1,5 +1,6 @@
 // Plain-text descriptions of chat system commands, for the chat overlay (and the sidebar chat if it wants them).
 import { formatTimestamp } from "../../../utils/utils";
+import { parseShareUrl } from "../logic/media";
 import { formatTiming, normalizeScale } from "../logic/subtitles";
 
 /** A subtitle timing chat msg: the offset ("2.35"), or JSON {offset, scale} with a time scale */
@@ -34,10 +35,18 @@ export function describeChatCommand(
   mediaName: (url?: string) => string = (u) => u ?? "",
 ): string | undefined {
   switch (cmd) {
-    case "host":
+    case "host": {
+      const share = parseShareUrl(msg);
+      if (share) {
+        // The person who starts a share is always the sharer (the server sets the URL from their own id)
+        return share.kind === "screen"
+          ? "started sharing their screen"
+          : "started sharing a file";
+      }
       return msg
         ? `changed the video to ${mediaName(msg)}`
         : "stopped the video";
+    }
     case "playlistAdd":
       return `added ${mediaName(msg)} to the queue`;
     case "seek":

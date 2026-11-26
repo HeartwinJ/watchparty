@@ -61,6 +61,16 @@ export const isWebRTCShare = (url: string) =>
 export const findSharer = (participants: User[]) =>
   participants.find((p) => p.isScreenShare);
 
+/** `screenshare://<clientId>` / `fileshare://<clientId>` (optionally `@...`) → the kind and the sharer's client id */
+export function parseShareUrl(
+  url: string | undefined,
+): { kind: "screen" | "file"; sharerId: string } | undefined {
+  const m = /^(screenshare|fileshare):\/\/([^@]*)/.exec(url ?? "");
+  return m
+    ? { kind: m[1] === "screenshare" ? "screen" : "file", sharerId: m[2] }
+    : undefined;
+}
+
 const DISPLAY_NAME_PARAM = "wp-name=";
 
 /**
@@ -111,13 +121,14 @@ export function getMediaDisplayName(
   if (usesYouTube(ctx.roomMedia)) {
     return input;
   }
-  if (input.startsWith("screenshare://")) {
-    const sharer = findSharer(ctx.participants);
-    return ctx.nameMap[sharer?.id ?? ""] + "'s screen";
-  }
-  if (input.startsWith("fileshare://")) {
-    const sharer = findSharer(ctx.participants);
-    return ctx.nameMap[sharer?.id ?? ""] + "'s file";
+  const share = parseShareUrl(input);
+  if (share) {
+    // The URL names the sharer; the roster flag can lag behind (or be gone for old chat lines)
+    const name =
+      ctx.nameMap[share.sharerId] ??
+      ctx.nameMap[findSharer(ctx.participants)?.id ?? ""];
+    const what = share.kind === "screen" ? "screen" : "file";
+    return name ? `${name}'s ${what}` : `a shared ${what}`;
   }
   if (input.includes("/proxy")) {
     const urlParsed = new URLSearchParams(input);
