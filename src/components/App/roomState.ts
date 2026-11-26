@@ -67,6 +67,12 @@ export interface RoomState {
   nextEpisode: NextEpisodeState & { at: number };
   /** The latest REC:introSkip for the current video (skip intro), with a receive timestamp; cleared by REC:host */
   introSkip: (IntroSkipInfo & { at: number }) | null;
+  /**
+   * Where skip intro started the current video (seconds), until anyone moves it (REC:seek, our own seek) or the
+   * video changes. Unlike `introSkip` (the notice, which the server hides with REC:introSkip null), it outlives an
+   * undone skip, so an "ended" from that start past the end is never taken for the real end.
+   */
+  introSkipStart: number | null;
   // Client-side conversion (see useConvert)
   /** Per-device "Auto-convert when needed" (default on). Kept as `convertEnabled` for compatibility. */
   convertEnabled: boolean;
@@ -180,6 +186,7 @@ export function createInitialRoomState(): RoomState {
     readyCheck: null,
     nextEpisode: { state: "none", at: 0 },
     introSkip: null,
+    introSkipStart: null,
     convertEnabled: readAutoConvert(),
     playback: undefined,
     convertProgress: undefined,

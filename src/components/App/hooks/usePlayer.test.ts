@@ -344,6 +344,11 @@ describe("usePlayer sync", () => {
 });
 
 describe("usePlayer when a video ends", () => {
+  beforeEach(() => {
+    // A real end: the player sits at the end
+    time = duration;
+  });
+
   it("restarts when looping", async () => {
     const { api } = setup({ state: { roomLoop: true } });
     time = 100;
@@ -388,11 +393,27 @@ describe("usePlayer when a video ends", () => {
     set({
       loading: false,
       roomLoop: false,
-      introSkip: { seconds: 120, at: 1 },
+      // The skip's start, even after the server hid the notice (REC:introSkip null)
+      introSkip: null,
+      introSkipStart: 120,
     });
     await act(async () => api().onVideoEnded(MEDIA));
     expect(cmd.nextEpisode).not.toHaveBeenCalled();
     expect(video.pause).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale end once the player was moved away from the end", async () => {
+    const { api, cmd } = setup({
+      state: { playlist: [{ url: "https://x/b.mp4" }] },
+    });
+    // e.g. the join seek to 0 after an undone intro skip, with the old "ended" still queued
+    time = 0.1;
+    await act(async () => api().onVideoEnded(MEDIA));
+    expect(cmd.playlistNext).not.toHaveBeenCalled();
+    expect(video.pause).not.toHaveBeenCalled();
+    time = duration;
+    await act(async () => api().onVideoEnded(MEDIA));
+    expect(cmd.playlistNext).toHaveBeenCalledWith(MEDIA);
   });
 });
 

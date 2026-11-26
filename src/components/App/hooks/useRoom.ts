@@ -73,6 +73,12 @@ export function useRoom(roomId: string) {
   const shareSession = useRef(createShareSession()).current;
   const chatRef = useRef<Chat>(null);
   const handlersRef = useRef<RoomSocketHandlers>(null);
+  /**
+   * Where the room wants the current video (its REC:host start, moved by every REC:seek) and when we heard it. The
+   * join seek when the media can play uses the latest one: a REC:seek that arrives while the video is still loading
+   * (e.g. the server undoing a skipped intro) must not be overridden by the stale start.
+   */
+  const roomPositionRef = useRef({ time: 0, at: 0 });
   // The socket connects once we know whether autoplay is allowed
   const [ready, setReady] = useState(false);
 
@@ -189,6 +195,7 @@ export function useRoom(roomId: string) {
         isLiveStream: false,
         // A skipped intro is announced right after this (REC:introSkip)
         introSkip: null,
+        introSkipStart: null,
       });
       const video = player.html().getVideoEl();
 
@@ -228,7 +235,7 @@ export function useRoom(roomId: string) {
       }
       const src = data.video;
       const time = data.videoTS;
-      const hostReceivedAt = Date.now();
+      roomPositionRef.current = { time, at: Date.now() };
       if (isDash(src)) {
         if (!window.watchparty.dash) {
           const Dash = await import("dashjs");
@@ -274,10 +281,12 @@ export function useRoom(roomId: string) {
         "canplay",
         () => {
           setLoadingFalse();
+          // The room's start, or a REC:seek that arrived while we were loading
+          const position = roomPositionRef.current;
           let ts = undefined;
           // Hls and Dash reset position back to 0 so set it back here
           if (isHls(src) || isDash(src) || store.get().isLiveStream) {
-            ts = time;
+            ts = position.time;
           }
           // Resync since the loading might have taken some time: to the other viewers, or (alone) to where the room
           // was, never to our own position, which was ~0 while loading (a reload used to restart converted videos)
@@ -288,8 +297,8 @@ export function useRoom(roomId: string) {
                 tsMap: s.tsMap,
                 selfId: clientId,
                 participantCount: s.participants.length,
-                hostTime: time,
-                hostReceivedAt,
+                hostTime: position.time,
+                hostReceivedAt: position.at,
                 now: Date.now(),
                 paused: s.roomPaused,
                 rate: s.roomPlaybackRate || 1,
@@ -380,7 +389,11 @@ export function useRoom(roomId: string) {
           subtitles.onRemoteOffset(data.offset, data.scale);
         }
       },
-      "REC:seek": (time) => player.localSeek(time),
+      "REC:seek": (time) => {
+        roomPositionRef.current = { time, at: Date.now() };
+        store.set({ introSkipStart: null });
+        player.localSeek(time);
+      },
       "REC:playbackRate": (rate) => {
         store.set({ roomPlaybackRate: rate });
         if (rate > 0) {
@@ -412,13 +425,15 @@ export function useRoom(roomId: string) {
       chatinit: chat.onInit,
       playlist: (items) => store.set({ playlist: items }),
       "REC:videoMeta": (videoMeta) => store.set({ videoMeta }),
-      "REC:introSkip": (info) =>
+      "REC:introSkip": (info) => {
+        const skipped =
+          info && typeof info.seconds === "number" && info.seconds > 0;
         store.set({
-          introSkip:
-            info && typeof info.seconds === "number" && info.seconds > 0
-              ? { seconds: info.seconds, at: Date.now() }
-              : null,
-        }),
+          introSkip: skipped ? { seconds: info.seconds, at: Date.now() } : null,
+          // null only hides the notice: the start stays known until someone seeks
+          ...(skipped ? { introSkipStart: info.seconds } : {}),
+        });
+      },
       "REC:playbackIssue": (issue) =>
         store.set({ playbackIssue: { ...issue, at: Date.now() } }),
       "REC:roomSettings": (roomSettings) => {

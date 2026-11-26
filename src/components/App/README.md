@@ -199,7 +199,11 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   `REC:introSkip null` to everyone, which hides it.
 - Too short for the skip (a `CMD:duration` under 5 min or under 2× the skip, while nobody has played/paused/seeked
   and the room is within 30 s of the skip point): the server clears `tsMap` and sends `REC:introSkip null`,
-  `REC:seek 0` and, if the room is playing, `REC:play`.
+  `REC:seek 0` and, if the room is playing, `REC:play`. The undo often reaches players that are still loading: the
+  `canplay` join seek starts from `roomPositionRef` (REC:host's start, replaced by every `REC:seek`), so it lands at 0
+  and not past the end. `state.introSkipStart` (the skip point, kept after the notice is hidden, cleared by any seek
+  or video change) makes `onVideoEnded` ignore the "ended" of a start past the end, and so does a player that's no
+  longer near its end (an "ended" queued before the join seek moved it back).
 
 ## Player
 

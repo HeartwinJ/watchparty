@@ -201,6 +201,8 @@ export function usePlayer(opts: {
       const target = Math.max(time, 0);
       current().seekVideo(target);
       cmd.seek(roomTime(target));
+      // We picked a position: an end from here on is a real one
+      store.set({ introSkipStart: null });
       // Our own reported time is stale for a moment; don't let the drift controller fight the seek
       driftRef.current = initialDriftState();
     };
@@ -265,9 +267,20 @@ export function usePlayer(opts: {
         return;
       }
       // Skip intro started this video past its end (shorter than the skip): it "ended" at once. Not a real end: the
-      // server puts everyone back to 0 and resumes (REC:seek + REC:play) once a viewer reports the duration.
-      const skip = store.get().introSkip;
-      if (skip && getDuration() <= skip.seconds + 1) {
+      // server puts everyone back to 0 and resumes (REC:seek + REC:play) once a viewer reports the duration. Uses the
+      // skip's start, not the notice, which the server may already have hidden.
+      const skipStart = store.get().introSkipStart;
+      const duration = getDuration();
+      if (skipStart !== null && duration <= skipStart + 1) {
+        return;
+      }
+      // A stale "ended" (queued before a seek moved the player away from the end, e.g. the join seek after that
+      // undo): the player isn't at the end any more, so it isn't one
+      if (
+        Number.isFinite(duration) &&
+        duration > 0 &&
+        current().getCurrentTime() < duration - 1
+      ) {
         return;
       }
       localPause();
