@@ -8,6 +8,15 @@ Personal fork of [howardchung/watchparty](https://github.com/howardchung/watchpa
 - **Never push to upstream and never open PRs/issues against `howardchung/watchparty`.** Because this is a fork, `gh pr create` may default to the parent repo, so **always** pass `--repo HeartwinJ/watchparty --base master`.
 - Work on a feature branch (`feat/…`, `chore/…`, `fix/…`), open a PR to `master` on the fork, and merge only after CI is green.
 - Before opening a PR, run `npm run format:check && npm run check && npx vite build`.
+- **Keep the docs in step with the code, in the same PR.** Any change to a feature or to behaviour that users, operators or future contributors need to know about must update the relevant docs:
+  - `README.md`: the feature list, configuration table and deployment notes.
+  - `DEPLOY.md`: setup, upgrades and backups.
+  - `.env.example` and `server/config.ts` comments: new or changed settings.
+  - `CLAUDE.md`: architecture, events and API contracts, data and gotchas.
+  - `src/components/App/README.md`: the room page.
+
+  Pure bug fixes, refactors and small internal changes don't need doc updates unless they change documented behaviour. A PR that changes documented behaviour without updating the docs isn't ready to merge.
+
 - The fork has diverged heavily from upstream (paid features, accounts and Postgres/Redis removed; SQLite, password auth, redesigned UI, AIOStreams, compose stack with cloudflared). Cherry-pick specific upstream fixes rather than merging. Keep this file and `README.md` (feature list) up to date as features land.
 
 ## Commands
