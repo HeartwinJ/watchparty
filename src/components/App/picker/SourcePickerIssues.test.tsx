@@ -134,6 +134,20 @@ describe("playback issue toasts", () => {
 });
 
 describe("usePickerActions", () => {
+  it("stops the video for everyone, only when it isn't a share", () => {
+    const room = fakeRoom({ roomMedia: "https://v.example.com/a.mp4" });
+    const { result } = renderHook(() => usePickerActions(room));
+    expect(result.current.canStopVideo).toBe(true);
+    result.current.stopVideo();
+    expect(room.cmd.stopVideo).toHaveBeenCalled();
+    const canStop = (roomMedia: string) =>
+      renderHook(() => usePickerActions(fakeRoom({ roomMedia }))).result.current
+        .canStopVideo;
+    expect(canStop("")).toBe(false);
+    expect(canStop("screenshare://bob")).toBe(false);
+    expect(canStop("fileshare://bob")).toBe(false);
+  });
+
   it("queues a named link, stops sharing, and counts my own share as mine", () => {
     const room = fakeRoom({
       participants: [{ id: "me", isScreenShare: true }],

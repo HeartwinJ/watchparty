@@ -25,6 +25,7 @@ describe("createRoomCommands", () => {
     const meta = { source: "aiostreams" } as any;
     cmd.setName("Sam");
     cmd.setMedia("https://x/a.mp4");
+    cmd.stopVideo();
     cmd.play();
     cmd.pause();
     cmd.seek(5);
@@ -64,6 +65,7 @@ describe("createRoomCommands", () => {
     expect(socket.emitted).toEqual([
       ["CMD:name", "Sam"],
       ["CMD:host", "https://x/a.mp4"],
+      ["CMD:host", ""],
       ["CMD:play"],
       ["CMD:pause"],
       ["CMD:seek", 5],

@@ -12,7 +12,7 @@ import { isClientTranscodeSupported } from "../../../utils/clientTranscode";
 import { isDirectVideoUrl } from "../../../utils/utils";
 import type { StreamDTO } from "../../../api/addons";
 import type { Room } from "../hooks/useRoom";
-import { findSharer, withDisplayName } from "../logic/media";
+import { findSharer, isWebRTCShare, withDisplayName } from "../logic/media";
 import { toast, type ToastAction } from "../ui/toast";
 import { useRoomUi } from "../ui/RoomUi";
 import { PickerPalette } from "./PickerPalette";
@@ -63,6 +63,8 @@ export function usePickerActions(room: Room): PickerActions {
         : "other"
       : "none";
   const currentMeta = room.state.videoMeta;
+  const media = room.state.roomMedia;
+  const canStopVideo = !!media && !isWebRTCShare(media);
   return useMemo<PickerActions>(
     () => ({
       playUrl: (url, opts) => {
@@ -100,10 +102,12 @@ export function usePickerActions(room: Room): PickerActions {
       shareScreen: () => store.set({ isScreenShareModalOpen: true }),
       shareFile: () => store.set({ isFileShareModalOpen: true }),
       stopSharing: () => share.stopPublishing(),
+      stopVideo: () => cmd.stopVideo(),
+      canStopVideo,
       sharing,
       currentMeta,
     }),
-    [cmd, playlist, store, share, sharing, currentMeta],
+    [cmd, playlist, store, share, sharing, currentMeta, canStopVideo],
   );
 }
 

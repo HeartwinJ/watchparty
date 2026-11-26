@@ -1,4 +1,4 @@
-// The palette's first level: empty state (share actions + recents), a pasted link, or search results.
+// The palette's first level: empty state (stop video, share actions + recents), a pasted link, or search results.
 import React, { useEffect, useMemo, useState } from "react";
 import { Button, Skeleton } from "@mantine/core";
 import {
@@ -9,6 +9,7 @@ import {
   IconPlayerPlayFilled,
   IconPlus,
   IconScreenShare,
+  IconPlayerStop,
   IconScreenShareOff,
   IconBrandYoutube,
   IconHistory,
@@ -170,11 +171,14 @@ function RecentRow({
 export function EmptyView({
   idPrefix,
   actions,
+  queueMode = false,
   onOpenContext,
   close,
 }: {
   idPrefix: string;
   actions: PickerActions;
+  /** Adding to the queue: no "Stop video" */
+  queueMode?: boolean;
   onOpenContext: (ctx: StreamContext) => void;
   close: () => void;
 }) {
@@ -182,6 +186,21 @@ export function EmptyView({
   const configured = useAddonsConfigured();
   return (
     <>
+      {actions.canStopVideo && !queueMode && (
+        <>
+          <div className={styles.groupLabel}>Now playing</div>
+          <ActionRow
+            id={`${idPrefix}-stop-video`}
+            icon={<IconPlayerStop size={18} />}
+            title="Stop video"
+            meta="Clear the player for everyone"
+            onSelect={() => {
+              actions.stopVideo();
+              close();
+            }}
+          />
+        </>
+      )}
       <div className={styles.groupLabel}>Start sharing</div>
       {actions.sharing === "me" ? (
         <ActionRow

@@ -25,6 +25,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 - **Auto-convert**: each viewer's browser checks what it can play and converts video it can't play natively (MKV, AC3/EAC3 audio, etc.), right there in that viewer's browser. Anyone whose device can't keep up can be sent a converted stream shared by someone else.
 - Screen sharing and stream-your-own-file over peer-to-peer WebRTC, with an optional Cloudflare TURN relay for strict networks.
 - A queue with drag to reorder.
+- **Stop video**: anyone can clear the player for everyone (⋯ menu or the top of the picker). The queue stays as it is.
 
 **Player**
 
