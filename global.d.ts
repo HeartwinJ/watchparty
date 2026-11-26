@@ -112,3 +112,24 @@ interface RoomSettings {
   /** seconds before the end to show the next-episode card, 5–120 */
   nextEpisodeOffset: number;
 }
+
+/** Why a ready check started: someone stalled, or someone joined mid-play */
+type ReadyCheckReason = "buffering" | "join";
+/** How a ready check ended: everyone ready, timed out, "Resume now", or a manual pause/play/video change */
+type ReadyCheckOutcome = "ready" | "timeout" | "skipped" | "cancelled";
+
+/** REC:readyCheck: the room is paused until these viewers have enough buffered (see server/readyCheck.ts) */
+interface ReadyCheckState {
+  active: boolean;
+  /** clientIds still buffering */
+  waitingFor: string[];
+  /** Server time (ms) when it resumes anyway */
+  deadline?: number;
+  reason?: ReadyCheckReason;
+  /** Who stalled or joined */
+  trigger?: string;
+  /** Set once a check has ended */
+  outcome?: ReadyCheckOutcome;
+  /** Who pressed "Resume now" (outcome "skipped") */
+  actorId?: string;
+}

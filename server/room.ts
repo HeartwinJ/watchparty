@@ -25,6 +25,11 @@ import {
   normalizeRoomSettings,
   parseRoomSettingsPatch,
 } from "./roomSettings.ts";
+import {
+  parseReadyReport,
+  ReadyCheck,
+  type ReadyCheckEffect,
+} from "./readyCheck.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -112,6 +117,7 @@ export class Room {
   public static ROOM_SETTINGS_CHAT_DELAY_MS = 1500;
   /** Watch history / continue watching (utils/history.ts) */
   private history: HistoryRecorder;
+  private readyCheck = new ReadyCheck();
 
   constructor(
     io: Server,
@@ -146,6 +152,7 @@ export class Room {
       if (this.roster.length) {
         this.history.tick(this.historySnapshot());
       }
+      this.applyReadyCheck(this.readyCheck.tick(Date.now(), memberIds));
     }, 1000);
 
     // clientId identifies a user within rooms (chat, names, signaling). See claimClientId.
@@ -199,6 +206,10 @@ export class Room {
         return;
       }
 
+      // Joining mid-play may pause the room first (ready check), so REC:host already says paused
+      this.applyReadyCheck(
+        this.readyCheck.join(clientId, this.readyCheckContext()),
+      );
       socket.emit("REC:host", this.getHostState());
       socket.emit("REC:nameMap", this.nameMap);
       socket.emit("REC:pictureMap", this.pictureMap);
@@ -207,6 +218,7 @@ export class Room {
       socket.emit("playlist", this.playlist);
       socket.emit("REC:videoMeta", this.videoMeta);
       socket.emit("REC:roomSettings", this.roomSettings);
+      socket.emit("REC:readyCheck", this.readyCheck.getState());
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
@@ -296,6 +308,11 @@ export class Room {
       );
       on("CMD:roomSettings", (data: unknown) =>
         this.setRoomSettings(socket, data),
+      );
+
+      on("CMD:readyState", (data: unknown) => this.setReadyState(socket, data));
+      on("CMD:readyCheckSkip", () =>
+        this.applyReadyCheck(this.readyCheck.skip(socket.clientId, Date.now())),
       );
 
       on("signalSS", (data: unknown) => this.sendSignal(socket, data));
@@ -463,6 +480,7 @@ export class Room {
     this.loop = false;
     this.playbackRate = 1;
     this.subtitleOffset = this.loadSubtitleOffset(data, meta);
+    this.applyReadyCheck(this.readyCheck.reset(Date.now()));
     this.tsMap = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
@@ -634,6 +652,7 @@ export class Room {
   });
 
   private playVideo = (socket: Socket) => {
+    this.applyReadyCheck(this.readyCheck.cancel(Date.now()));
     socket.broadcast.emit("REC:play", this.video, this.getActor(socket));
     const chatMsg = {
       id: socket.clientId,
@@ -645,6 +664,7 @@ export class Room {
   };
 
   private pauseVideo = (socket: Socket) => {
+    this.applyReadyCheck(this.readyCheck.cancel(Date.now()));
     socket.broadcast.emit("REC:pause", this.getActor(socket));
     const chatMsg = {
       id: socket.clientId,
@@ -890,6 +910,10 @@ export class Room {
     const before = this.roomSettings;
     this.roomSettings = settings;
     this.io.of(this.roomId).emit("REC:roomSettings", this.roomSettings);
+    if (!this.roomSettings.readyCheck) {
+      // Turned off while waiting: stop waiting and play
+      this.applyReadyCheck(this.readyCheck.disable(Date.now()));
+    }
     this.queueSettingsChat(socket.clientId, before);
   };
 
@@ -1016,6 +1040,58 @@ export class Room {
     }, Room.SUBTITLE_OFFSET_CHAT_DELAY_MS);
   };
 
+  // --- Ready check (PLAN 6d, see readyCheck.ts) ---
+
+  private isReadyCheckOn = () => this.roomSettings.readyCheck;
+
+  private readyCheckContext = () => ({
+    // Only while a video is playing, and never for screen/file share (live)
+    eligible:
+      this.isReadyCheckOn() &&
+      Boolean(this.video) &&
+      !this.paused &&
+      !this.getSharerId(),
+    members: this.roster.map((u) => u.id),
+    now: Date.now(),
+  });
+
+  /** CMD:readyState {ready, buffering?, time?} */
+  private setReadyState = (socket: Socket, raw: unknown) => {
+    const report = parseReadyReport(raw);
+    if (report) {
+      this.applyReadyCheck(
+        this.readyCheck.report(
+          socket.clientId,
+          report,
+          this.readyCheckContext(),
+        ),
+      );
+    }
+  };
+
+  /**
+   * Starting a check pauses everyone (no actor, so clients don't say "Alex paused") and lines them up at the
+   * stalled viewer's position; ending it plays again unless a manual pause/play or a new video ended it.
+   */
+  private applyReadyCheck = (effect: ReadyCheckEffect | null) => {
+    if (!effect) {
+      return;
+    }
+    const ns = this.io.of(this.roomId);
+    ns.emit("REC:readyCheck", this.readyCheck.getState());
+    if (effect.type === "start") {
+      this.paused = true;
+      ns.emit("REC:pause");
+      if (effect.seekTo !== undefined) {
+        this.videoTS = effect.seekTo;
+        ns.emit("REC:seek", effect.seekTo);
+      }
+    } else if (effect.type === "end" && effect.resume && this.video) {
+      this.paused = false;
+      ns.emit("REC:play", this.video);
+    }
+  };
+
   private sendSignal = (socket: Socket, raw: unknown) => {
     const data = raw as { to: string; msg: string; sharer?: boolean } | null;
     if (!data || typeof data.to !== "string") {
@@ -1043,6 +1119,7 @@ export class Room {
       this.io.of(this.roomId).emit("roster", this.getRosterForApp());
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
+      this.applyReadyCheck(this.readyCheck.leave(clientId, Date.now()));
     }
     // Keep namemap/picturemap so old chat messages still render correctly after disconnect
     // When serializing we only write values with messages in chat
