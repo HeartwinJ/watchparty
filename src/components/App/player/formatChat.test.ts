@@ -129,3 +129,47 @@ describe("describeChatCommand host for shares", () => {
     );
   });
 });
+
+describe("describeChatCommand playback", () => {
+  const name = (u?: string) => `<${u}>`;
+  it("describes video changes, the queue and playback", () => {
+    expect(describeChatCommand("host", "https://a.example/x.mp4", name)).toBe(
+      "changed the video to <https://a.example/x.mp4>",
+    );
+    expect(describeChatCommand("host", "", name)).toBe("stopped the video");
+    expect(describeChatCommand("playlistAdd", "u", name)).toBe(
+      "added <u> to the queue",
+    );
+    expect(describeChatCommand("seek", "75")).toBe("jumped to 01:15");
+    expect(describeChatCommand("play", "0")).toBe("started the video at 00:00");
+    expect(describeChatCommand("pause", "3600")).toBe(
+      "paused the video at 1:00:00",
+    );
+    expect(describeChatCommand("playbackRate", "1.5")).toBe(
+      "set the speed to 1.5×",
+    );
+    expect(describeChatCommand("playbackRate", "0")).toBe(
+      "set the speed to auto",
+    );
+    // The default name is the URL itself
+    expect(describeChatCommand("playlistAdd", "u")).toBe(
+      "added u to the queue",
+    );
+    expect(describeChatCommand("something-new", "x")).toBeUndefined();
+  });
+
+  it("describes subtitle offsets and resets", () => {
+    expect(describeChatCommand("subtitleOffset", "0")).toBe(
+      "reset the subtitle offset",
+    );
+    expect(describeChatCommand("subtitleOffset", "")).toBeUndefined();
+    expect(describeChatCommand("subtitleOffset", "{broken")).toBeUndefined();
+    expect(
+      describeChatCommand("subtitleOffset", JSON.stringify({ offset: "x" })),
+    ).toBeUndefined();
+    expect(describeChatCommand("subtitleAutoSync", "0")).toBe(
+      "auto-synced the subtitles (already in sync)",
+    );
+    expect(describeChatCommand("subtitleAutoSync", "nope")).toBeUndefined();
+  });
+});
