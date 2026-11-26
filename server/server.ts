@@ -24,6 +24,7 @@ import { assertPublicUrl, safeFetch } from "./utils/ssrf.ts";
 import { createAuth } from "./utils/auth.ts";
 import { createIceServerProvider } from "./utils/iceServers.ts";
 import { createAddonRouter } from "./addons/routes.ts";
+import { createHistoryRouter } from "./utils/historyRoutes.ts";
 import {
   openSubtitlesError,
   openSubtitlesHeaders,
@@ -299,7 +300,8 @@ app.use(
   }),
 );
 
-app.post("/createRoom", requireAuth, async (req, res) => {
+/** Allocates a room name and loads a new Room, or returns undefined if no free name was found */
+function createNewRoom(): Room | undefined {
   // Pick a name nobody else is using. Collisions just retry.
   let name = "";
   for (let attempt = 0; attempt < 5 && !name; attempt++) {
@@ -309,18 +311,43 @@ app.post("/createRoom", requireAuth, async (req, res) => {
     }
   }
   if (!name) {
-    res.status(503).json({ error: "could not allocate a room name" });
-    return;
+    return undefined;
   }
   console.log("createRoom: ", name);
   // Only construct the Room once the name is secured, since it registers a namespace and a timer
   const newRoom = new Room(io, db, name);
   rooms.set(name, newRoom);
+  return newRoom;
+}
+
+// Continue watching: GET /history, DELETE /history/:id, POST /history/:id/resume
+app.use(
+  createHistoryRouter({
+    db,
+    requireAuth,
+    createRoom: ({ video, meta, position }) => {
+      const room = createNewRoom();
+      if (!room) {
+        return undefined;
+      }
+      room.preloadVideo(video, meta, position);
+      room.saveRoom();
+      return room.roomId;
+    },
+  }),
+);
+
+app.post("/createRoom", requireAuth, async (req, res) => {
+  const newRoom = createNewRoom();
+  if (!newRoom) {
+    res.status(503).json({ error: "could not allocate a room name" });
+    return;
+  }
+  const name = newRoom.roomId;
   const preload =
     typeof req.body?.video === "string" ? req.body.video.slice(0, 20000) : "";
   if (preload) {
-    newRoom.video = preload;
-    newRoom.paused = true;
+    newRoom.preloadVideo(preload);
   }
   newRoom.saveRoom();
   // Only accept reasonably sized strings, cap the number of items

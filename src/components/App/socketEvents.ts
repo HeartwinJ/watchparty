@@ -66,6 +66,8 @@ export interface ClientToServerEvents {
   "CMD:playbackRate": (rate: number) => void;
   "CMD:loop": (loop: boolean) => void;
   "CMD:ts": (time: number) => void;
+  /** The current video's duration in seconds (watch history's finished flag) */
+  "CMD:duration": (seconds: number) => void;
   "CMD:chat": (msg: string) => void;
   "CMD:chatV2": (payload: ChatPayload) => void;
   "CMD:addReaction": (reaction: ReactionPayload) => void;
@@ -112,6 +114,7 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     setPlaybackRate: (rate: number) => emit("CMD:playbackRate", rate),
     setLoop: (loop: boolean) => emit("CMD:loop", loop),
     reportTime: (time: number) => emit("CMD:ts", time),
+    reportDuration: (seconds: number) => emit("CMD:duration", seconds),
     sendChat: (msg: string) => emit("CMD:chat", msg),
     sendChatV2: (payload: ChatPayload) => emit("CMD:chatV2", payload),
     addReaction: (reaction: ReactionPayload) =>

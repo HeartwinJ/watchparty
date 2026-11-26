@@ -10,6 +10,7 @@ import {
   subtitleOffsetKey,
 } from "./utils/subtitleOffset.ts";
 import { fetchYoutubeVideo, getYoutubeVideoID } from "./utils/youtube.ts";
+import { HistoryRecorder, type PlaybackSnapshot } from "./utils/history.ts";
 import {
   createIssueLimiter,
   parsePlaybackIssue,
@@ -109,6 +110,8 @@ export class Room {
     | undefined = undefined;
   /** How long the settings have to stay unchanged before the change is announced in chat */
   public static ROOM_SETTINGS_CHAT_DELAY_MS = 1500;
+  /** Watch history / continue watching (utils/history.ts) */
+  private history: HistoryRecorder;
 
   constructor(
     io: Server,
@@ -119,6 +122,9 @@ export class Room {
     this.roomId = roomId;
     this.io = io;
     this.db = db;
+    this.history = new HistoryRecorder(db, roomId, {
+      lookupYoutube: fetchYoutubeVideo,
+    });
 
     if (roomData) {
       this.deserialize(roomData);
@@ -136,6 +142,9 @@ export class Room {
       if (this.video) {
         this.lastTsMap = Date.now();
         io.of(roomId).emit("REC:tsMap", this.tsMap);
+      }
+      if (this.roster.length) {
+        this.history.tick(this.historySnapshot());
       }
     }, 1000);
 
@@ -238,6 +247,10 @@ export class Room {
         this.setLoop(data);
       });
       on("CMD:ts", (data: unknown) => this.setTimestamp(socket, data));
+      // The current video's duration in seconds (for the history's finished flag)
+      on("CMD:duration", (data: unknown) =>
+        this.history.setDuration(this.video, data),
+      );
       on("CMD:chat", (data: unknown) =>
         this.sendChatMessage(socket, String(data)),
       );
@@ -401,6 +414,26 @@ export class Room {
     });
   };
 
+  private historySnapshot = (): PlaybackSnapshot => ({
+    video: this.video,
+    meta: this.videoMeta,
+    position: this.videoTS,
+    paused: this.paused,
+  });
+
+  /** Starts a new room on a video, paused at `position` (POST /createRoom preload, POST /history/:id/resume) */
+  public preloadVideo = (
+    video: string,
+    meta: VideoMeta | null = null,
+    position = 0,
+  ) => {
+    this.video = video;
+    this.videoMeta = meta;
+    this.videoTS = position;
+    this.paused = true;
+    this.subtitleOffset = this.loadSubtitleOffset(video, meta);
+  };
+
   private getHostState = (): HostState => {
     return {
       video: this.video ?? "",
@@ -421,6 +454,7 @@ export class Room {
     if (data && data.length > 50000) {
       return;
     }
+    this.history.beforeHostChange(this.historySnapshot());
     this.video = data;
     this.videoMeta = meta;
     this.videoTS = 0;
@@ -498,10 +532,15 @@ export class Room {
       // Validation didn't match
       return;
     }
+    if (data) {
+      // Clients send the URL that just ended
+      this.history.markEnded(this.video);
+    }
     const next = this.playlist.shift();
     this.io.of(this.roomId).emit("playlist", this.playlist);
     if (next) {
       this.cmdHost(null, next.url, next.meta ?? null);
+      this.history.setHint(next.url, next);
     }
   };
 
@@ -614,6 +653,7 @@ export class Room {
     };
     this.paused = true;
     this.addChatMessage(socket, chatMsg);
+    this.history.save(this.historySnapshot());
   };
 
   private seekVideo = (socket: Socket, data: unknown) => {
@@ -626,6 +666,7 @@ export class Room {
     socket.broadcast.emit("REC:seek", data);
     const chatMsg = { id: socket.clientId, cmd: "seek", msg: data?.toString() };
     this.addChatMessage(socket, chatMsg);
+    this.history.save(this.historySnapshot());
   };
 
   private setPlaybackRate = (socket: Socket, data: unknown) => {
@@ -800,6 +841,7 @@ export class Room {
     }
     this.videoMeta = data.meta;
     this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
+    this.history.metaAttached(this.historySnapshot());
     // The metadata gives the video a stable identity, so restore the offset saved for this title/episode
     const offset = this.loadSubtitleOffset(this.video, this.videoMeta);
     if (offset !== this.subtitleOffset) {

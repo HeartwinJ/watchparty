@@ -10,7 +10,7 @@ shell (top bar, sidebar, bottom sheet, settings) is the Phase 4 redesign and liv
 useRoom(roomId)                          hooks/useRoom.ts: composes everything below
  ├ useStore(createInitialRoomState)      one RoomState (roomState.ts), get() is synchronous
  ├ useRoomSocket                         socket.io connection, auth handling, typed CMD:* emitters (cmd)
- ├ usePlayer                             HTML.ts / YouTube.ts, play/pause/seek/rate/loop, drift sync, fullscreen, CMD:ts loop
+ ├ usePlayer                             HTML.ts / YouTube.ts, play/pause/seek/rate/loop, drift sync, fullscreen, CMD:ts loop (+ CMD:duration)
  ├ useConvert                            probe → direct/convert/fail per device (auto-convert), audio tracks
  ├ useShare                              screen + file share over WebRTC (/iceServers), signalSS
  ├ useChat / usePlaylist / useSubtitles  REC:* handlers and actions for each feature
@@ -66,6 +66,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/media.ts`                          | `classifyMedia(url)`, display names, sharer lookup                                           |
 | `logic/chat.ts`                           | Immutable chat updates (append with 100 cap, reactions), chat sound rule                     |
 | `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                       |
+| `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s      |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                           |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits     |
 

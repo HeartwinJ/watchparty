@@ -10,6 +10,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 - Playlist, text chat with reactions, and subtitles
 - One shared instance password instead of user accounts
 - Rooms saved in SQLite, so they survive restarts
+- Continue watching on the home page: what you were watching, with progress, resumes in a new room where you left off
 
 See [`PLAN.md`](PLAN.md) for the roadmap: UI redesign, fullscreen improvements, subtitle offset and AIOStreams search.
 

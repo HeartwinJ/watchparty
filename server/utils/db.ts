@@ -27,6 +27,26 @@ const MIGRATIONS: string[] = [
     offset REAL NOT NULL,
     updatedAt INTEGER NOT NULL
   );`,
+  // 3: watch history / continue watching (PLAN 6d), see utils/history.ts. One row per room + item
+  // (itemKey = subtitleOffsetKey()); url is server-only (resume), never sent to clients.
+  `CREATE TABLE history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    roomId TEXT NOT NULL,
+    itemKey TEXT NOT NULL,
+    groupKey TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT,
+    poster TEXT,
+    meta TEXT,
+    url TEXT NOT NULL,
+    position REAL NOT NULL,
+    duration REAL,
+    finished INTEGER NOT NULL DEFAULT 0,
+    updatedAt INTEGER NOT NULL,
+    UNIQUE (roomId, itemKey)
+  );
+  CREATE INDEX history_updatedAt ON history (updatedAt);`,
 ];
 
 export function migrate(db: DatabaseSync) {
