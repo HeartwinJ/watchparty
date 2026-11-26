@@ -6,6 +6,7 @@ import {
   guessFromName,
   guessSubtitleSearch,
   subtitleTargetLabel,
+  rankTitleResults,
 } from "./guessTitle";
 
 describe("guessFromName", () => {
@@ -202,5 +203,52 @@ describe("subtitleTargetLabel", () => {
   it("adds the episode code", () => {
     expect(subtitleTargetLabel("Dark", 1, 2)).toBe("Dark · S01E02");
     expect(subtitleTargetLabel("Up", null, null)).toBe("Up");
+  });
+});
+
+describe("rankTitleResults", () => {
+  const items = [
+    { name: "El Camino", year: 2019, kind: "movie" },
+    {
+      name: "The Bad News Bears in Breaking Training",
+      year: 1977,
+      kind: "movie",
+    },
+    { name: "Breaking Bad Wolf", year: 2018, kind: "movie" },
+    { name: "Breaking Bad", year: 2008, kind: "series" },
+    { name: "Breaking", year: 2022, kind: "movie" },
+  ];
+  const names = (r: typeof items) => r.map((i) => i.name);
+
+  it("puts the exact series match first for an episode file", () => {
+    expect(
+      names(
+        rankTitleResults(items, "Breaking Bad", { year: null, episode: 2 }),
+      )[0],
+    ).toBe("Breaking Bad");
+  });
+
+  it("puts an exact match first even without an episode, and keeps the rest in order", () => {
+    expect(
+      names(
+        rankTitleResults(items, "breaking bad", { year: null, episode: null }),
+      ),
+    ).toEqual([
+      "Breaking Bad",
+      "Breaking Bad Wolf",
+      "El Camino",
+      "The Bad News Bears in Breaking Training",
+      "Breaking",
+    ]);
+  });
+
+  it("uses the year to pick between same-name titles", () => {
+    const remakes = [
+      { name: "Dune", year: 1984, kind: "movie" },
+      { name: "Dune", year: 2021, kind: "movie" },
+    ];
+    expect(
+      rankTitleResults(remakes, "Dune", { year: 2021, episode: null })[0].year,
+    ).toBe(2021);
   });
 });

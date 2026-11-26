@@ -30,6 +30,7 @@ import {
   findGuessedEpisode,
   groupSubtitlesByLanguage,
   guessSubtitleSearch,
+  rankTitleResults,
   subtitleTargetLabel,
   type TitleGuess,
 } from "./guessTitle";
@@ -187,6 +188,7 @@ export function SubtitleSearchBody({
       <div hidden={view.kind !== "search"}>
         <SearchView
           initialQuery={guess.query}
+          guess={guess}
           active={view.kind === "search"}
           onPick={(item) =>
             item.type === "movie"
@@ -249,10 +251,12 @@ const TYPE_LABEL: Record<ContentType, string> = {
 
 function SearchView({
   initialQuery,
+  guess,
   active,
   onPick,
 }: {
   initialQuery: string;
+  guess: TitleGuess;
   active: boolean;
   onPick: (item: TitleRef) => void;
 }) {
@@ -310,10 +314,18 @@ function SearchView({
     [search],
   );
 
-  const items =
-    state.status === "done"
-      ? [...state.data.movies, ...state.data.series, ...state.data.anime]
-      : [];
+  // The catalog groups movies, then series, then anime; put the likely match first instead
+  const items = useMemo(
+    () =>
+      state.status === "done"
+        ? rankTitleResults(
+            [...state.data.movies, ...state.data.series, ...state.data.anime],
+            query,
+            guess,
+          )
+        : [],
+    [state, query, guess],
+  );
   return (
     <>
       <form

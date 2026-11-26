@@ -305,3 +305,49 @@ export function groupSubtitlesByLanguage<
   }
   return groups;
 }
+
+/** Lowercase, accents and punctuation removed, single spaces: for comparing titles */
+function simplify(title: string) {
+  return title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Orders title search results (which come grouped as movies, then series, then anime) so the likely match is first:
+ * exact title matches, then titles starting with the query, then the rest. Within those, a file name with an episode
+ * number prefers series/anime, and one with a year but no episode prefers movies; a matching year helps too. Stable:
+ * otherwise the catalog's own order is kept.
+ */
+export function rankTitleResults<
+  T extends { name: string; year: number | null; kind: string },
+>(items: T[], query: string, guess: Pick<TitleGuess, "year" | "episode">): T[] {
+  const q = simplify(query);
+  const score = (item: T) => {
+    const name = simplify(item.name);
+    let s = 0;
+    if (q && name === q) {
+      s += 100;
+    } else if (q && name.startsWith(q + " ")) {
+      s += 40;
+    }
+    const isShow = item.kind !== "movie";
+    if (guess.episode !== null) {
+      s += isShow ? 30 : 0;
+    } else if (guess.year !== null && !isShow) {
+      s += 10;
+    }
+    if (guess.year !== null && item.year === guess.year) {
+      s += 20;
+    }
+    return s;
+  };
+  return items
+    .map((item, i) => ({ item, i, s: score(item) }))
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .map((x) => x.item);
+}

@@ -208,7 +208,9 @@
   font-weight: 600;
 }
 
-.chips {
+.chips,
+/* Beats `.root > div:not([hidden])` (grid), which otherwise stacks the chips one per row */
+.root > div.chips {
   display: flex;
   gap: var(--wp-sp-2);
   overflow-x: auto;
