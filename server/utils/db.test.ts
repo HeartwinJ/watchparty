@@ -6,12 +6,15 @@ import { Server } from "socket.io";
 import {
   getRoom,
   getSubtitle,
+  deleteRoomData,
+  getSubtitleTiming,
   insertRoom,
   migrate,
   openDatabase,
   pruneSubtitles,
   saveRoomData,
   saveSubtitle,
+  saveSubtitleOffset,
 } from "./db.ts";
 import { Room } from "../room.ts";
 
@@ -110,6 +113,40 @@ describe("db", () => {
     expect(getSubtitle(db, "h", 1000, 1200)).toBeDefined();
     expect(getSubtitle(db, "h", 1000, 5000)).toBeUndefined();
     expect(pruneSubtitles(db, 5000)).toBe(1);
+    db.close();
+  });
+});
+
+describe("db failures", () => {
+  it("rolls back a migration that fails", () => {
+    const db = openDatabase(":memory:");
+    db.exec("PRAGMA user_version = 0");
+    // Migration 1 would create a table that already exists
+    expect(() => migrate(db)).toThrow();
+    const { user_version } = db.prepare("PRAGMA user_version").get() as {
+      user_version: number;
+    };
+    expect(user_version).toBe(0);
+    db.close();
+  });
+
+  it("rolls back a failed room delete", () => {
+    const db = openDatabase(":memory:");
+    insertRoom(db, "/r");
+    db.exec(
+      "CREATE TRIGGER no_delete BEFORE DELETE ON rooms BEGIN SELECT RAISE(ABORT, 'nope'); END",
+    );
+    expect(() => deleteRoomData(db, "/r")).toThrow("nope");
+    expect(getRoom(db, "/r")).toBeDefined();
+    db.close();
+  });
+
+  it("saves an offset without a time scale, deleting it at 0", () => {
+    const db = openDatabase(":memory:");
+    saveSubtitleOffset(db, "url:x", 1.5);
+    expect(getSubtitleTiming(db, "url:x")).toEqual({ offset: 1.5, scale: 1 });
+    saveSubtitleOffset(db, "url:x", 0);
+    expect(getSubtitleTiming(db, "url:x")).toBeUndefined();
     db.close();
   });
 });

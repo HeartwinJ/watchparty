@@ -1,6 +1,6 @@
 /**
  * /addon/* routes: title search, metadata, AIOStreams streams, subtitles and
- * next episode. All behind requireAuth (server.ts passes requireMember).
+ * next episode. All behind requireAuth (app.ts passes requireMember).
  * Only /addon/streams needs AIOStreams; search, meta, subtitles and next episode
  * use the keyless public addons (Cinemeta, Kitsu, OpenSubtitles v3) and work
  * without AIOSTREAMS_MANIFEST_URL. /addon/status tells the client which is which.
@@ -24,7 +24,7 @@ export type AddonRouterOptions = {
   /** SUBTITLE_LANGS, e.g. "en,es" */
   subtitleLangs: string;
   requireAuth: RequestHandler;
-  /** For the public addons (Cinemeta, Kitsu, OpenSubtitles); server.ts passes utils/ssrf.ts safeFetch */
+  /** For the public addons (Cinemeta, Kitsu, OpenSubtitles); app.ts passes utils/ssrf.ts safeFetch */
   fetchFn: FetchFn;
   /** For the owner's AIOStreams host (may be on a private network, so no SSRF guard). */
   aioFetchFn?: FetchFn;
@@ -39,7 +39,7 @@ const BINGE_GROUP_MAX = 300;
 export type AddonServiceOptions = Omit<AddonRouterOptions, "requireAuth">;
 
 /**
- * The addon clients behind /addon/*, shared with the rooms (next episode). Build it once in server.ts and pass it
+ * The addon clients behind /addon/*, shared with the rooms (next episode). Build it once in app.ts and pass it
  * to createAddonRouter so both use the same caches.
  */
 export function createAddonServices(opts: AddonServiceOptions) {

@@ -34,6 +34,37 @@ export default {
     allowedHosts: true,
   },
   test: {
+    // `npm run coverage` (CI enforces the thresholds, set just below the current levels so coverage can't silently drop)
+    coverage: {
+      provider: "v8",
+      include: ["server/**/*.ts", "src/**/*.{ts,tsx}"],
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/*.d.ts",
+        "words/**",
+        "build/**",
+        "dist-server/**",
+        // The process entry point (listen, timers, signals); the app itself is createApp() in server/app.ts
+        "server/server.ts",
+      ],
+      reporter: ["text-summary", "html", "json-summary"],
+      reportsDirectory: "coverage",
+      // Just below the current levels; raise them as coverage goes up
+      thresholds: {
+        "server/**": {
+          lines: 98,
+          statements: 98,
+          functions: 99,
+          branches: 95,
+        },
+        "src/**": {
+          lines: 68,
+          statements: 68,
+          functions: 64,
+          branches: 63,
+        },
+      },
+    },
     projects: [
       {
         extends: true,

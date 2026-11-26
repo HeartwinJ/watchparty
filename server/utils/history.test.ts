@@ -311,3 +311,154 @@ describe("HistoryRecorder", () => {
     expect(lookupYoutube).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("history edge cases", () => {
+  const snap = (
+    over: Partial<Parameters<HistoryRecorder["save"]>[0]> = {},
+  ) => ({
+    video: "https://example.com/movie.mp4",
+    meta: null,
+    position: 0,
+    paused: false,
+    ...over,
+  });
+  const setup = () => {
+    const db = newDb();
+    const rec = new HistoryRecorder(db, "/room");
+    return { rec, rows: () => listHistory(db) };
+  };
+
+  it("ignores fragments without a display name or with bad encoding", () => {
+    expect(getAttachedDisplayName("https://x.example.com/a.mp4#t=5")).toBe(
+      undefined,
+    );
+    expect(
+      getAttachedDisplayName("https://x.example.com/a.mp4#wp-name=%E0%A4%A"),
+    ).toBe(undefined);
+    expect(
+      getAttachedDisplayName("https://x.example.com/a.mp4#wp-name=%20%20"),
+    ).toBe(undefined);
+  });
+
+  it("names undecodable or token-like paths by host, and garbage as Video", () => {
+    expect(safeUrlName("https://cdn.example.com/%E0%A4%A.mp4")).toBe(
+      "cdn.example.com",
+    );
+    expect(
+      safeUrlName("https://cdn.example.com/" + "a".repeat(45) + ".mp4"),
+    ).toBe("cdn.example.com");
+    expect(safeUrlName("not a url")).toBe("Video");
+  });
+
+  it("describes Kitsu items by their show and untitled metadata", () => {
+    const kitsu: VideoMeta = {
+      ...meta,
+      id: "kitsu:123:5",
+      imdbId: null,
+      season: null,
+      episode: 5,
+      title: "",
+      episodeTitle: null,
+    };
+    const d = describeHistoryItem("https://aio.example.com/x.mkv", kitsu)!;
+    expect(d.groupKey).toBe("meta:kitsu:123");
+    expect(d.title).toBe("Untitled");
+    const movie: VideoMeta = {
+      ...meta,
+      type: "movie",
+      id: "tt0000009",
+      imdbId: null,
+      season: null,
+      episode: null,
+      episodeTitle: null,
+    };
+    expect(
+      describeHistoryItem("https://aio.example.com/m.mkv", movie),
+    ).toMatchObject({
+      groupKey: "meta:tt0000009",
+      subtitle: null,
+    });
+  });
+
+  it("only keeps https thumbnails from queue hints", () => {
+    const url = "https://example.com/clip.mp4";
+    expect(
+      describeHistoryItem(url, null, { img: "http://i.example.com/a.jpg" })
+        ?.poster,
+    ).toBe(null);
+    expect(
+      describeHistoryItem(url, null, { img: "https://i.example.com/a.jpg" })
+        ?.poster,
+    ).toBe("https://i.example.com/a.jpg");
+  });
+
+  it("reads rows with unknown kinds or broken metadata safely", () => {
+    const db = newDb();
+    upsertHistory(db, {
+      ...describeHistoryItem("https://example.com/a.mp4", null)!,
+      roomId: "/r",
+      url: "https://example.com/a.mp4",
+      meta: null,
+      position: 20,
+      duration: null,
+      finished: false,
+    });
+    db.prepare("UPDATE history SET kind = 'weird', meta = '{bad'").run();
+    const [item] = listHistory(db);
+    expect(item.kind).toBe("url");
+    expect(getHistoryEntry(db, item.id)?.meta).toBeNull();
+  });
+
+  it("logs failed saves and re-keys instead of throwing", () => {
+    const db = newDb();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rec = new HistoryRecorder(db, "/room");
+    db.close();
+    dbs.splice(dbs.indexOf(db), 1);
+    rec.save(snap({ video: "https://example.com/a.mp4", position: 20 }));
+    rec.metaAttached(
+      snap({ video: "https://example.com/a.mp4", position: 20 }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "[history] failed to save:",
+      expect.anything(),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "[history] failed to re-key:",
+      expect.anything(),
+    );
+    warn.mockRestore();
+  });
+
+  it("doesn't write while paused or without a video", () => {
+    const { rec, rows } = setup();
+    rec.tick(
+      snap({ video: "https://example.com/a.mp4", position: 50, paused: true }),
+    );
+    rec.tick(snap({ video: null, position: 50 }));
+    expect(rows()).toEqual([]);
+  });
+
+  it("keeps the generic YouTube title when the lookup fails or has no name", async () => {
+    const db = newDb();
+    const lookupYoutube = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("quota"))
+      .mockResolvedValueOnce({ name: "", duration: 0 });
+    const rec = new HistoryRecorder(db, "/room", { lookupYoutube });
+    const a = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
+    const b = "https://www.youtube.com/watch?v=bbbbbbbbbbb";
+    rec.save(snap({ video: a, position: 20 }));
+    rec.beforeHostChange(snap({ video: a, position: 20 }));
+    rec.save(snap({ video: b, position: 20 }));
+    await vi.waitFor(() => expect(lookupYoutube).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(listHistory(db).map((i) => i.title)).toEqual([
+      "YouTube video",
+      "YouTube video",
+    ]);
+    // Looked up once per video, even when it failed
+    rec.save(snap({ video: b, position: 30 }));
+    expect(lookupYoutube).toHaveBeenCalledTimes(2);
+  });
+});

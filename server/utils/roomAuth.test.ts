@@ -463,3 +463,35 @@ describe("admitSocket", () => {
     expect(joined.setCookie).toBe("");
   });
 });
+
+describe("room lookups that go away", () => {
+  it("rate limits the info endpoint per IP", async () => {
+    const t = await setup();
+    let last = await t.call("GET", "/rooms/locked-room-here/info", {
+      ip: "10.9.9.9",
+    });
+    for (let i = 0; i < 120; i++) {
+      last = await t.call("GET", "/rooms/locked-room-here/info", {
+        ip: "10.9.9.9",
+      });
+    }
+    expect(last.status).toBe(429);
+    expect(last.body).toMatchObject({ error: "rate_limited" });
+    expect(Number(last.retryAfter)).toBeGreaterThanOrEqual(1);
+    // Another IP is unaffected
+    expect(
+      (await t.call("GET", "/rooms/locked-room-here/info", { ip: "10.8.8.8" }))
+        .status,
+    ).toBe(200);
+  });
+
+  it("a grant for a deleted room no longer counts", async () => {
+    const t = await setup();
+    const joined = await t.join("open-room-here");
+    const cookie = t.cookieOf(joined.setCookie);
+    expect((await t.call("GET", "/member", { cookie })).status).toBe(200);
+    t.rooms.delete("/open-room-here");
+    expect((await t.call("GET", "/member", { cookie })).status).toBe(401);
+    expect(t.roomAuth.guestRooms(cookie)).toEqual([]);
+  });
+});

@@ -268,3 +268,50 @@ describe("NextEpisodeController", () => {
     expect(t.emitted).toEqual([]);
   });
 });
+
+describe("NextEpisodeController edge cases", () => {
+  it("starts once resolved when the episode ended while resolving", async () => {
+    let resolve!: (r: NextEpisodeResult) => void;
+    const t = setup(new Promise((r) => (resolve = r)));
+    t.offer();
+    t.ctl.command({ action: "ended", url: VIDEO }, alex);
+    // A second ended keeps the first request
+    t.ctl.command({ action: "ended", url: VIDEO }, alex);
+    resolve(FOUND);
+    await t.flush();
+    expect(t.play).toHaveBeenCalledWith(NEXT_URL, nextMeta, null);
+  });
+
+  it("ignores ended and play now for a video that's no longer playing", async () => {
+    const t = setup();
+    t.offer();
+    await t.flush();
+    t.room.video = "https://example.com/other.mp4";
+    t.ctl.command({ action: "ended", url: VIDEO }, alex);
+    t.ctl.command({ action: "playNow" }, alex);
+    t.ctl.command({ action: "ended", url: 5 }, alex);
+    expect(t.play).not.toHaveBeenCalled();
+  });
+
+  it("ignores play now before any offer, and withdraws instead of starting when a queue appeared", async () => {
+    const t = setup();
+    t.ctl.command({ action: "playNow" }, alex);
+    expect(t.play).not.toHaveBeenCalled();
+    t.offer();
+    await t.flush();
+    t.room.playlist = 1;
+    t.ctl.command({ action: "playNow" }, alex);
+    expect(t.play).not.toHaveBeenCalled();
+    expect(t.emitted.at(-1)).toEqual({ state: "none" });
+    expect(t.ctl.snapshot()).toEqual({ state: "none" });
+  });
+
+  it("doesn't start twice once done", async () => {
+    const t = setup();
+    t.offer();
+    await t.flush();
+    t.ctl.command({ action: "playNow" }, alex);
+    t.ctl.command({ action: "playNow" }, alex);
+    expect(t.play).toHaveBeenCalledTimes(1);
+  });
+});

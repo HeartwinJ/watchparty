@@ -134,7 +134,7 @@ export class Room {
   public readonly loadedAt = Date.now();
   /** Set by destroy(): no more saves, emits or host changes (late async work must not recreate the namespace) */
   private destroyed = false;
-  /** Called after the room deleted itself (server.ts removes it from its `rooms` Map) */
+  /** Called after the room deleted itself (app.ts removes it from its `rooms` Map) */
   public static onDeleted: ((roomId: string) => void) | null = null;
   private preventTSUpdate = false;
   /** Positions reported before this time (ms) are ignored: they were sent before a seek reached the player */
@@ -171,7 +171,7 @@ export class Room {
     CALL_LIMITS.signalMax,
     CALL_LIMITS.signalWindowMs,
   );
-  /** Next-episode lookups (set by server.ts when AIOStreams is configured) */
+  /** Next-episode lookups (set by app.ts when AIOStreams is configured) */
   public static nextEpisodeResolver: NextEpisodeResolver | null = null;
   private nextEpisode = new NextEpisodeController({
     video: () => this.video,

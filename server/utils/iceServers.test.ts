@@ -108,3 +108,33 @@ describe("createIceServerProvider", () => {
     warn.mockRestore();
   });
 });
+
+describe("Cloudflare responses", () => {
+  const make = (body: unknown) =>
+    createIceServerProvider({
+      keyId: "key123",
+      apiToken: "secret-token",
+      fetchFn: (async () =>
+        new Response(JSON.stringify(body), { status: 201 })) as typeof fetch,
+    });
+
+  it("accepts a single server object with a string url", async () => {
+    const provider = make({
+      iceServers: { urls: "turn:turn.cloudflare.com:3478", username: "u" },
+    });
+    const servers = await provider.get();
+    expect(servers).toContainEqual({
+      urls: ["turn:turn.cloudflare.com:3478"],
+      username: "u",
+    });
+  });
+
+  it("falls back to STUN when the response has no usable servers", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await make({}).get()).toEqual(STUN_ONLY);
+    expect(
+      await make({ iceServers: [{ urls: ["stun:x.example.com:53"] }] }).get(),
+    ).toEqual(STUN_ONLY);
+    vi.restoreAllMocks();
+  });
+});

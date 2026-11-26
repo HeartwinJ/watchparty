@@ -71,3 +71,16 @@ describe("TtlCache", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("TtlCache removal", () => {
+  it("deletes one entry or clears everything", () => {
+    const cache = new TtlCache<string>({ maxEntries: 10 });
+    cache.set("a", "1", 1000);
+    cache.set("b", "2", 1000);
+    cache.delete("a");
+    expect(cache.get("a")).toBeUndefined();
+    expect(cache.get("b")).toBe("2");
+    cache.clear();
+    expect(cache.size).toBe(0);
+  });
+});

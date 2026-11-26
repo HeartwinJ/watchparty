@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchYoutubeVideo,
   getVideoDuration,
+  getYoutubeVideoID,
+  isYouTube,
   parseYoutubeQuery,
   searchYoutube,
   setYoutubeClient,
@@ -117,6 +119,73 @@ describe("youtube client", () => {
   it("parses ISO 8601 durations", () => {
     expect(getVideoDuration("PT4M13S")).toBe(253);
     expect(getVideoDuration("")).toBe(0);
+  });
+
+  it("maps missing fields to empty values", async () => {
+    mockFetch({ items: [{}] });
+    expect(await searchYoutube("x")).toEqual([
+      {
+        channel: "",
+        url: "https://www.youtube.com/watch?v=undefined",
+        name: "",
+        img: "",
+        duration: 0,
+        type: "youtube",
+      },
+    ]);
+    expect(await youtubePlaylist("PL")).toMatchObject([
+      { name: "", img: "", channel: "", duration: 0 },
+    ]);
+    mockFetch({ items: [{ id: "v9" }] });
+    expect(await fetchYoutubeVideo("v9")).toMatchObject({
+      name: "",
+      img: "",
+      channel: "",
+      duration: 0,
+    });
+    mockFetch({});
+    expect(await searchYoutube("x")).toEqual([]);
+  });
+
+  it("returns empty lists without an API key", async () => {
+    setYoutubeClient({ apiKey: "" });
+    expect(await youtubePlaylist("PL")).toEqual([]);
+  });
+
+  it("uses the global fetch by default", async () => {
+    const real = globalThis.fetch;
+    const fn = vi.fn(async () => Response.json({ items: [] }));
+    vi.stubGlobal("fetch", fn);
+    try {
+      // A fresh module instance has the default client
+      vi.resetModules();
+      const fresh = await import("./youtube.ts");
+      fresh.setYoutubeClient({ apiKey: "KEY" });
+      expect(await fresh.searchYoutube("x")).toEqual([]);
+      expect(fn).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+      expect(globalThis.fetch).toBe(real);
+    }
+  });
+
+  it("parses hours, minutes and seconds", () => {
+    expect(getVideoDuration("PT1H2M3S")).toBe(3723);
+    expect(getVideoDuration("PT2H")).toBe(7200);
+    expect(getVideoDuration("P0D")).toBe(0);
+  });
+
+  it("extracts video ids and recognizes YouTube links", () => {
+    expect(
+      getYoutubeVideoID("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+    ).toBe("dQw4w9WgXcQ");
+    expect(getYoutubeVideoID("https://youtu.be/dQw4w9WgXcQ")).toBe(
+      "dQw4w9WgXcQ",
+    );
+    expect(getYoutubeVideoID("https://example.com/v.mp4")).toBeUndefined();
+    expect(isYouTube("https://www.youtube.com/watch?v=x")).toBe(true);
+    expect(isYouTube("https://youtu.be/x")).toBe(true);
+    expect(isYouTube("https://example.com/youtube")).toBe(false);
   });
 });
 

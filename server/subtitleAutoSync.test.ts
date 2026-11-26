@@ -271,3 +271,50 @@ describe("SubtitleAutoSync", () => {
     expect(s.failed("a", { video: V, key: K })).toBe(false);
   });
 });
+
+describe("SubtitleAutoSync limits", () => {
+  it("refuses new subtitles once it tracks many", () => {
+    const s = fresh();
+    for (let i = 0; i < 50; i++) {
+      expect(s.claim("a", { video: V, key: "k" + i }, on()).granted).toBe(true);
+    }
+    expect(s.claim("a", { video: V, key: "k50" }, on())).toEqual({
+      granted: false,
+      reason: "busy",
+    });
+  });
+
+  it("gives up on a subtitle whose last attempt timed out", () => {
+    const s = fresh();
+    let now = 0;
+    for (let i = 0; i < SUBTITLE_SYNC_MAX_ATTEMPTS; i++) {
+      expect(s.claim("a", { video: V, key: K }, on(now)).granted).toBe(true);
+      now += SUBTITLE_SYNC_CLAIM_TTL_MS + 1;
+      // The room's timer ends the stale claim: released, then done after the last attempt
+      expect(s.expireStale(now)).toEqual([
+        {
+          key: K,
+          status: i < SUBTITLE_SYNC_MAX_ATTEMPTS - 1 ? "released" : "done",
+        },
+      ]);
+    }
+    expect(s.claim("b", { video: V, key: K }, on(now))).toEqual({
+      granted: false,
+      reason: "done",
+    });
+  });
+
+  it("marks a subtitle done when its last claimer leaves", () => {
+    const s = fresh();
+    let now = 0;
+    for (let i = 0; i < SUBTITLE_SYNC_MAX_ATTEMPTS - 1; i++) {
+      s.claim("a", { video: V, key: K }, on(now));
+      now += SUBTITLE_SYNC_CLAIM_TTL_MS + 1;
+      s.expireStale(now);
+    }
+    s.claim("a", { video: V, key: K }, on(now));
+    // The third attempt's claimer leaves: nothing left to try, it's done
+    expect(s.leave("a")).toEqual([{ key: K, status: "done" }]);
+    expect(s.isDone(K)).toBe(true);
+  });
+});

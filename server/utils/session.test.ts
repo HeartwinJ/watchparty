@@ -97,3 +97,26 @@ describe("createRateLimiter", () => {
     expect(limiter.blockedSec("k", 60_000)).toBe(0);
   });
 });
+
+describe("parseCookies edge cases", () => {
+  it("skips parts without a name or '=', keeps the first of duplicates and tolerates bad encoding", () => {
+    expect(parseCookies("flag; =x; a=1; a=2; b=%E0%A4%A; c=%20ok")).toEqual({
+      a: "1",
+      b: "%E0%A4%A",
+      c: " ok",
+    });
+  });
+});
+
+describe("createRateLimiter housekeeping", () => {
+  it("drops expired keys once it tracks many", () => {
+    const limiter = createRateLimiter({ max: 1, windowMs: 1000 });
+    for (let i = 0; i < 10001; i++) {
+      limiter.hit("k" + i, 0);
+    }
+    // All of those expired: a new key sweeps them, and an old key starts over
+    expect(limiter.hit("fresh", 5000)).toBe(true);
+    expect(limiter.hit("k1", 5000)).toBe(true);
+    expect(limiter.hit("k1", 5000)).toBe(false);
+  });
+});
