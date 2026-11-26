@@ -464,6 +464,34 @@ describe("useRoom", () => {
     expect(result.current.state.convertEnabled).toBe(true);
   });
 
+  it("reports the position and the duration (watch history) once connected", async () => {
+    const { socket } = await setup();
+    const video = document.getElementById("leftVideo") as HTMLVideoElement;
+    video.play = vi.fn(async () => {});
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      get: () => 3600,
+    });
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: "https://example.com/movie.mp4",
+        videoTS: 0,
+        subtitle: "",
+        paused: true,
+        playbackRate: 0,
+        loop: false,
+      }),
+    );
+    act(() => socket.receive("connect"));
+    await waitFor(
+      () => expect(socket.emits("CMD:duration")).toEqual([[3600]]),
+      {
+        timeout: 2500,
+      },
+    );
+    expect(socket.emits("CMD:ts").length).toBeGreaterThan(0);
+  });
+
   it("disconnects on unmount", async () => {
     const { unmount, socket } = await setup();
     unmount();

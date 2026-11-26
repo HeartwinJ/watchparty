@@ -1,6 +1,6 @@
 /**
- * Rooms this device visited recently, newest first, for the home page.
- * TODO(wave 2): replace with server-side history (PLAN 6d "Continue watching / history") once it exists.
+ * Rooms this device visited recently, newest first, for the home page. What was watched (with resume positions)
+ * comes from the server-side history instead (utils/history.ts, "Continue watching").
  */
 export interface RecentRoom {
   roomId: string;

@@ -21,6 +21,10 @@ import {
   type DriftState,
 } from "../logic/sync";
 import { decideOnVideoEnded } from "../logic/playlist";
+import {
+  nextDurationReport,
+  type DurationReport,
+} from "../logic/durationReport";
 
 /** id of the <video> element used for everything except YouTube */
 export const VIDEO_ELEMENT_ID = "leftVideo";
@@ -412,14 +416,28 @@ export function usePlayer(opts: {
     };
   }, [store, cmd, clientId, share]);
 
-  // Report our position to the room every second
+  // Report our position to the room every second (and the duration now and then, for the watch history)
   useEffect(() => {
     if (!opts.connected) {
       return;
     }
+    let lastDuration: DurationReport | null = null;
     const id = window.setInterval(() => {
-      if (store.get().roomMedia) {
+      const { roomMedia, isLiveStream } = store.get();
+      if (roomMedia) {
         cmd.reportTime(api.toRoomTime(api.current().getCurrentTime()));
+        const now = Date.now();
+        const report = nextDurationReport(lastDuration, {
+          media: roomMedia,
+          duration: api.getDuration(),
+          isLive: isLiveStream,
+          hasDuration: hasDuration(roomMedia),
+          now,
+        });
+        if (report !== undefined) {
+          lastDuration = { media: roomMedia, duration: report, at: now };
+          cmd.reportDuration(report);
+        }
       }
     }, 1000);
     return () => window.clearInterval(id);

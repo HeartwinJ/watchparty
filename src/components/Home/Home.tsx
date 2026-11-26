@@ -14,6 +14,7 @@ import { AppBar } from "../AppBar/AppBar";
 import { avatarColor } from "../Avatar/avatar";
 import { mediaKindLabel } from "../App/shell/roomInfo";
 import { toast } from "../App/ui/toast";
+import { ContinueWatching } from "./ContinueWatching";
 import styles from "./Home.module.css";
 
 const TRY_LINKS = [
@@ -23,7 +24,10 @@ const TRY_LINKS = [
   { label: "DASH", url: examples.find((e) => e.url.includes(".mpd"))?.url },
 ].filter((t): t is { label: string; url: string } => Boolean(t.url));
 
-/** Home: start a room, paste a link to start one playing it, and this device's recent rooms. */
+/**
+ * Home: start a room, paste a link to start one playing it, continue watching (server-side history) and this
+ * device's recent rooms.
+ */
 export const Home = () => {
   const [starting, setStarting] = useState(false);
   const [link, setLink] = useState("");
@@ -143,12 +147,13 @@ export const Home = () => {
           </form>
         </section>
 
+        <ContinueWatching />
+
         <section aria-labelledby="recent-title">
           <div className={styles.secHead}>
             <h2 id="recent-title">Recent rooms</h2>
             <span>On this device</span>
           </div>
-          {/* TODO(wave 2): "Continue watching" with posters and resume positions from server-side history */}
           {recent.length === 0 ? (
             <div className={styles.emptyRooms}>
               Rooms you join show up here, so you can hop back in.
