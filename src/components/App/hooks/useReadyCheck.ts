@@ -5,14 +5,17 @@ import type { RoomCommands } from "../socketEvents";
 import type { PlayerApi } from "./usePlayer";
 import {
   describeReadyCheckChange,
+  isMediaStalled,
   isReadyToPlay,
-  StallDebounce,
+  StallTracker,
 } from "../logic/readyCheck";
 import { toast } from "../ui/toast";
 
 /** How often this device checks its buffer (reports are only sent when they change) */
 const POLL_MS = 500;
 const TOAST_ID = "wp-ready-check";
+/** HTMLMediaElement.HAVE_FUTURE_DATA */
+const HAVE_FUTURE_DATA = 3;
 
 /**
  * Ready check, client side: reports this device's readiness (CMD:readyState) whenever it changes, and
@@ -30,7 +33,7 @@ export function useReadyCheck(opts: {
   const lastSent = useRef("");
   const lastMedia = useRef("");
   const wasReady = useRef(false);
-  const stall = useRef(new StallDebounce());
+  const stall = useRef(new StallTracker());
 
   const api = useMemo(() => {
     /** Reads this device's player and decides {ready, buffering} */
@@ -44,23 +47,34 @@ export function useReadyCheck(opts: {
         s.nonPlayableMedia ||
         s.playback?.mode === "fail";
       const youtube = player.usingYoutube();
+      const el = youtube ? undefined : p.getVideoEl();
       const currentTime = p.getCurrentTime() || 0;
-      const ready = isReadyToPlay({
-        notBlocking,
-        loading: s.loading,
-        currentTime,
-        duration: p.getDuration(),
-        ranges: p.getTimeRanges(),
-        readyState: youtube ? undefined : p.getVideoEl()?.readyState,
-        ytBuffering: youtube && s.buffering,
-        converting: s.playback?.mode === "convert",
-        wasReady: wasReady.current,
-      });
-      wasReady.current = ready;
-      const buffering = stall.current.update(
-        !notBlocking && !s.loading && !s.roomPaused && s.buffering,
+      // Stalled: `waiting` (or YouTube BUFFERING), or a <video> that should play but has no data at the playhead
+      const { buffering, stuck } = stall.current.update(
+        {
+          active: !notBlocking && !s.loading,
+          roomPlaying: !s.roomPaused,
+          stalled: s.buffering || (el ? isMediaStalled(el) : false),
+          hasFutureData: youtube
+            ? !s.buffering
+            : (el?.readyState ?? 0) >= HAVE_FUTURE_DATA,
+        },
         Date.now(),
       );
+      const ready =
+        !stuck &&
+        isReadyToPlay({
+          notBlocking,
+          loading: s.loading,
+          currentTime,
+          duration: p.getDuration(),
+          ranges: p.getTimeRanges(),
+          readyState: el?.readyState,
+          ytBuffering: youtube && s.buffering,
+          converting: s.playback?.mode === "convert",
+          wasReady: wasReady.current,
+        });
+      wasReady.current = ready;
       return { ready, buffering, time: player.toRoomTime(currentTime) };
     };
 

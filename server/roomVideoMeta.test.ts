@@ -205,8 +205,6 @@ describe("Room videoMeta", () => {
       name: "https://v.example.com/plain.mp4",
     });
     expect(t.room.playlist[1].meta).toBeUndefined();
-    // playlistNext is ignored for a second after a host change
-    await settle(1100);
     a.emit("CMD:playlistNext", "https://v.example.com/first.mp4");
     await settle();
     expect(t.room.video).toBe(STREAM);

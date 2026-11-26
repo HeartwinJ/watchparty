@@ -87,6 +87,72 @@ export class StallDebounce {
   }
 }
 
+/** HTMLMediaElement.HAVE_FUTURE_DATA: there's data to play from the playhead onwards */
+const HAVE_FUTURE_DATA = 3;
+
+/**
+ * Whether the `<video>` is stalled right now: it should be playing (not paused or ended) but has no data to play
+ * from the playhead (readyState under HAVE_FUTURE_DATA, e.g. after a seek past what's downloaded). Covers stalls
+ * that never fire `waiting`.
+ */
+export function isMediaStalled(el: {
+  paused?: boolean;
+  ended?: boolean;
+  readyState?: number;
+}): boolean {
+  return (
+    el.paused === false &&
+    !el.ended &&
+    typeof el.readyState === "number" &&
+    el.readyState < HAVE_FUTURE_DATA
+  );
+}
+
+/**
+ * A stall that outlasts the debounce makes this device not ready, whatever `buffered` says: for plain `src=`
+ * playback Chromium estimates `buffered` from the bytes downloaded, so it can claim 30 s ahead while the player sits in
+ * `waiting`. It stays not ready (also while the ready check has paused the room) until the player has data at the
+ * playhead again (readyState ≥ HAVE_FUTURE_DATA, or YouTube stops buffering). Short hiccups don't count.
+ */
+export class StallTracker {
+  private debounce: StallDebounce;
+  private stuck = false;
+
+  constructor(delayMs = STALL_DEBOUNCE_MS) {
+    this.debounce = new StallDebounce(delayMs);
+  }
+
+  /**
+   * `active`: there's media this device could block on and it has loaded. `roomPlaying`: the room plays (a stall only
+   * counts then). `stalled`: stalled right now. `hasFutureData`: the player can play from the playhead.
+   */
+  update(
+    input: {
+      active: boolean;
+      roomPlaying: boolean;
+      stalled: boolean;
+      hasFutureData: boolean;
+    },
+    now: number,
+  ): { buffering: boolean; stuck: boolean } {
+    if (!input.active) {
+      this.stuck = false;
+      this.debounce.update(false, now);
+      return { buffering: false, stuck: false };
+    }
+    const buffering = this.debounce.update(
+      input.roomPlaying && input.stalled,
+      now,
+    );
+    if (buffering) {
+      this.stuck = true;
+    } else if (input.hasFutureData) {
+      this.stuck = false;
+    }
+    return { buffering, stuck: this.stuck };
+  }
+}
+
 /** "Sam", "Sam and Alex", "Sam, Alex and 2 others"; you are "you" */
 export function formatNames(
   ids: string[],

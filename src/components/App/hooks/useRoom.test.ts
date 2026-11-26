@@ -423,6 +423,76 @@ describe("useRoom", () => {
     expect(socket.emits("CMD:playlistNext")).toEqual([["https://h/a.mp4"]]);
   });
 
+  it("joins at a REC:seek that arrived while loading, not at the stale start (undone skip intro)", async () => {
+    const { result, socket } = await setup();
+    const video = document.getElementById("leftVideo") as HTMLVideoElement;
+    video.play = vi.fn(async () => {});
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      get: () => 60,
+    });
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: "https://example.com/short.mp4",
+        videoTS: 90,
+        subtitle: "",
+        paused: false,
+        playbackRate: 0,
+        loop: false,
+      }),
+    );
+    act(() => socket.receive("REC:introSkip", { seconds: 90 }));
+    // Too short for the skip: the server puts everyone back to 0 before this player could play
+    act(() => {
+      socket.receive("REC:introSkip", null);
+      socket.receive("REC:tsMap", {});
+      socket.receive("REC:seek", 0);
+    });
+    await act(async () => socket.receive("REC:play"));
+    act(() => {
+      video.dispatchEvent(new Event("canplay"));
+    });
+    expect(result.current.state.loading).toBe(false);
+    expect(video.currentTime).toBeLessThan(1);
+  });
+
+  it("doesn't take the end of a skipped-past-the-end start for the real end, even once the notice is hidden", async () => {
+    const { result, socket } = await setup();
+    const video = document.getElementById("leftVideo") as HTMLVideoElement;
+    video.play = vi.fn(async () => {});
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      get: () => 60,
+    });
+    const url = "https://example.com/short.mp4";
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: url,
+        videoTS: 90,
+        subtitle: "",
+        paused: false,
+        playbackRate: 0,
+        loop: false,
+      }),
+    );
+    act(() => {
+      socket.receive("REC:introSkip", { seconds: 90 });
+      socket.receive("REC:introSkip", null);
+      result.current.store.set({
+        loading: false,
+        playlist: [{ url: "u", name: "n", duration: 0, type: "file" }],
+      });
+    });
+    expect(result.current.state.introSkip).toBeNull();
+    act(() => result.current.player.onVideoEnded(url));
+    expect(socket.emits("CMD:playlistNext")).toEqual([]);
+    // Once the room moved it (the undo's REC:seek 0), an end is real
+    act(() => socket.receive("REC:seek", 0));
+    video.currentTime = 60;
+    act(() => result.current.player.onVideoEnded(url));
+    expect(socket.emits("CMD:playlistNext")).toEqual([[url]]);
+  });
+
   it("stores REC:videoMeta and REC:playbackIssue", async () => {
     const { result, socket } = await setup();
     const meta = {
