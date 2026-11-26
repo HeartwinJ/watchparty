@@ -330,7 +330,8 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   per (video, subtitle) does the work; everyone else sees "Bob is syncing subtitles for the room…"
   (`state.subtitleSyncRemote`). The result goes back to the server, which applies it room-wide unless an offset was
   set by hand (a saved non-zero offset or any manual change wins; the wand always works). A failed or departed
-  claimer releases the job and the others claim again.
+  claimer, or one with no result after 3 min, releases the job and the others claim again; after the 3rd attempt the
+  server sends a final `done` with no offset. Either way `subtitleSyncRemote` clears.
 - Tuned on Tears of Steel (CC-BY Blender Foundation, Wikimedia Commons subtitles): known shifts from −250 s to +480 s
   are found to within 0.1 s, and subtitles drifted by 25/23.976 or 23.976/25 get that exact scale (offset within
   0.05 s); reversed cues and Sintel (26 lines over a loud score) are refused.

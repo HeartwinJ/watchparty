@@ -362,6 +362,34 @@ describe("room auto-sync", () => {
     expect(t.result.current.state.subtitleSyncRemote).toBeNull();
   });
 
+  it("clears someone else's job when the server gives it up (a final done without a result)", () => {
+    const t = setup();
+    t.autoOn();
+    act(() =>
+      t.result.current.sync.onEvent({
+        status: "running",
+        video: VIDEO,
+        key: KEY,
+        by: { id: "bob", name: "Bob" },
+      }),
+    );
+    expect(t.result.current.state.subtitleSyncRemote).toEqual({ by: "Bob" });
+    act(() =>
+      t.result.current.sync.onEvent({
+        status: "done",
+        video: VIDEO,
+        key: KEY,
+        offset: null,
+      }),
+    );
+    expect(t.result.current.state.subtitleSyncRemote).toBeNull();
+    expect(toast).not.toHaveBeenCalled();
+    // Out of attempts: nobody claims it again
+    act(() => t.result.current.sync.evaluate());
+    act(() => vi.advanceTimersByTime(3000));
+    expect(t.cmd.subtitleSync).not.toHaveBeenCalled();
+  });
+
   it("a denied claim doesn't compute", () => {
     const t = setup();
     t.autoOn();
