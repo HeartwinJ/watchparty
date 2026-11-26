@@ -160,3 +160,37 @@ describe("history routes", () => {
     expect(parseLimit(["1"])).toBe(50);
   });
 });
+
+describe("history route failures", () => {
+  it("answers 500 when the history can't be read", async () => {
+    const { db, call } = await setup();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    db.close();
+    const r = await call("GET", "/history");
+    expect(r.status).toBe(500);
+    expect(r.body).toEqual({ error: "history_unavailable" });
+    vi.restoreAllMocks();
+  });
+
+  it("still resumes when moving the entry fails", async () => {
+    const { db, call, add } = await setup();
+    add();
+    const [item] = (await call("GET", "/history")).body;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const prepare = db.prepare.bind(db);
+    vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
+      if (/^\s*INSERT INTO history/.test(sql)) {
+        throw new Error("disk full");
+      }
+      return prepare(sql);
+    });
+    const r = await call("POST", `/history/${item.id}/resume`);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ roomId: "new-room" });
+    expect(warn).toHaveBeenCalledWith(
+      "[history] failed to move the entry:",
+      expect.anything(),
+    );
+    vi.restoreAllMocks();
+  });
+});

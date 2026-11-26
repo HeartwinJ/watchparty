@@ -239,3 +239,38 @@ describe("createWindowLimiter", () => {
     expect(l.allow("a", 1000)).toBe(true);
   });
 });
+
+describe("call state edge cases", () => {
+  it("rejects non-object moderation and candidate payloads", () => {
+    expect(parseCallModeration(null)).toBeNull();
+    expect(parseCallModeration("mute")).toBeNull();
+    const base = { to: B, toSession: SESSION };
+    expect(parseCallSignal({ ...base, candidate: "candidate:1" })).toBeNull();
+    expect(
+      parseCallSignal({ ...base, candidate: { candidate: 5 } }),
+    ).toBeNull();
+  });
+
+  it("forgets stale windows once it tracks many keys", () => {
+    const limiter = createWindowLimiter(1, 1000);
+    for (let i = 0; i < 1001; i++) {
+      limiter.allow("k" + i, 0);
+    }
+    // A new window sweeps the old ones; an old key starts over
+    expect(limiter.allow("fresh", 5000)).toBe(true);
+    expect(limiter.allow("k1", 5000)).toBe(true);
+    expect(limiter.allow("k1", 5000)).toBe(false);
+  });
+
+  it("reports the earliest grace period end", () => {
+    const c = new CallMembership({ graceMs: 5000 });
+    expect(c.nextExpiry()).toBeNull();
+    c.join(A, "sa", { session: SESSION, muted: true }, 0);
+    c.join(B, "sb", { session: SESSION, muted: true }, 0);
+    c.disconnect(B, "sb", 100);
+    c.disconnect(A, "sa", 200);
+    expect(c.nextExpiry()).toBe(5100);
+    expect(c.socketOf(A)).toBeNull();
+    expect(c.sessionOf("nobody")).toBeNull();
+  });
+});

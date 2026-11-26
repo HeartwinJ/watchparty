@@ -585,6 +585,27 @@ describe("history", () => {
   });
 });
 
+describe("history resume without a free room name", () => {
+  it("answers 503", async () => {
+    const app = await start();
+    const old = app.createNewRoom()!;
+    const url = "https://example.com/m.mp4";
+    upsertHistory(app.db, {
+      ...describeHistoryItem(url, null)!,
+      roomId: old.roomId,
+      url,
+      meta: null,
+      position: 120,
+      duration: 3600,
+      finished: false,
+    });
+    const [item] = (await call("GET", "/history")).json;
+    moniker.makeRoomName.mockReturnValue(old.roomId.slice(1));
+    const r = await call("POST", `/history/${item.id}/resume`);
+    expect(r.status).toBe(503);
+  });
+});
+
 describe("HLS proxy", () => {
   it("rewrites VOD playlists so segments go through the proxy", async () => {
     await start();
@@ -645,11 +666,14 @@ describe("HLS proxy", () => {
     expect(ssrf.safeFetch).not.toHaveBeenCalled();
   });
 
-  it("refuses a host the URL parser normalizes to something else", async () => {
+  it("refuses hosts the URL parser rewrites (IPv4 shorthands)", async () => {
     await start();
-    // Punycode: the parsed hostname differs from the raw one
-    const r = await call("GET", "/proxy/a.m3u8?host=xn--nxasmq6b.com.");
-    expect([400, 502]).toContain(r.status);
+    // "127.1" and "0x7f.0.0.1" look like hostnames but parse as 127.0.0.1
+    for (const host of ["127.1", "0x7f.0.0.1"]) {
+      const r = await call("GET", "/proxy/a.m3u8?host=" + host);
+      expect(r.status, host).toBe(400);
+    }
+    expect(ssrf.safeFetch).not.toHaveBeenCalled();
   });
 
   it("answers 502 when the upstream fetch fails", async () => {

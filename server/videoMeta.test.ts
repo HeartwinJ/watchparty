@@ -162,3 +162,18 @@ describe("parsePlaylistAdd", () => {
     expect(parsePlaylistAdd({ url: "https://a", meta: { x: 1 } })).toBeNull();
   });
 });
+
+describe("videoMeta limits", () => {
+  it("rejects metadata over the size limit", () => {
+    expect(parseVideoMeta({ ...valid, title: "x".repeat(5000) })).toBeNull();
+  });
+
+  it("forgets quiet users once it tracks many", () => {
+    const limiter = createIssueLimiter({ roomMax: 10000, perUserMs: 1000 });
+    for (let i = 0; i < 501; i++) {
+      expect(limiter.allow("u" + i, i)).toBe(true);
+    }
+    // u0 was swept (its last report is old) and can report again
+    expect(limiter.allow("u0", 2000)).toBe(true);
+  });
+});

@@ -110,7 +110,7 @@ describe("sortSubtitles", () => {
 
 describe("createSubtitles", () => {
   function setup(kitsu: string | null = "tt9:1:2") {
-    const fetchFn = vi.fn(async () =>
+    const fetchFn = vi.fn(async (_url: string | URL) =>
       Response.json({
         subtitles: [
           { id: 1, url: "https://s.example.com/de.srt", lang: "ger" },

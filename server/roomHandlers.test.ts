@@ -820,3 +820,72 @@ describe("timers", () => {
     });
   });
 });
+
+describe("call and subtitle sync limits", () => {
+  it("tells the ninth person the call is full", async () => {
+    const people = [];
+    for (let i = 0; i < 9; i++) {
+      people.push(await join());
+    }
+    for (const [i, p] of people.slice(0, 8).entries()) {
+      p.socket.emit("CMD:call", {
+        action: "join",
+        session: "sess_" + i + "_abcdef",
+        muted: true,
+      });
+      await barrier(p.socket);
+    }
+    const last = people[8];
+    const err = next(last.socket, "errorMessage");
+    const state = next<CallState>(last.socket, "REC:callState");
+    last.socket.emit("CMD:call", {
+      action: "join",
+      session: "sess_9_abcdef",
+      muted: true,
+    });
+    expect(await err).toBe("The call is full (8 people).");
+    expect((await state).members).toHaveLength(8);
+  });
+
+  it("releases a failed job, and reports done once attempts run out", async () => {
+    const alex = await join();
+    alex.socket.emit("CMD:host", VIDEO);
+    alex.socket.emit("CMD:roomSettings", { autoSyncSubtitles: true });
+    await barrier(alex.socket);
+    const key = "room:https://subs.example.com/a.srt";
+    const statuses = collect<{ status: string; offset?: unknown }>(
+      alex.socket,
+      "REC:subtitleSync",
+    );
+    for (let i = 0; i < 3; i++) {
+      alex.socket.emit("CMD:subtitleSync", {
+        action: "claim",
+        video: VIDEO,
+        key,
+      });
+      alex.socket.emit("CMD:subtitleSync", {
+        action: "failed",
+        video: VIDEO,
+        key,
+      });
+    }
+    // Nothing running any more: a late failure just repeats that it's done
+    alex.socket.emit("CMD:subtitleSync", {
+      action: "failed",
+      video: VIDEO,
+      key,
+    });
+    alex.socket.emit("CMD:subtitleSync", { action: "bogus" });
+    await barrier(alex.socket);
+    await vi.waitFor(() => expect(statuses).toHaveLength(7));
+    expect(statuses.map((s) => s.status)).toEqual([
+      "running",
+      "released",
+      "running",
+      "released",
+      "running",
+      "done",
+      "done",
+    ]);
+  });
+});
