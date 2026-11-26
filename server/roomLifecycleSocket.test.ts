@@ -27,7 +27,7 @@ const QUEUED_META: VideoMeta = {
 async function setup() {
   const server = http.createServer();
   const io = new Server(server, { transports: ["websocket"] });
-  // Sockets whose clientId starts with "0" are guests, everyone else is an owner (server.ts sets this from the session)
+  // Sockets whose clientId starts with "0" are guests, everyone else is an owner (app.ts sets this from the session)
   io.on("new_namespace", (nsp) =>
     nsp.use((s, next) => {
       const id = String(s.handshake.query.clientId);

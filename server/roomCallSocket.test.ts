@@ -15,7 +15,7 @@ const ROOM = "/call-room";
 async function setup() {
   const server = http.createServer();
   const io = new Server(server, { transports: ["websocket"] });
-  // Sockets connecting with ?owner=1 are owners (server.ts sets this from the session)
+  // Sockets connecting with ?owner=1 are owners (app.ts sets this from the session)
   io.on("new_namespace", (nsp) =>
     nsp.use((s, next) => {
       s.data.owner = s.handshake.query.owner === "1";

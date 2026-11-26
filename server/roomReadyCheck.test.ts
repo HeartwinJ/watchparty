@@ -14,7 +14,7 @@ type Client = ClientSocket & { clientId: string };
 async function setup(enabled = true) {
   const server = http.createServer();
   const io = new Server(server, { transports: ["websocket"] });
-  // Everyone here is an owner (server.ts sets this from the session; guests are tested in roomAccessSocket.test.ts)
+  // Everyone here is an owner (app.ts sets this from the session; guests are tested in roomAccessSocket.test.ts)
   io.on("new_namespace", (nsp) =>
     nsp.use((s, next) => {
       s.data.owner = true;

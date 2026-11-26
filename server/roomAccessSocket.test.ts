@@ -1,4 +1,4 @@
-// Room passwords end to end over Socket.IO: namespace admission (server.ts wiring via admitRoomSockets), owner-only
+// Room passwords end to end over Socket.IO: namespace admission (app.ts wiring via admitRoomSockets), owner-only
 // commands, REC:roomAccess, password changes revoking guests, and kicks revoking a guest's grant.
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -36,7 +36,7 @@ async function setup() {
       return r ? { access: r.access, title: r.roomSettings.title } : undefined;
     },
   });
-  // Must run before any room's namespace exists, like in server.ts
+  // Must run before any room's namespace exists, like in app.ts
   admitRoomSockets(io, roomAuth);
   const room = new Room(io, db, ROOM);
   rooms.set(ROOM, room);
