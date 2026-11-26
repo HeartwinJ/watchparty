@@ -132,6 +132,30 @@ describe("useReadyCheck", () => {
     expect(cmd.skipReadyCheck).toHaveBeenCalledOnce();
   });
 
+  it("hides the pause toast when the check ends quietly", async () => {
+    const { notifications } = await import("@mantine/notifications");
+    const hide = vi.spyOn(notifications, "hide");
+    const { result } = setup();
+    act(() =>
+      result.current.rc.onState({
+        active: true,
+        waitingFor: ["sam"],
+        reason: "buffering",
+        trigger: "sam",
+      }),
+    );
+    act(() =>
+      result.current.rc.onState({
+        active: false,
+        waitingFor: [],
+        outcome: "ready",
+      } as ReadyCheckState),
+    );
+    expect(hide).toHaveBeenCalledWith("wp-ready-check");
+    expect(result.current.state.readyCheck).toMatchObject({ active: false });
+    expect(toast).toHaveBeenCalledTimes(1);
+  });
+
   it("doesn't report while the room setting is off, and reports as soon as it's on", () => {
     const { result, cmd } = setup();
     const settings = result.current.store.get().roomSettings;
