@@ -60,7 +60,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `player/ControlBar.tsx`                   | Overlay controls + speed menu; `SeekBar.tsx`, `SubtitlesMenu.tsx`, `PlayerMenu.tsx` (portal)                        |
 | `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar                            |
 | `player/SubtitleCues.tsx`                 | Renders the cues at the video's current time (`cuesAt`, not stale-prone `activeCues`) with the device's style       |
-| `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input                                            |
+| `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input (closes after 5 s empty)                   |
 | `player/ChatPanel.tsx`, `chatPanel.ts`    | The full chat over the video (fullscreen / sidebar collapsed), `useChatPanel`; pure: availability, width, unread    |
 | `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: system line text incl. `subtitleOffset`, `roomSettings`, `nowPlaying`              |
 | `ui/RoomUi.tsx`                           | `useRoomUi()`: picker open, sidebar collapsed, chat overlay, settings modal                                         |
@@ -205,6 +205,11 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   Esc always reaches it): space/k, ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c
   (the open chat panel's input, else quick chat in fullscreen or with the sidebar collapsed, else
   `chatRef.current.focusInput()`; `chatKeyTarget`), Shift+C (the chat panel), `[`/`]`, `?` (also `wp:show-shortcuts`).
+- **Quick chat** (`QuickChat.tsx`, `c`): a one-line input over the video. Enter sends and closes it; Esc closes it
+  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). It also closes by itself after
+  **5 s empty** (`quickChatIdle.ts`, pure): the countdown starts when it opens and again whenever the input becomes
+  empty, and any text cancels it. A small ring next to the input empties over those 5 s (`aria-hidden`; a still ring
+  with reduced motion) and is hidden while there's text.
 - **Chat panel** (`ChatPanel.tsx`, `useChatPanel.ts`, pure logic in `chatPanel.ts`): the real `Chat` in a translucent
   panel over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control
   bar so both stay usable. Offered where quick chat is (`fullscreen || sidebarCollapsed`, not on the phone layout's

@@ -641,6 +641,31 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
+/* Quick chat closes after 5 s empty: a small ring that empties over that time */
+.quickChatRing {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  transform: rotate(-90deg);
+}
+
+.quickChatRing circle {
+  fill: none;
+  stroke: var(--wp-on-video-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  opacity: 0.7;
+  animation: wpQuickChatIdle var(--wp-quick-chat-idle, 5s) linear forwards;
+}
+
+@keyframes wpQuickChatIdle {
+  to {
+    stroke-dashoffset: 100;
+  }
+}
+
 .kbd {
   display: inline-block;
   min-width: 20px;
@@ -1263,6 +1288,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* A still, faint ring instead of the moving one */
+  .quickChatRing circle {
+    animation: none;
+    opacity: 0.4;
+  }
+
   .flash,
   .ripple,
   .bubble,
