@@ -87,7 +87,16 @@ export interface RoomState {
   subtitleTracks?: SubtitleTrackOption[];
   /** A short message for the player's on-screen display (e.g. "Alex paused" in fullscreen) */
   playerNotice: { text: string; at: number } | null;
+  /** Room-wide settings (REC:roomSettings), the default until the server sends them */
+  roomSettings: RoomSettings;
 }
+
+/** Mirrors DEFAULT_ROOM_SETTINGS in server/roomSettings.ts */
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+  title: "",
+  readyCheck: false,
+  nextEpisodeOffset: 25,
+};
 
 export type RoomStore = Store<RoomState>;
 
@@ -154,5 +163,6 @@ export function createInitialRoomState(): RoomState {
     localSubtitleOffset: null,
     subtitleScope: "everyone",
     playerNotice: null,
+    roomSettings: { ...DEFAULT_ROOM_SETTINGS },
   };
 }

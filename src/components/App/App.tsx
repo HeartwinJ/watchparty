@@ -13,6 +13,7 @@ import { SidebarResizeHandle, useSidebarWidth } from "./shell/SidebarResize";
 import { useSlashShortcut } from "./shell/shortcuts";
 import { shortMediaTitle } from "./shell/roomInfo";
 import { recordRecentRoom } from "../../utils/recentRooms";
+import { roomDisplayName } from "../../utils/rooms";
 import styles from "./App.module.css";
 import { SourcePicker } from "./picker/SourcePicker";
 
@@ -49,6 +50,7 @@ const RoomLayout = ({ room, roomId }: { room: Room; roomId: string }) => {
 
   useSlashShortcut(ui.openPicker);
   useRecentRoom(room, roomId);
+  useRoomDocumentTitle(room, roomId);
 
   // Unread chat counts while the chat isn't visible (collapsed sidebar, minimised sheet or another tab)
   const panelsVisible = isPhone ? sheet.snap !== "min" : !ui.sidebarCollapsed;
@@ -100,7 +102,7 @@ const RoomLayout = ({ room, roomId }: { room: Room; roomId: string }) => {
         </div>
       </aside>
       <RoomMessages room={room} />
-      <RoomSettingsModal room={room} />
+      <RoomSettingsModal room={room} roomId={roomId} />
       <SourcePicker room={room} />
     </div>
   );
@@ -123,10 +125,31 @@ function useRecentRoom(room: Room, roomId: string) {
       setRecorded(true);
     }
   }, [connected, recorded, record]);
+  // The room title from room settings. Skip the initial default (REC:roomSettings arrives just after connecting) so
+  // it doesn't erase the stored title.
+  const { roomSettings } = room.state;
+  const initialSettings = useRef(roomSettings).current;
+  useEffect(() => {
+    if (roomSettings !== initialSettings) {
+      recordRecentRoom({ roomId, roomTitle: roomSettings.title });
+    }
+  }, [roomId, roomSettings, initialSettings]);
   useEffect(() => {
     // Shares only make sense while they're live, so don't remember them as the room's title
     if (connected && roomMedia.startsWith("http")) {
       record(title);
     }
   }, [connected, roomMedia, title, record]);
+}
+
+/** The tab title: the room's title (room settings) or its generated name. */
+function useRoomDocumentTitle(room: Room, roomId: string) {
+  const name = roomDisplayName(roomId, room.state.roomSettings.title);
+  useEffect(() => {
+    const previous = document.title;
+    document.title = `${name} · WatchParty`;
+    return () => {
+      document.title = previous;
+    };
+  }, [name]);
 }

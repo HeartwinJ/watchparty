@@ -42,10 +42,31 @@ describe("upsertRecentRoom", () => {
     });
     list = upsertRecentRoom(list, { roomId: "b", visitedAt: 2 });
     list = upsertRecentRoom(list, { roomId: "a", visitedAt: 3 });
-    expect(list[0]).toEqual({ roomId: "a", lastTitle: "Movie", visitedAt: 3 });
+    expect(list[0]).toEqual({
+      roomId: "a",
+      lastTitle: "Movie",
+      roomTitle: "",
+      visitedAt: 3,
+    });
     expect(list).toHaveLength(2);
     list = upsertRecentRoom(list, { roomId: "a", lastTitle: "", visitedAt: 4 });
     expect(list[0].lastTitle).toBe("");
+  });
+
+  it("stores the room title and keeps it unless given a new one", () => {
+    let list = upsertRecentRoom([], {
+      roomId: "a",
+      roomTitle: "Friday movies",
+      visitedAt: 1,
+    });
+    list = upsertRecentRoom(list, {
+      roomId: "a",
+      lastTitle: "X",
+      visitedAt: 2,
+    });
+    expect(list[0].roomTitle).toBe("Friday movies");
+    list = upsertRecentRoom(list, { roomId: "a", roomTitle: "", visitedAt: 3 });
+    expect(list[0].roomTitle).toBe("");
   });
 
   it(`keeps at most ${RECENT_ROOMS_MAX}`, () => {
@@ -64,8 +85,8 @@ describe("readRecentRooms / recordRecentRoom", () => {
     recordRecentRoom({ roomId: "a", lastTitle: "A", visitedAt: 5 }, storage);
     recordRecentRoom({ roomId: "b", visitedAt: 6 }, storage);
     expect(readRecentRooms(storage)).toEqual([
-      { roomId: "b", lastTitle: "", visitedAt: 6 },
-      { roomId: "a", lastTitle: "A", visitedAt: 5 },
+      { roomId: "b", lastTitle: "", roomTitle: "", visitedAt: 6 },
+      { roomId: "a", lastTitle: "A", roomTitle: "", visitedAt: 5 },
     ]);
   });
 
@@ -82,7 +103,7 @@ describe("readRecentRooms / recordRecentRoom", () => {
           ]),
         ),
       ),
-    ).toEqual([{ roomId: "ok", lastTitle: "x", visitedAt: 2 }]);
+    ).toEqual([{ roomId: "ok", lastTitle: "x", roomTitle: "", visitedAt: 2 }]);
   });
 
   it("survives unavailable storage", () => {

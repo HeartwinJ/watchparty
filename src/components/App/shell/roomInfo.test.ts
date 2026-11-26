@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { describePlayback, mediaKindLabel, shortMediaTitle } from "./roomInfo";
 import { avatarColor, initials } from "../../Avatar/avatar";
-import { prettyRoomName } from "../../../utils/rooms";
+import { prettyRoomName, roomDisplayName } from "../../../utils/rooms";
 
 describe("shortMediaTitle", () => {
   it("prefers a real display name", () => {
@@ -74,5 +74,13 @@ describe("avatars and names", () => {
     expect(prettyRoomName("brave-otter-sings")).toBe("Brave otter sings");
     expect(prettyRoomName("/x")).toBe("X");
     expect(prettyRoomName("")).toBe("Room");
+  });
+  it("prefers the room title from room settings", () => {
+    expect(roomDisplayName("brave-otter", "Friday movies")).toBe(
+      "Friday movies",
+    );
+    expect(roomDisplayName("brave-otter", "")).toBe("Brave otter");
+    expect(roomDisplayName("brave-otter", "   ")).toBe("Brave otter");
+    expect(roomDisplayName("brave-otter")).toBe("Brave otter");
   });
 });

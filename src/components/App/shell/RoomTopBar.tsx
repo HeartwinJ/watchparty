@@ -19,7 +19,7 @@ import {
   IconSettings,
 } from "@tabler/icons-react";
 import { navigate } from "../../../router";
-import { prettyRoomName } from "../../../utils/rooms";
+import { roomDisplayName } from "../../../utils/rooms";
 import { useAuth } from "../../AuthGate/AuthGate";
 import { AvatarStack } from "../../Avatar/Avatar";
 import { Brand } from "../../Brand/Brand";
@@ -52,8 +52,7 @@ export const RoomTopBar = ({
     state.roomMedia,
     room.getMediaDisplayName(state.roomMedia),
   );
-  // TODO(wave 2): show the room title from room settings once the server stores one
-  const roomName = prettyRoomName(roomId);
+  const roomName = roomDisplayName(roomId, state.roomSettings.title);
   const people = state.participants.map((p) => ({
     id: p.id,
     name: state.nameMap[p.id],

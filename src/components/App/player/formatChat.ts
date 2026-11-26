@@ -34,7 +34,34 @@ export function describeChatCommand(
           : `set subtitles ${formatOffset(n)} for everyone`
         : undefined;
     }
+    case "roomSettings":
+      return describeRoomSettingsChange(msg);
     default:
       return undefined;
   }
+}
+
+/** `roomSettings` lines: msg is JSON with the one setting that changed, e.g. `{"readyCheck":true}` */
+function describeRoomSettingsChange(msg: string | undefined) {
+  let change: Partial<Record<keyof RoomSettings, unknown>>;
+  try {
+    change = JSON.parse(msg ?? "");
+  } catch {
+    return undefined;
+  }
+  if (!change || typeof change !== "object") {
+    return undefined;
+  }
+  if (typeof change.title === "string") {
+    return change.title
+      ? `renamed the room to “${change.title}”`
+      : "reset the room name";
+  }
+  if (typeof change.readyCheck === "boolean") {
+    return `turned the ready check ${change.readyCheck ? "on" : "off"}`;
+  }
+  if (typeof change.nextEpisodeOffset === "number") {
+    return `set the next-episode card to ${change.nextEpisodeOffset}s before the end`;
+  }
+  return undefined;
 }

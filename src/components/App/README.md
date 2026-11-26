@@ -42,7 +42,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar     |
 | `player/SubtitleCues.tsx`                 | Renders the active cues of the selected (hidden-mode) TextTrack with the device's style      |
 | `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input                     |
-| `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: text for system lines incl. the new `subtitleOffset`        |
+| `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: system line text incl. `subtitleOffset`, `roomSettings`     |
 | `ui/RoomUi.tsx`                           | `useRoomUi()`: picker open, sidebar collapsed, chat overlay, settings modal                  |
 | `ui/toast.tsx`                            | `toast(message, {tone, action})`                                                             |
 | `shell/RoomTopBar.tsx`                    | Logo, room name, picker trigger, sync slot, avatars, invite, sidebar toggle, ⋯ menu          |
@@ -52,7 +52,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `shell/SidebarResize.tsx`                 | Drag/keyboard resize of the desktop sidebar (`sidebarWidth.ts`: clamp + localStorage)        |
 | `shell/BottomSheet.tsx`                   | Phone sheet snap points min/docked/full (`sheet.ts`: pure snap logic)                        |
 | `shell/NowPlayingStrip.tsx`               | Phone: title + "Change" under the video                                                      |
-| `shell/RoomSettingsModal.tsx`             | Per-device settings (message sound, chat bubbles, auto-convert); room-wide ones are TODO     |
+| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (title, ready check, next-episode card)                      |
 | `shell/shortcuts.ts`                      | `/` opens the picker; `wp:show-shortcuts` event for the shortcuts overlay                    |
 | `shell/invite.ts`, `roomInfo.ts`          | Copy invite link + toast; short media titles, per-person playback state                      |
 | `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                        |
@@ -83,6 +83,12 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   the right-hand group) and `{/* SLOT(C): <SourcePicker room={room} /> */}` at the end of `RoomLayout` in `App.tsx`.
   The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
   queue" uses `openPicker({ mode: "queue" })`.
+- **Room settings (wave 2):** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`) comes
+  from `REC:roomSettings` (on connect and after every change) and starts as `DEFAULT_ROOM_SETTINGS` (`roomState.ts`).
+  Change it with `room.cmd.setRoomSettings(patch)`; the server normalizes, broadcasts to everyone and posts a debounced
+  `roomSettings` chat line. The settings modal sends the title on blur/Enter, the ready check switch immediately and the
+  next-episode seconds 500 ms after the last change. `roomDisplayName(roomId, title)` names the room in the top bar,
+  the tab title and recent rooms. Ready check and the next-episode card read `state.roomSettings` directly.
 
 ## Source picker (`picker/`, Phase 4 + PLAN 6c)
 
