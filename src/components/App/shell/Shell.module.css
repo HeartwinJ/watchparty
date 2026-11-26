@@ -807,3 +807,24 @@
   justify-content: center;
   gap: var(--wp-sp-2);
 }
+
+/* Voice call state next to a person */
+.callIcon,
+.callMuted {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+.callIcon {
+  color: var(--wp-success);
+}
+
+.callMuted {
+  color: var(--wp-danger);
+}
+
+.callIcon[data-reconnecting],
+.callMuted[data-reconnecting] {
+  color: var(--wp-warning);
+}

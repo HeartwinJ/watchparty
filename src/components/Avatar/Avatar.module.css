@@ -47,3 +47,11 @@
   color: var(--wp-text-2);
   font-size: 10px;
 }
+
+/* Voice call: speaking ring (after .stacked so it wins in stacks too) */
+.avatar[data-speaking] {
+  box-shadow:
+    0 0 0 2px var(--wp-surface-1),
+    0 0 0 4px var(--wp-success);
+  transition: box-shadow var(--wp-dur-fast) var(--wp-ease);
+}

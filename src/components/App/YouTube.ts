@@ -85,12 +85,33 @@ export class YouTube implements Player {
   };
 
   setVolume = (volume: number) => {
-    this.watchPartyYTPlayer?.setVolume(volume * 100);
+    this.userVolume = volume;
+    this.watchPartyYTPlayer?.setVolume(volume * this.duck * 100);
   };
 
   getVolume = (): number => {
+    if (this.duck !== 1 && this.userVolume !== null) {
+      return this.userVolume;
+    }
     const volume = this.watchPartyYTPlayer?.getVolume();
     return (volume ?? 0) / 100;
+  };
+
+  /** Voice call ducking (see Player.setDuck) */
+  private duck = 1;
+  private userVolume: number | null = null;
+  setDuck = (factor: number) => {
+    if (!this.watchPartyYTPlayer?.setVolume) {
+      return;
+    }
+    if (this.duck === 1 || this.userVolume === null) {
+      this.userVolume = (this.watchPartyYTPlayer.getVolume?.() ?? 100) / 100;
+    }
+    this.duck = factor;
+    // YouTube takes whole numbers
+    this.watchPartyYTPlayer.setVolume(
+      Math.round(this.userVolume * factor * 100),
+    );
   };
 
   setSubtitleMode = (mode?: TextTrackMode, lang?: string) => {

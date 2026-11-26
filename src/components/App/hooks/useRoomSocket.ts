@@ -50,6 +50,9 @@ const SERVER_EVENT_SET: Record<keyof ServerToClientEvents, true> = {
   "REC:roomAccess": true,
   "REC:accessRevoked": true,
   "REC:roomDeleted": true,
+  "REC:callState": true,
+  "REC:callSignal": true,
+  "REC:callModerated": true,
 };
 export const SERVER_EVENTS = Object.keys(
   SERVER_EVENT_SET,

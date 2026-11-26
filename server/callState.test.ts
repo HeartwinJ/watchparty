@@ -1,0 +1,191 @@
+import { describe, expect, it } from "vitest";
+import {
+  CallMembership,
+  createWindowLimiter,
+  parseCallCommand,
+  parseCallModeration,
+  parseCallSignal,
+} from "./callState.ts";
+
+const A = "11111111-1111-4111-8111-111111111111";
+const B = "22222222-2222-4222-8222-222222222222";
+const SESSION = "sessA_123";
+
+describe("parseCallCommand", () => {
+  it("accepts join/leave/state and rejects the rest", () => {
+    expect(
+      parseCallCommand({ action: "join", session: SESSION, muted: true }),
+    ).toEqual({ action: "join", session: SESSION, muted: true });
+    expect(parseCallCommand({ action: "leave", extra: 1 })).toEqual({
+      action: "leave",
+    });
+    expect(parseCallCommand({ action: "state", muted: false })).toEqual({
+      action: "state",
+      muted: false,
+    });
+    for (const bad of [
+      null,
+      "join",
+      { action: "join", session: SESSION },
+      { action: "join", session: "short", muted: false },
+      { action: "join", session: "has space in it", muted: false },
+      { action: "join", session: "x".repeat(65), muted: false },
+      { action: "state", muted: "yes" },
+      { action: "camera", on: true },
+    ]) {
+      expect(parseCallCommand(bad)).toBeNull();
+    }
+  });
+});
+
+describe("parseCallModeration", () => {
+  it("needs mute/remove and a client id", () => {
+    expect(parseCallModeration({ action: "mute", clientId: A })).toEqual({
+      action: "mute",
+      clientId: A,
+    });
+    expect(parseCallModeration({ action: "unmute", clientId: A })).toBeNull();
+    expect(
+      parseCallModeration({ action: "remove", clientId: "__proto__" }),
+    ).toBeNull();
+  });
+});
+
+describe("parseCallSignal", () => {
+  const base = { to: B, toSession: SESSION };
+  it("keeps only the known fields of a description", () => {
+    expect(
+      parseCallSignal({
+        ...base,
+        description: { type: "offer", sdp: "v=0", evil: 1 },
+        from: A,
+        extra: "x",
+      }),
+    ).toEqual({ ...base, description: { type: "offer", sdp: "v=0" } });
+  });
+
+  it("accepts candidates, including the null end-of-candidates", () => {
+    expect(
+      parseCallSignal({
+        ...base,
+        candidate: { candidate: "candidate:1 1 udp 1 1.2.3.4 5 typ host" },
+      }),
+    ).toEqual({
+      ...base,
+      candidate: {
+        candidate: "candidate:1 1 udp 1 1.2.3.4 5 typ host",
+        sdpMid: null,
+        sdpMLineIndex: null,
+        usernameFragment: null,
+      },
+    });
+    expect(parseCallSignal({ ...base, candidate: null })).toEqual({
+      ...base,
+      candidate: null,
+    });
+  });
+
+  it("rejects bad shapes and oversized messages", () => {
+    for (const bad of [
+      null,
+      { ...base },
+      { to: "nope", toSession: SESSION, candidate: null },
+      { to: B, toSession: "x", candidate: null },
+      { ...base, description: { type: "pranswer", sdp: "v=0" } },
+      { ...base, description: { type: "offer", sdp: 5 } },
+      { ...base, description: { type: "offer", sdp: "v=0" }, candidate: null },
+      { ...base, candidate: { candidate: "c", sdpMLineIndex: -1 } },
+      { ...base, candidate: { candidate: "c", sdpMid: 5 } },
+    ]) {
+      expect(parseCallSignal(bad)).toBeNull();
+    }
+    expect(
+      parseCallSignal(
+        { ...base, description: { type: "offer", sdp: "a".repeat(200) } },
+        100,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("CallMembership", () => {
+  it("joins, mutes, leaves", () => {
+    const c = new CallMembership();
+    expect(c.join(A, "s1", { session: SESSION, muted: true }, 1000)).toBe(
+      "joined",
+    );
+    expect(c.snapshot().members).toEqual([
+      {
+        clientId: A,
+        session: SESSION,
+        muted: true,
+        joinedAt: 1000,
+        reconnecting: false,
+      },
+    ]);
+    // Only the member's own socket can change it
+    expect(c.setMuted(A, "other", false)).toBe(false);
+    expect(c.setMuted(A, "s1", false)).toBe(true);
+    expect(c.setMuted(A, "s1", false)).toBe(false);
+    expect(c.leave(A, "other")).toBe(false);
+    expect(c.leave(A, "s1")).toBe(true);
+    expect(c.size).toBe(0);
+  });
+
+  it("keeps a disconnected member for the grace period and lets them rejoin", () => {
+    const c = new CallMembership({ graceMs: 5000 });
+    c.join(A, "s1", { session: SESSION, muted: false }, 1000);
+    expect(c.disconnect(A, "other-socket", 2000)).toBe(false);
+    expect(c.disconnect(A, "s1", 2000)).toBe(true);
+    expect(c.snapshot().members[0].reconnecting).toBe(true);
+    expect(c.nextExpiry()).toBe(7000);
+    expect(c.expire(6999)).toEqual([]);
+    // A reload: new socket, new session, keeps the join time
+    expect(c.join(A, "s2", { session: "sessA_456", muted: true }, 3000)).toBe(
+      "rejoined",
+    );
+    expect(c.snapshot().members[0]).toMatchObject({
+      session: "sessA_456",
+      muted: true,
+      joinedAt: 1000,
+      reconnecting: false,
+    });
+    expect(c.nextExpiry()).toBeNull();
+    c.disconnect(A, "s2", 10_000);
+    expect(c.expire(15_000)).toEqual([A]);
+    expect(c.has(A)).toBe(false);
+  });
+
+  it("only relays between connected members, from the member's own socket", () => {
+    const c = new CallMembership();
+    c.join(A, "sa", { session: SESSION, muted: false }, 1);
+    expect(c.canRelay(A, "sa", B)).toBe(false);
+    c.join(B, "sb", { session: SESSION, muted: false }, 2);
+    expect(c.canRelay(A, "sa", B)).toBe(true);
+    expect(c.canRelay(A, "not-sa", B)).toBe(false);
+    expect(c.canRelay(A, "sa", A)).toBe(false);
+    c.disconnect(B, "sb", 3);
+    expect(c.canRelay(A, "sa", B)).toBe(false);
+  });
+
+  it("refuses joins past the member cap", () => {
+    const c = new CallMembership({ maxMembers: 1 });
+    c.join(A, "sa", { session: SESSION, muted: false }, 1);
+    expect(c.join(B, "sb", { session: SESSION, muted: false }, 2)).toBe("full");
+    // Rejoining isn't a new member
+    expect(c.join(A, "sa2", { session: SESSION, muted: false }, 3)).toBe(
+      "rejoined",
+    );
+  });
+});
+
+describe("createWindowLimiter", () => {
+  it("allows max events per window per key", () => {
+    const l = createWindowLimiter(2, 1000);
+    expect(l.allow("a", 0)).toBe(true);
+    expect(l.allow("a", 10)).toBe(true);
+    expect(l.allow("a", 20)).toBe(false);
+    expect(l.allow("b", 20)).toBe(true);
+    expect(l.allow("a", 1000)).toBe(true);
+  });
+});

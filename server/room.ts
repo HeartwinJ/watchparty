@@ -43,6 +43,14 @@ import {
   parseSubtitleSyncCommand,
   SubtitleAutoSync,
 } from "./subtitleAutoSync.ts";
+import {
+  CALL_LIMITS,
+  CallMembership,
+  createWindowLimiter,
+  parseCallCommand,
+  parseCallModeration,
+  parseCallSignal,
+} from "./callState.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -144,6 +152,19 @@ export class Room {
   private readyCheck = new ReadyCheck();
   /** Room auto-sync of subtitles: who computes it, whether the result may be applied (subtitleAutoSync.ts) */
   private subtitleSync = new SubtitleAutoSync();
+  /** How long a voice call member whose socket dropped stays in the call (tests shorten it) */
+  public static CALL_GRACE_MS = CALL_LIMITS.graceMs;
+  /** Voice call membership (callState.ts), in memory only: separate from the roster, never serialized */
+  private call = new CallMembership({ graceMs: Room.CALL_GRACE_MS });
+  private callExpiryTimer: NodeJS.Timeout | undefined = undefined;
+  private callCommandLimiter = createWindowLimiter(
+    CALL_LIMITS.commandMax,
+    CALL_LIMITS.commandWindowMs,
+  );
+  private callSignalLimiter = createWindowLimiter(
+    CALL_LIMITS.signalMax,
+    CALL_LIMITS.signalWindowMs,
+  );
   /** Next-episode lookups (set by server.ts when AIOStreams is configured) */
   public static nextEpisodeResolver: NextEpisodeResolver | null = null;
   private nextEpisode = new NextEpisodeController({
@@ -276,6 +297,7 @@ export class Room {
       this.emitRoomAccess(socket);
       socket.emit("REC:readyCheck", this.readyCheck.getState());
       socket.emit("REC:nextEpisode", this.nextEpisode.snapshot());
+      socket.emit("REC:callState", this.call.snapshot());
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
@@ -410,6 +432,16 @@ export class Room {
 
       on("signalSS", (data: unknown) => this.sendSignal(socket, data));
 
+      // Voice call (callState.ts): open to guests; moderation is for owners
+      on("CMD:call", (data: unknown) => this.callCommand(socket, data));
+      on("CMD:callSignal", (data: unknown) =>
+        this.relayCallSignal(socket, data),
+      );
+      on(
+        "CMD:callModerate",
+        ownerOnly((data) => this.moderateCall(socket, data)),
+      );
+
       on("disconnect", () => this.onDisconnect(socket));
     });
   }
@@ -536,6 +568,7 @@ export class Room {
     }
     clearTimeout(this.subtitleOffsetChatTimer);
     clearTimeout(this.settingsChat?.timer);
+    clearTimeout(this.callExpiryTimer);
     // Unregister the namespace so it doesn't linger (or get duplicated on reload)
     this.io._nsps.delete(this.roomId);
   };
@@ -1375,11 +1408,126 @@ export class Room {
     }
   };
 
+  // --- Voice call (see callState.ts) ---
+
+  private emitCallState = () => {
+    if (!this.destroyed) {
+      this.io.of(this.roomId).emit("REC:callState", this.call.snapshot());
+    }
+  };
+
+  /** Removes members whose grace period ran out, then waits for the next one */
+  private scheduleCallExpiry = () => {
+    clearTimeout(this.callExpiryTimer);
+    this.callExpiryTimer = undefined;
+    const next = this.call.nextExpiry();
+    if (next === null || this.destroyed) {
+      return;
+    }
+    this.callExpiryTimer = setTimeout(
+      () => {
+        if (this.call.expire(Date.now()).length) {
+          this.emitCallState();
+        }
+        this.scheduleCallExpiry();
+      },
+      Math.max(0, next - Date.now()) + 5,
+    );
+  };
+
+  /** CMD:call {action: join|leave|state}. The client decides join-muted (video playing) and keeps it on rejoin. */
+  private callCommand = (socket: Socket, raw: unknown) => {
+    const cmd = parseCallCommand(raw);
+    if (!cmd || !this.callCommandLimiter.allow(socket.id)) {
+      return;
+    }
+    const { clientId } = socket;
+    if (cmd.action === "join") {
+      const outcome = this.call.join(clientId, socket.id, cmd, Date.now());
+      if (outcome === "full") {
+        socket.emit(
+          "errorMessage",
+          `The call is full (${CALL_LIMITS.maxMembers} people).`,
+        );
+        // This socket gets the state anyway, so it stops waiting
+        socket.emit("REC:callState", this.call.snapshot());
+        return;
+      }
+      this.emitCallState();
+      this.scheduleCallExpiry();
+    } else if (cmd.action === "leave") {
+      if (this.call.leave(clientId, socket.id)) {
+        this.emitCallState();
+      }
+    } else if (this.call.setMuted(clientId, socket.id, cmd.muted)) {
+      this.emitCallState();
+    }
+  };
+
+  /**
+   * CMD:callSignal {to, toSession, description | candidate}: relayed as REC:callSignal only between two connected
+   * call members, rebuilt from validated fields, size capped and rate limited per socket. The server sets `from`
+   * and the sender's `session`.
+   */
+  private relayCallSignal = (socket: Socket, raw: unknown) => {
+    if (!this.callSignalLimiter.allow(socket.id)) {
+      return;
+    }
+    const signal = parseCallSignal(raw);
+    if (!signal || !this.call.canRelay(socket.clientId, socket.id, signal.to)) {
+      return;
+    }
+    const toSocket = this.call.socketOf(signal.to);
+    const session = this.call.sessionOf(socket.clientId);
+    if (!toSocket || !session) {
+      return;
+    }
+    const { to: _to, ...payload } = signal;
+    const event: CallSignalEvent = {
+      ...payload,
+      from: socket.clientId,
+      session,
+    };
+    this.io.of(this.roomId).to(toSocket).emit("REC:callSignal", event);
+  };
+
+  /** CMD:callModerate {action: mute|remove, clientId} (owners only). Muting asks them to mute; nobody can unmute you. */
+  private moderateCall = (socket: Socket, raw: unknown) => {
+    const cmd = parseCallModeration(raw);
+    if (
+      !cmd ||
+      !this.call.has(cmd.clientId) ||
+      !this.callCommandLimiter.allow(socket.id)
+    ) {
+      return;
+    }
+    const target = this.call.socketOf(cmd.clientId);
+    const event: CallModeratedEvent = {
+      action: cmd.action,
+      by: this.getActor(socket),
+    };
+    // Tell them first, so their client explains the removal before the new state arrives
+    if (target) {
+      this.io.of(this.roomId).to(target).emit("REC:callModerated", event);
+    }
+    if (cmd.action === "remove") {
+      this.call.remove(cmd.clientId);
+      this.emitCallState();
+    }
+  };
+
   private onDisconnect = (socket: Socket) => {
     const { clientId } = socket;
     if (this.destroyed) {
       // The room was deleted: io.of() would recreate its namespace
       return;
+    }
+    this.callCommandLimiter.forget(socket.id);
+    this.callSignalLimiter.forget(socket.id);
+    // Whichever socket speaks for a call member (possibly an older one that a new tab took over from)
+    if (this.call.disconnect(clientId, socket.id, Date.now())) {
+      this.emitCallState();
+      this.scheduleCallExpiry();
     }
     // Disconnecting socket is the current one
     if (socket.id === this.socketIdMap[clientId]) {
@@ -1428,6 +1576,10 @@ export class Room {
           sockets.push(s);
         }
       }
+    }
+    // Out of the call right away (no grace period)
+    if (this.call.remove(data.userToBeKicked)) {
+      this.emitCallState();
     }
     for (const s of sockets) {
       s.emit("kicked");
