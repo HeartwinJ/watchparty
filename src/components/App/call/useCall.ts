@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { getIceServers } from "../../../utils/iceServers";
 import type { RoomStore } from "../roomState";
-import type { RoomCommands } from "../socketEvents";
+import type { CallModerationAction, RoomCommands } from "../socketEvents";
 import type { PlayerApi } from "../hooks/usePlayer";
 import { isInModal, isTypingTarget } from "../logic/shortcuts";
 import { toast } from "../ui/toast";
@@ -28,6 +28,8 @@ import {
 } from "./logic";
 import { meterLevel } from "./speaking";
 import { createMeshTransport, type CallTransport } from "./transport";
+import { CAMERA_ERROR_TEXT, listCameras, openCamera } from "./video";
+import { CallVideo } from "./videoStreams";
 
 /** How long to wait for the server to list us after `join` */
 const JOIN_TIMEOUT_MS = 8000;
@@ -35,6 +37,12 @@ const JOIN_TIMEOUT_MS = 8000;
 /** Mutable call state for this page: media and connections, not React state (state.call drives the UI) */
 interface CallSession {
   micStream: MediaStream | null;
+  /** Our camera, while it's on (also before joining, as the preview) */
+  camStream: MediaStream | null;
+  /** Our preview and everyone's incoming video, for the tiles */
+  video: CallVideo;
+  /** Bumped on every camera on/off so a slow camera open that was cancelled doesn't finish */
+  camSeq: number;
   audio: CallAudio | null;
   transport: CallTransport | null;
   ducker: Ducker;
@@ -62,6 +70,9 @@ export function useCall(opts: {
   const { store, cmd, clientId, roomId, player } = opts;
   const session = useRef<CallSession>({
     micStream: null,
+    camStream: null,
+    video: new CallVideo(),
+    camSeq: 0,
     audio: null,
     transport: null,
     ducker: new Ducker(),
@@ -86,6 +97,7 @@ export function useCall(opts: {
     );
 
     const micTrack = () => session.micStream?.getAudioTracks()[0] ?? null;
+    const cameraTrack = () => session.camStream?.getVideoTracks()[0] ?? null;
 
     const setDuck = (level: number) => {
       if (level === session.duckLevel) {
@@ -242,6 +254,171 @@ export function useCall(opts: {
       }
     };
 
+    // --- Camera ---
+
+    /** Stops the camera (the light goes off) and stops sending video; the senders stay, so no renegotiation */
+    const releaseCamera = () => {
+      session.camStream?.getTracks().forEach((t) => {
+        t.onended = null;
+        t.stop();
+      });
+      session.camStream = null;
+      session.video.setLocal(null);
+      session.transport?.setLocalTrack("video", null);
+    };
+
+    const adoptCamera = (stream: MediaStream) => {
+      const old = session.camStream;
+      const track = stream.getVideoTracks()[0] ?? null;
+      session.camStream = stream;
+      if (track) {
+        track.onended = onCameraLost;
+      }
+      session.video.setLocal(track);
+      // replaceTrack once a peer has a video sender, else addTrack (one renegotiation per peer)
+      session.transport?.setLocalTrack("video", track);
+      if (old && old !== stream) {
+        old.getTracks().forEach((t) => {
+          t.onended = null;
+          t.stop();
+        });
+      }
+    };
+
+    const sendCamera = (on: boolean) => {
+      if (inCall(call())) {
+        cmd.call({ action: "state", camera: on });
+      }
+    };
+
+    /**
+     * Turns the camera on (the remembered one, or `deviceId`) or off. Before joining it's the preview (we join with it
+     * on); in the call everyone sees it. A camera that can't start shows why and leaves the call alone. Resolves to
+     * whether the camera is on.
+     */
+    const setCamera = async (
+      on: boolean,
+      deviceId?: string,
+    ): Promise<boolean> => {
+      const seq = ++session.camSeq;
+      if (!on) {
+        const wasOn = call().camera;
+        releaseCamera();
+        dispatch({
+          type: "patch",
+          patch: { camera: false, cameraBusy: false },
+        });
+        if (wasOn) {
+          sendCamera(false);
+        }
+        return false;
+      }
+      dispatch({
+        type: "patch",
+        patch: { cameraBusy: true, cameraError: null },
+      });
+      const id = deviceId ?? readPref(CALL_PREFS.camera);
+      let result = await openCamera(id);
+      if (
+        !result.ok &&
+        result.error === "in-use" &&
+        session.camStream &&
+        seq === session.camSeq
+      ) {
+        // Phones can't run two cameras at once: let go of the current one and try again
+        releaseCamera();
+        result = await openCamera(id);
+      }
+      if (seq !== session.camSeq) {
+        // Turned off (or left) while the camera was opening
+        if (result.ok) {
+          result.stream.getTracks().forEach((t) => t.stop());
+        }
+        return Boolean(cameraTrack());
+      }
+      if (!result.ok) {
+        const wasOn = call().camera;
+        const stillOn = Boolean(cameraTrack());
+        dispatch({
+          type: "patch",
+          patch: {
+            camera: stillOn,
+            cameraBusy: false,
+            cameraError: result.error,
+          },
+        });
+        if (wasOn && !stillOn) {
+          sendCamera(false);
+        }
+        toast(CAMERA_ERROR_TEXT[result.error].title, {
+          id: "wp-call-camera",
+          tone: "danger",
+        });
+        return stillOn;
+      }
+      adoptCamera(result.stream);
+      if (deviceId) {
+        writePref(CALL_PREFS.camera, deviceId);
+      }
+      const wasOn = call().camera;
+      dispatch({
+        type: "patch",
+        patch: { camera: true, cameraBusy: false, cameraError: null },
+      });
+      if (!wasOn) {
+        sendCamera(true);
+      }
+      return true;
+    };
+
+    /** V and the camera buttons. Pressing it while the camera is still opening cancels. */
+    const toggleCamera = () => {
+      const s = call();
+      return setCamera(!(s.camera || s.cameraBusy));
+    };
+
+    /** The camera picker: remembered for next time, and switched right away (replaceTrack) when it's on */
+    const setCameraDevice = async (deviceId: string) => {
+      writePref(CALL_PREFS.camera, deviceId);
+      const current = cameraTrack()?.getSettings?.().deviceId;
+      if (call().camera && current !== deviceId) {
+        await setCamera(true, deviceId);
+      }
+    };
+
+    /** The camera ended on its own (unplugged, taken by the system): turn it off */
+    const onCameraLost = () => {
+      if (!session.camStream) {
+        return;
+      }
+      void setCamera(false);
+      toast("Camera disconnected. It's off now.", {
+        id: "wp-call-camera",
+        tone: "warning",
+      });
+    };
+
+    /** devicechange: the camera we use may be gone (not every browser ends the track) */
+    const checkCamera = async () => {
+      const track = cameraTrack();
+      if (!track) {
+        return;
+      }
+      if (track.readyState === "ended") {
+        return onCameraLost();
+      }
+      const id = track.getSettings?.().deviceId;
+      const cameras = await listCameras();
+      if (id && cameras.length && !cameras.some((c) => c.deviceId === id)) {
+        return onCameraLost();
+      }
+    };
+
+    const setTilesHidden = (hidden: boolean) => {
+      writePref(CALL_PREFS.tilesHidden, hidden ? "1" : null);
+      dispatch({ type: "patch", patch: { tilesHidden: hidden } });
+    };
+
     /** Pre-join: open the mic so the panel can show its level */
     const startPreview = async () => {
       session.previewing = true;
@@ -259,6 +436,7 @@ export function useCall(opts: {
       if (inCall(call()) || call().busy) {
         return;
       }
+      void setCamera(false);
       stopMic();
       session.audio?.close();
       session.audio = null;
@@ -294,6 +472,9 @@ export function useCall(opts: {
       stateThrottle.cancel();
       session.transport?.close();
       session.transport = null;
+      session.camSeq++;
+      releaseCamera();
+      session.video.clear();
       stopMic();
       session.audio?.close();
       session.audio = null;
@@ -341,9 +522,13 @@ export function useCall(opts: {
         iceServers,
         send: cmd.callSignal,
         events: {
-          onTrack: (id, track) => audio.addRemote(id, track),
+          onTrack: (id, track) =>
+            track.kind === "video"
+              ? session.video.addRemote(id, track)
+              : audio.addRemote(id, track),
           onPeerClosed: (id) => {
             audio.remove(id);
+            session.video.remove(id);
             dispatch({ type: "peer", clientId: id, status: null });
           },
           onPeerStatus: (id, status) =>
@@ -351,6 +536,11 @@ export function useCall(opts: {
         },
       });
       session.transport.setLocalTrack("audio", micTrack());
+      // Turned on in the pre-join preview: everyone gets it from the first offer
+      session.transport.setLocalTrack(
+        "video",
+        call().camera ? cameraTrack() : null,
+      );
       const muted = rejoin ? rejoin.muted : joinMuted(store.get());
       dispatch({ type: "joining", session: callSession, muted });
       sendJoin();
@@ -382,7 +572,12 @@ export function useCall(opts: {
       if (track) {
         track.enabled = on;
       }
-      cmd.call({ action: "join", session: callSession, muted: !on });
+      cmd.call({
+        action: "join",
+        session: callSession,
+        muted: !on,
+        camera: s.camera && Boolean(cameraTrack()),
+      });
       stateThrottle.reset(!on);
       writeRejoin(roomId, { muted: s.muted });
     };
@@ -431,7 +626,7 @@ export function useCall(opts: {
       dispatch({ type: "patch", patch: { ducking: on } });
     };
 
-    const moderate = (target: string, action: "mute" | "remove") =>
+    const moderate = (target: string, action: CallModerationAction) =>
       cmd.moderateCall(target, action);
 
     // --- Socket events (wired in useRoom) ---
@@ -467,7 +662,12 @@ export function useCall(opts: {
         return;
       }
       const name = nameOf(event.by);
-      if (event.action === "mute") {
+      if (event.action === "camera") {
+        if (call().camera || call().cameraBusy) {
+          void setCamera(false);
+          toast(`${name} turned off your camera.`, { id: "wp-call-camera" });
+        }
+      } else if (event.action === "mute") {
         setMuted(true);
         toast(`${name} muted you in the call. Unmute when you're ready.`, {
           id: "wp-call",
@@ -507,7 +707,12 @@ export function useCall(opts: {
 
     /** Unmount / room change: leave (sent before the socket closes) */
     const teardown = () => {
-      if (inCall(call()) || session.micStream || session.audio) {
+      if (
+        inCall(call()) ||
+        session.micStream ||
+        session.audio ||
+        session.camStream
+      ) {
         leave();
       }
     };
@@ -522,6 +727,17 @@ export function useCall(opts: {
       currentDeviceId: () =>
         micTrack()?.getSettings?.().deviceId ?? readPref(CALL_PREFS.mic),
       listMics,
+      setCamera: (on: boolean) => setCamera(on),
+      toggleCamera,
+      setCameraDevice,
+      /** The deviceId of the camera in use, or the remembered one (for the picker) */
+      currentCameraId: () =>
+        cameraTrack()?.getSettings?.().deviceId ?? readPref(CALL_PREFS.camera),
+      listCameras,
+      checkCamera,
+      setTilesHidden,
+      /** Our preview and everyone's incoming video (useCallVideo) */
+      video: session.video,
       join: () => join(),
       leave,
       setMuted,
@@ -580,16 +796,19 @@ export function useCall(opts: {
     };
   }, [api, status.inCall, status.pushToTalk]);
 
-  // Headset unplugged etc. while in the call
+  // Headset or camera unplugged etc. while in the call (or while the camera preview runs)
   useEffect(() => {
     const devices = navigator.mediaDevices;
-    if (!status.inCall || !devices?.addEventListener) {
+    if ((!status.inCall && !status.camera) || !devices?.addEventListener) {
       return;
     }
-    const onChange = () => void api.checkMic();
+    const onChange = () => {
+      void api.checkMic();
+      void api.checkCamera();
+    };
     devices.addEventListener("devicechange", onChange);
     return () => devices.removeEventListener("devicechange", onChange);
-  }, [api, status.inCall]);
+  }, [api, status.inCall, status.camera]);
 
   // Leave when the room page goes away (a layout effect, so `leave` is sent before the socket disconnects)
   const apiRef = useRef(api);
@@ -599,10 +818,14 @@ export function useCall(opts: {
   return api;
 }
 
-/** The two call flags the key listeners depend on (useRoom re-renders on every store change) */
+/** The call flags the key/device listeners depend on (useRoom re-renders on every store change) */
 function useStoreCallStatus(store: RoomStore) {
   const { call } = store.get();
-  return { inCall: inCall(call), pushToTalk: call.pushToTalk };
+  return {
+    inCall: inCall(call),
+    pushToTalk: call.pushToTalk,
+    camera: call.camera,
+  };
 }
 
 export type CallApi = ReturnType<typeof useCall>;

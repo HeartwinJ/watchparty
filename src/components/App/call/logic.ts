@@ -24,6 +24,9 @@ export function isTransmitting(s: {
 /** Push-to-talk hold key. Not used by any room shortcut (shell/shortcuts.ts, logic/shortcuts.ts). */
 export const PTT_KEY = "t";
 
+/** Camera on/off while in the call (logic/shortcuts.ts resolves it, PlayerArea acts on it) */
+export const CAMERA_KEY = "v";
+
 export const isPttKey = (key: string) => key.toLowerCase() === PTT_KEY;
 
 export type MicErrorKind =
@@ -98,8 +101,13 @@ export function micConstraints(
 // Per-device preferences (localStorage, which can throw or be empty: private windows, blocked storage)
 export const CALL_PREFS = {
   mic: "wp-call-mic",
+  camera: "wp-call-camera",
   ducking: "wp-call-ducking",
   pushToTalk: "wp-call-ptt",
+  /** "1" hides the video tiles over the player */
+  tilesHidden: "wp-call-tiles-hidden",
+  /** The tile strip: JSON {fx, fy, collapsed} (call/tileLayout.ts) */
+  tiles: "wp-call-tiles",
 } as const;
 
 export function readPref(key: string): string | null {

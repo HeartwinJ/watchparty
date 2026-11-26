@@ -91,7 +91,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic                                      |
 | `subsync/`                                | Subtitle auto-sync: signal processing, worker, `useSubtitleSync`, the wand (`AutoSyncButton`)                       |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                                                  |
-| `call/`                                   | Voice call: `useCall`, `CallControl` (top bar), `CallPanel`, transport, pure logic (see below)                      |
+| `call/`                                   | Voice/video call: `useCall`, `CallControl` (top bar), `CallPanel`, `VideoTiles`, transport, pure logic (see below)  |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits                            |
 | `roomRoles.test.tsx`                      | Owner vs guest room page: settings, room password, remove person, invite links                                      |
 
@@ -183,7 +183,7 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
 - **Click** on the video = play/pause for everyone (others get "Alex paused": `REC:play`/`REC:pause` carry a
   `PlaybackActor`), **double-click** = fullscreen. Touch: tap = show/hide controls, double-tap left/right = ∓10 s with
   a ripple, centre = fullscreen. Speed and loop are room-wide (`CMD:playbackRate`, `CMD:loop`).
-- Keys (window listener, ignored while typing or in a modal): space/k, ←/→, ↑/↓, m (the mic while in a voice call), f, c (quick chat in fullscreen or
+- Keys (window listener, ignored while typing or in a modal): space/k, ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c (quick chat in fullscreen or
   with the sidebar collapsed, otherwise `chatRef.current.focusInput()`), `[`/`]`, `?` (also `wp:show-shortcuts`).
 - **Subtitles:** the selected TextTrack is kept in `hidden` mode and `SubtitleCues` draws the cues at the current time (`cuesAt`; browsers can leave re-timed cues in `activeCues`) (size S–XL in
   container units, background none/shadow/box, per device in `localStorage` `wp-subtitle-style`). The timing re-times
@@ -254,10 +254,9 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   are found to within 0.1 s, and subtitles drifted by 25/23.976 or 23.976/25 get that exact scale (offset within
   0.05 s); reversed cues and Sintel (26 lines over a loud score) are refused.
 
-## Voice call (`call/`)
+## Voice and video call (`call/`)
 
-Audio only for now (video comes next; `CallTransport.setLocalTrack("video", …)` and a `camera` `CMD:call` action are
-the seams, `V` is reserved for it).
+Voice, plus an optional camera (see **Camera** below).
 
 - **Membership** is the server's (`server/callState.ts`): `REC:callState` lands in `state.call.members` via
   `callReducer.ts` (pure, tested), which also holds this device's `status` (`idle` → `joining` → `joined`), `muted`,
@@ -287,19 +286,49 @@ the seams, `V` is reserved for it).
 - **Ducking** (`ducking.ts`, per device `wp-call-ducking`, off by default): while a remote member speaks the movie
   plays at ×0.6 (fade down 200 ms, hold 400 ms, fade up 1.2 s) through `Player.setDuck` (HTML.ts / YouTube.ts multiply
   the viewer's own volume; `getVolume` still returns it). iOS ignores `video.volume`, so no ducking there.
-- **Keys**: `M` toggles the mic while in a call (PlayerArea; otherwise it mutes the video). Push-to-talk (per device
+- **Keys**: `M` toggles the mic while in a call (PlayerArea; otherwise it mutes the video); `V` toggles the camera while
+  in a call (nothing otherwise). Push-to-talk (per device
   `wp-call-ptt`, off by default): hold `T`, or hold the mic button (touch); not while typing or in a dialog; window
   blur releases it. Mute state updates are throttled to one per 200 ms.
 - **Reconnects**: a socket reconnect re-sends `join` with the same session (peer connections keep running); the
   server keeps us for 12 s. A reload rejoins from the `sessionStorage` marker `wp-call:<roomId>` (per tab) with the
   previous mute state. `io server disconnect` (another tab took over, kicked) ends the call in this tab. Unmount /
   room change sends `leave` (layout effect, before the socket closes).
-- **UI**: `CallControl` in the top bar ("Voice" + call avatars with speaking rings; when joined a mic button and a
-  warning dot while reconnecting) opens `CallPanel` (popover; bottom drawer on phones): members (speaking ring, muted
+- **UI**: `CallControl` in the top bar ("Voice" + call avatars with speaking rings; when joined a mic button, a camera
+  button on desktop, and a warning dot while reconnecting) opens `CallPanel` (popover; bottom drawer on phones): members (speaking ring, muted
   icon, "Reconnecting…", owners' ⋯ Mute in call / Remove from call), mic picker + live level, "Headphones
   recommended", Join, and in the call: ducking and push-to-talk switches, Mute, Leave call. The People panel shows a
   headset / muted-mic icon per call member and the speaking ring; owners' person menu has "Mute in call" and "Remove
   from call". `REC:callModerated` toasts "Alex muted you…" (you mute yourself) or "…removed you from the voice call".
+- **Camera** (`video.ts`, `videoStreams.ts`): off by default. `room.call.setCamera(on)` / `toggleCamera()` (V, the
+  desktop top-bar camera button, the call panel) open `openCamera()` (720p ideal, the remembered `wp-call-camera` or the
+  front camera; a device that's gone falls back to the default). Before joining the panel's "Turn camera on" is a live
+  mirrored preview and you join with it on (`join` carries `camera`); closing the panel turns it off. Off **stops**
+  the track (camera light off) and `setLocalTrack("video", null)` (`replaceTrack(null)`, no renegotiation); the first
+  camera-on per peer `addTrack`s a video sender (one renegotiation through perfect negotiation), later toggles and
+  device switches (`setCameraDevice`) are `replaceTrack`. Errors (`cameraError`, `CAMERA_ERROR_TEXT`) show in the
+  panel and as a toast and never block joining with audio. `devicechange`/`ended` turn the camera off with a toast. A
+  socket reconnect keeps the camera; a reload rejoins with it off. An owner's "Turn off camera"
+  (`REC:callModerated {action: "camera"}`) turns it off with a toast.
+- **Video bandwidth** (`transport.ts` `applyParams`, `videoCapsFor`): each video sender is capped by how many peers we
+  send to (1 → 720p / 1.2 Mbps / 30 fps, 2 → 540p / 700 kbps, 3–4 → 360p / 400 kbps / 24 fps, more → 240p / 200 kbps /
+  15 fps) via `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy` and `degradationPreference: "maintain-framerate"`
+  (camera tracks get `contentHint = "motion"`). Video encodings get `priority`/`networkPriority: "low"`, audio
+  `"high"`, so a congested uplink drops video first. Re-applied (serialized per peer, only when it changes) when the
+  call size changes, the camera changes, a connection connects or negotiation settles.
+- **Tiles** (`VideoTiles.tsx`, `tileLayout.ts`, pure and tested): incoming video tracks go to `CallVideo` (mutable;
+  `useCallVideo` re-renders on changes, with `live` = frames arriving). `VideoTiles` is rendered inside PlayerArea
+  (the fullscreen target) and shows only while we're in the call and someone has `camera` on (`videoMembers`; our own
+  tile follows our local camera state). A column of 4:3 tiles (wrapping into more columns), draggable (5 px threshold
+  so a click still enlarges), collapsible into a pill, with a hover header (always visible on touch). Position is stored
+  per device (`wp-call-tiles`: fractions of the safe area, so it keeps its corner when resizing or going fullscreen);
+  the default is top-left so a fullscreen chat panel sliding in from the right stays clear: change
+  `DEFAULT_STRIP_POSITION`, or reserve an edge with `stripInsets({reserve})`. The safe area avoids the fullscreen title
+  bar and the control bar. Tiles: speaking ring, muted icon, name, "Reconnecting…", mirrored self view, avatar until
+  frames arrive; click to enlarge (`object-fit: contain`). Video elements are `muted playsInline autoPlay` (audio plays
+  through `CallAudio`, so autoplay never blocks them). "Hide video tiles" (strip header or the call panel's "Show
+  video tiles" switch) is per device (`wp-call-tiles-hidden`); hidden tiles still receive video. The People panel keeps
+  avatars.
 
 ## Ready check
 

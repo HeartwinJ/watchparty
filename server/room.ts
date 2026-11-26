@@ -1435,7 +1435,10 @@ export class Room {
     );
   };
 
-  /** CMD:call {action: join|leave|state}. The client decides join-muted (video playing) and keeps it on rejoin. */
+  /**
+   * CMD:call {action: join|leave|state}. The client decides join-muted (video playing) and the camera, and keeps both
+   * on a rejoin.
+   */
   private callCommand = (socket: Socket, raw: unknown) => {
     const cmd = parseCallCommand(raw);
     if (!cmd || !this.callCommandLimiter.allow(socket.id)) {
@@ -1459,7 +1462,7 @@ export class Room {
       if (this.call.leave(clientId, socket.id)) {
         this.emitCallState();
       }
-    } else if (this.call.setMuted(clientId, socket.id, cmd.muted)) {
+    } else if (this.call.setState(clientId, socket.id, cmd)) {
       this.emitCallState();
     }
   };
@@ -1491,7 +1494,10 @@ export class Room {
     this.io.of(this.roomId).to(toSocket).emit("REC:callSignal", event);
   };
 
-  /** CMD:callModerate {action: mute|remove, clientId} (owners only). Muting asks them to mute; nobody can unmute you. */
+  /**
+   * CMD:callModerate {action: mute|camera|remove, clientId} (owners only). Mute / camera ask their client to mute or to
+   * turn the camera off (nobody can unmute you or turn your camera on); remove drops them from the call.
+   */
   private moderateCall = (socket: Socket, raw: unknown) => {
     const cmd = parseCallModeration(raw);
     if (

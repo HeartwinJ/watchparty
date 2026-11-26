@@ -19,6 +19,8 @@ describe("resolveShortcut", () => {
     expect(k("ArrowUp")).toEqual({ type: "volumeBy", delta: 0.05 });
     expect(k("ArrowDown")).toEqual({ type: "volumeBy", delta: -0.05 });
     expect(k("m")).toEqual({ type: "toggleMute" });
+    expect(k("v")).toEqual({ type: "toggleCamera" });
+    expect(k("V")).toEqual({ type: "toggleCamera" });
     expect(k("f")).toEqual({ type: "toggleFullscreen" });
     expect(k("c")).toEqual({ type: "chat" });
     expect(k("[")).toEqual({ type: "subtitleOffsetBy", delta: -0.1 });

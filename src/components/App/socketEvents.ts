@@ -95,11 +95,14 @@ export type RoomPasswordCommand =
   | { action: "set"; password: string }
   | { action: "enable"; enabled: boolean };
 
-/** CMD:call (mirrors parseCallCommand in server/callState.ts). `camera` comes with video calls. */
+/** CMD:call (mirrors parseCallCommand in server/callState.ts) */
 export type CallCommand =
-  | { action: "join"; session: string; muted: boolean }
+  | { action: "join"; session: string; muted: boolean; camera: boolean }
   | { action: "leave" }
-  | { action: "state"; muted: boolean };
+  | { action: "state"; muted?: boolean; camera?: boolean };
+
+/** CMD:callModerate actions (owners only) */
+export type CallModerationAction = "mute" | "camera" | "remove";
 
 export interface ClientToServerEvents {
   "CMD:name": (name: string) => void;
@@ -157,15 +160,15 @@ export interface ClientToServerEvents {
     msg: SignalMessage;
     sharer?: boolean;
   }) => void;
-  /** Join/leave the voice call or change our mute state */
+  /** Join/leave the call or change our mute / camera state */
   "CMD:call": (cmd: CallCommand) => void;
   /** Relayed to `to` only while both are call members (size capped, rate limited) */
   "CMD:callSignal": (
     data: { to: string; toSession: string } & CallSignalPayload,
   ) => void;
-  /** Owners only: ask a call member to mute, or remove them from the call */
+  /** Owners only: ask a call member to mute or turn their camera off, or remove them from the call */
   "CMD:callModerate": (data: {
-    action: "mute" | "remove";
+    action: CallModerationAction;
     clientId: string;
   }) => void;
 }
@@ -233,7 +236,7 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     call: (cmd: CallCommand) => emit("CMD:call", cmd),
     callSignal: (to: string, toSession: string, payload: CallSignalPayload) =>
       emit("CMD:callSignal", { to, toSession, ...payload }),
-    moderateCall: (clientId: string, action: "mute" | "remove") =>
+    moderateCall: (clientId: string, action: CallModerationAction) =>
       emit("CMD:callModerate", { action, clientId }),
   };
 }

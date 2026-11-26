@@ -1,4 +1,4 @@
-// The voice call through the room hooks: a fake socket, a fake mic and a fake RTCPeerConnection.
+// The voice call through the room hooks: a fake socket, a fake mic and camera, and a fake RTCPeerConnection.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 
@@ -51,15 +51,26 @@ vi.mock("../../../utils/iceServers", () => ({
 
 // --- Fake media ---
 class FakeTrack {
-  kind = "audio";
+  kind: string;
   enabled = true;
   readyState = "live";
-  label = "Desk mic";
+  muted = false;
+  label: string;
+  contentHint = "";
   onended: (() => void) | null = null;
+  constructor(kind = "audio") {
+    this.kind = kind;
+    this.label = kind === "video" ? "Desk cam" : "Desk mic";
+  }
   stop = vi.fn(() => {
     this.readyState = "ended";
   });
-  getSettings = () => ({ deviceId: "mic-1" });
+  getSettings = () =>
+    this.kind === "video"
+      ? { deviceId: "cam-1", height: 720 }
+      : { deviceId: "mic-1" };
+  addEventListener() {}
+  removeEventListener() {}
 }
 class FakeStream {
   tracks: FakeTrack[];
@@ -67,14 +78,23 @@ class FakeStream {
     this.tracks = [...tracks];
   }
   getTracks = () => this.tracks;
-  getAudioTracks = () => this.tracks;
+  getAudioTracks = () => this.tracks.filter((t) => t.kind === "audio");
+  getVideoTracks = () => this.tracks.filter((t) => t.kind === "video");
   addTrack = (t: FakeTrack) => this.tracks.push(t);
   removeTrack = (t: FakeTrack) => {
     this.tracks = this.tracks.filter((x) => x !== t);
   };
 }
 const peers: FakePC[] = [];
+const fakeSender = (track: FakeTrack) => ({
+  track,
+  replaceTrack: vi.fn(async (_t: FakeTrack | null) => {}),
+  getParameters: () => ({ encodings: [{}] }),
+  setParameters: vi.fn(async (_p: any) => {}),
+});
 class FakePC {
+  senders: ReturnType<typeof fakeSender>[] = [];
+  onsignalingstatechange: unknown = null;
   closed = false;
   onnegotiationneeded: unknown = null;
   onicecandidate: unknown = null;
@@ -85,8 +105,10 @@ class FakePC {
   constructor() {
     peers.push(this);
   }
-  addTrack() {
-    return { replaceTrack: async () => {} };
+  addTrack(track: FakeTrack) {
+    const sender = fakeSender(track);
+    this.senders.push(sender);
+    return sender;
   }
   getConfiguration() {
     return {};
@@ -96,8 +118,8 @@ class FakePC {
   }
 }
 let tracks: FakeTrack[] = [];
-const getUserMedia = vi.fn(async (_c: unknown) => {
-  const t = new FakeTrack();
+const getUserMedia = vi.fn(async (c: unknown) => {
+  const t = new FakeTrack((c as { video?: unknown }).video ? "video" : "audio");
   tracks.push(t);
   return new FakeStream([t]);
 });
@@ -109,6 +131,7 @@ Object.defineProperty(navigator, "mediaDevices", {
     getUserMedia: (c: unknown) => getUserMedia(c),
     enumerateDevices: async () => [
       { kind: "audioinput", deviceId: "mic-1", label: "Desk mic" },
+      { kind: "videoinput", deviceId: "cam-1", label: "Desk cam" },
     ],
     addEventListener: () => {},
     removeEventListener: () => {},
@@ -145,6 +168,7 @@ const member = (clientId: string, session: string, muted = false) => ({
   clientId,
   session,
   muted,
+  camera: false,
   joinedAt: 1,
   reconnecting: false,
 });
@@ -261,7 +285,7 @@ describe("voice call", () => {
     act(() => socket.receive("REC:callState", { members: [] }));
     expect(result.current.state.call.status).toBe("joining");
     expect(socket.emits("CMD:call").at(-1)).toEqual([
-      { action: "join", session, muted: false },
+      { action: "join", session, muted: false, camera: false },
     ]);
     // Reload marker for this tab
     expect(window.sessionStorage.getItem("wp-call:call-room")).toBe(
@@ -303,5 +327,176 @@ describe("voice call", () => {
     expect(socket.emits("CMD:callModerate")).toEqual([
       [{ action: "remove", clientId: BOB }],
     ]);
+  });
+});
+
+describe("camera", () => {
+  const blocked = () =>
+    Object.assign(new Error("denied"), { name: "NotAllowedError" });
+
+  it("turns on and off in the call by replacing the track (no new sender), stopping the camera", async () => {
+    const { result, socket } = await setup();
+    await act(() => result.current.call.join());
+    const [[join]] = socket.emits("CMD:call") as [[any]];
+    // Off by default
+    expect(join.camera).toBe(false);
+    const me = result.current.clientId;
+    act(() =>
+      socket.receive("REC:callState", {
+        members: [member(BOB, "bobsession1"), member(me, join.session)],
+      }),
+    );
+    const pc = peers[0];
+    expect(pc.senders.map((s) => s.track.kind)).toEqual(["audio"]);
+
+    let on: boolean | undefined;
+    await act(async () => {
+      on = await result.current.call.toggleCamera();
+    });
+    expect(on).toBe(true);
+    expect(getUserMedia.mock.calls.at(-1)![0]).toMatchObject({
+      audio: false,
+      video: { height: { ideal: 720 } },
+    });
+    const cam = tracks.at(-1)!;
+    expect(cam.kind).toBe("video");
+    // The first camera-on adds a video sender (one renegotiation)
+    expect(pc.senders.map((s) => s.track.kind)).toEqual(["audio", "video"]);
+    expect(socket.emits("CMD:call").at(-1)).toEqual([
+      { action: "state", camera: true },
+    ]);
+    expect(result.current.state.call.camera).toBe(true);
+    expect(result.current.call.video.getSnapshot().local).not.toBeNull();
+
+    // Capped for one peer, low priority, keeps the frame rate; audio gets high priority
+    const video = pc.senders[1];
+    await waitFor(() => expect(video.setParameters).toHaveBeenCalled());
+    const params = video.setParameters.mock.calls.at(-1)![0];
+    expect(params.encodings[0]).toMatchObject({
+      maxBitrate: 1_200_000,
+      scaleResolutionDownBy: 1,
+      priority: "low",
+    });
+    expect(params.degradationPreference).toBe("maintain-framerate");
+    await waitFor(() =>
+      expect(pc.senders[0].setParameters).toHaveBeenCalledWith(
+        expect.objectContaining({
+          encodings: [expect.objectContaining({ priority: "high" })],
+        }),
+      ),
+    );
+
+    // Off: the camera stops (light off), the sender sends nothing, no new sender
+    await act(() => result.current.call.toggleCamera());
+    expect(cam.stop).toHaveBeenCalled();
+    expect(video.replaceTrack).toHaveBeenLastCalledWith(null);
+    expect(socket.emits("CMD:call").at(-1)).toEqual([
+      { action: "state", camera: false },
+    ]);
+    expect(result.current.call.video.getSnapshot().local).toBeNull();
+
+    // On again: same sender, new track
+    await act(() => result.current.call.toggleCamera());
+    expect(pc.senders).toHaveLength(2);
+    expect(video.replaceTrack).toHaveBeenLastCalledWith(tracks.at(-1));
+
+    // An owner asks us to turn it off
+    act(() =>
+      socket.receive("REC:callModerated", {
+        action: "camera",
+        by: { id: BOB, name: "Bob" },
+      }),
+    );
+    await waitFor(() => expect(result.current.state.call.camera).toBe(false));
+    expect(tracks.at(-1)!.stop).toHaveBeenCalled();
+
+    // Leaving with the camera on stops it too
+    await act(() => result.current.call.toggleCamera());
+    act(() => result.current.call.leave());
+    expect(tracks.at(-1)!.stop).toHaveBeenCalled();
+    expect(result.current.state.call.camera).toBe(false);
+  });
+
+  it("joins with the camera on after the preview, and sends video from the first offer", async () => {
+    const { result, socket } = await setup();
+    await act(async () => void (await result.current.call.setCamera(true)));
+    expect(result.current.state.call.camera).toBe(true);
+    // Not in the call yet: nothing sent
+    expect(socket.emits("CMD:call")).toEqual([]);
+    await act(() => result.current.call.join());
+    const [[join]] = socket.emits("CMD:call") as [[any]];
+    expect(join.camera).toBe(true);
+    const me = result.current.clientId;
+    act(() =>
+      socket.receive("REC:callState", {
+        members: [member(BOB, "bobsession1"), member(me, join.session)],
+      }),
+    );
+    expect(peers[0].senders.map((s) => s.track.kind).sort()).toEqual([
+      "audio",
+      "video",
+    ]);
+  });
+
+  it("joins with audio when the camera can't start, and says why", async () => {
+    const { result, socket } = await setup();
+    getUserMedia.mockImplementation(async (c: unknown) => {
+      if ((c as { video?: unknown }).video) {
+        throw blocked();
+      }
+      const t = new FakeTrack("audio");
+      tracks.push(t);
+      return new FakeStream([t]);
+    });
+    try {
+      let on: boolean | undefined;
+      await act(async () => {
+        on = await result.current.call.setCamera(true);
+      });
+      expect(on).toBe(false);
+      expect(result.current.state.call.cameraError).toBe("blocked");
+      expect(result.current.state.call.camera).toBe(false);
+      await act(() => result.current.call.join());
+      expect(socket.emits("CMD:call")[0][0]).toMatchObject({
+        action: "join",
+        camera: false,
+      });
+      expect(result.current.state.call.status).toBe("joining");
+      // V in the call: still can't, still in the call
+      await act(async () => void (await result.current.call.toggleCamera()));
+      expect(result.current.state.call.status).toBe("joining");
+      expect(
+        socket.emits("CMD:call").filter(([c]: any) => c.camera === true),
+      ).toEqual([]);
+    } finally {
+      getUserMedia.mockReset();
+      getUserMedia.mockImplementation(async (c: unknown) => {
+        const t = new FakeTrack(
+          (c as { video?: unknown }).video ? "video" : "audio",
+        );
+        tracks.push(t);
+        return new FakeStream([t]);
+      });
+    }
+  });
+
+  it("closing the pre-join panel turns the preview camera off", async () => {
+    const { result } = await setup();
+    await act(() => result.current.call.startPreview());
+    await act(async () => void (await result.current.call.setCamera(true)));
+    const cam = tracks.find((t) => t.kind === "video")!;
+    act(() => result.current.call.stopPreview());
+    expect(cam.stop).toHaveBeenCalled();
+    expect(result.current.state.call.camera).toBe(false);
+  });
+
+  it("remembers the chosen camera on this device", async () => {
+    const { result } = await setup();
+    await act(() => result.current.call.setCameraDevice("cam-2"));
+    expect(window.localStorage.getItem("wp-call-camera")).toBe("cam-2");
+    await act(async () => void (await result.current.call.setCamera(true)));
+    expect(getUserMedia.mock.calls.at(-1)![0]).toMatchObject({
+      video: { deviceId: { exact: "cam-2" } },
+    });
   });
 });

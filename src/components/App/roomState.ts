@@ -8,6 +8,7 @@ import { CALL_PREFS, readPref } from "./call/logic";
 const readCallPrefs = () => ({
   pushToTalk: readPref(CALL_PREFS.pushToTalk) === "1",
   ducking: readPref(CALL_PREFS.ducking) === "1",
+  tilesHidden: readPref(CALL_PREFS.tilesHidden) === "1",
 });
 
 /**

@@ -210,6 +210,8 @@ interface CallMember {
   /** The member's call instance (new per page load): a new session means a new peer connection */
   session: string;
   muted: boolean;
+  /** Their camera is on (they send video). Off by default on join. */
+  camera: boolean;
   /** Server time (ms) they joined; kept across a rejoin */
   joinedAt: number;
   /** Their socket dropped; they stay listed for a short grace period (see server/callState.ts) */
@@ -242,8 +244,11 @@ interface CallSignalEvent extends CallSignalPayload {
   toSession: string;
 }
 
-/** REC:callModerated: an owner asked you to mute (you mute yourself) or removed you from the call */
+/**
+ * REC:callModerated: an owner asked you to mute or to turn your camera off (your client does it), or removed you from
+ * the call
+ */
 interface CallModeratedEvent {
-  action: "mute" | "remove";
+  action: "mute" | "camera" | "remove";
   by: PlaybackActor;
 }

@@ -9,8 +9,19 @@ import {
   type PeerStatus,
 } from "./negotiation";
 import { tuneVoiceSdp, VOICE_MAX_BITRATE } from "./sdp";
+import { scaleDownBy, videoCapsFor } from "./video";
 
 export type CallMediaKind = "audio" | "video";
+
+/** Encoding fields newer than TypeScript's DOM types (ignored by browsers that don't support them) */
+type Encoding = RTCRtpEncodingParameters & {
+  priority?: RTCPriorityType;
+  networkPriority?: RTCPriorityType;
+};
+type SendParams = RTCRtpSendParameters & {
+  degradationPreference?:
+    "maintain-framerate" | "maintain-resolution" | "balanced";
+};
 
 export interface CallPeerInfo {
   clientId: string;
@@ -20,7 +31,7 @@ export interface CallPeerInfo {
 }
 
 export interface CallTransportEvents {
-  /** A remote track arrived (audio now; video in a later version) */
+  /** A remote track arrived (audio or video; one of each per peer, the same track object for the whole connection) */
   onTrack: (peerId: string, track: MediaStreamTrack) => void;
   /** A peer connection was closed (member left, or a new session replaced it) */
   onPeerClosed: (peerId: string) => void;
@@ -28,7 +39,10 @@ export interface CallTransportEvents {
 }
 
 export interface CallTransport {
-  /** Sends `track` (or nothing, with null) to everyone. Switching devices replaces the track, no renegotiation. */
+  /**
+   * Sends `track` (or nothing, with null) to everyone. The first track of a kind adds a sender (one renegotiation per
+   * peer); after that, switching devices or turning the camera off and on replaces the track, no renegotiation.
+   */
   setLocalTrack: (kind: CallMediaKind, track: MediaStreamTrack | null) => void;
   /** The other call members; connects to new ones, drops departed ones */
   setPeers: (peers: CallPeerInfo[]) => void;
@@ -59,7 +73,10 @@ interface MeshPeer {
   recovery: PeerRecovery;
   senders: Map<CallMediaKind, RTCRtpSender>;
   status: PeerStatus;
-  bitrateSet: boolean;
+  /** What setParameters last applied per sender (so it runs only when something changed) */
+  paramsKey: Map<CallMediaKind, string>;
+  /** setParameters calls on a sender must not overlap */
+  paramsQueue: Promise<void>;
 }
 
 /** P2P full mesh with perfect negotiation and ICE-restart recovery. */
@@ -98,21 +115,52 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
     }
   };
 
-  const limitBitrate = async (peer: MeshPeer) => {
-    const sender = peer.senders.get("audio");
-    if (!sender || peer.bitrateSet) {
-      return;
-    }
-    peer.bitrateSet = true;
-    try {
-      const params = sender.getParameters();
-      if (params.encodings?.length) {
-        params.encodings[0].maxBitrate = VOICE_MAX_BITRATE + 8_000;
-        await sender.setParameters(params);
+  /**
+   * Sender encodings: audio capped to voice size with high network priority; video capped by how many peers we send
+   * to (videoCapsFor), low priority and "maintain-framerate", so a congested uplink drops video resolution first and
+   * never the voice. Re-applied when the call size, the camera or the connection changes.
+   */
+  const applyParams = (peer: MeshPeer) => {
+    peer.paramsQueue = peer.paramsQueue.then(async () => {
+      for (const [kind, sender] of peer.senders) {
+        if (peers.get(peer.id) !== peer) {
+          return;
+        }
+        const height = localTracks.get("video")?.getSettings?.().height;
+        const caps = videoCapsFor(peers.size);
+        const key =
+          kind === "audio"
+            ? "audio"
+            : `${caps.maxBitrate}:${caps.maxHeight}:${height ?? ""}`;
+        if (peer.paramsKey.get(kind) === key) {
+          continue;
+        }
+        try {
+          const params = sender.getParameters() as SendParams;
+          const enc = params.encodings?.[0] as Encoding | undefined;
+          if (!enc) {
+            // Not negotiated yet: tried again once it is
+            continue;
+          }
+          if (kind === "audio") {
+            enc.maxBitrate = VOICE_MAX_BITRATE + 8_000;
+            enc.priority = "high";
+            enc.networkPriority = "high";
+          } else {
+            enc.maxBitrate = caps.maxBitrate;
+            enc.maxFramerate = caps.maxFramerate;
+            enc.scaleResolutionDownBy = scaleDownBy(height, caps.maxHeight);
+            enc.priority = "low";
+            enc.networkPriority = "low";
+            params.degradationPreference = "maintain-framerate";
+          }
+          await sender.setParameters(params);
+          peer.paramsKey.set(kind, key);
+        } catch (e) {
+          console.warn("[call] setParameters failed", e);
+        }
       }
-    } catch (e) {
-      console.warn("[call] setParameters failed", e);
-    }
+    });
   };
 
   const createPeer = (info: CallPeerInfo): MeshPeer => {
@@ -133,7 +181,8 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       recovery: new PeerRecovery(now),
       senders: new Map(),
       status: "connecting",
-      bitrateSet: false,
+      paramsKey: new Map(),
+      paramsQueue: Promise.resolve(),
     };
     pc.onnegotiationneeded = async () => {
       try {
@@ -167,10 +216,16 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       }
     };
     pc.ontrack = ({ track }) => events.onTrack(peer.id, track);
+    pc.onsignalingstatechange = () => {
+      if (pc.signalingState === "stable") {
+        // A sender added by this negotiation has its encodings now
+        applyParams(peer);
+      }
+    };
     pc.onconnectionstatechange = () => {
       peer.recovery.update(pc.connectionState, Date.now());
       if (pc.connectionState === "connected") {
-        limitBitrate(peer);
+        applyParams(peer);
       }
       setStatus(peer);
     };
@@ -188,6 +243,7 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
     peer.pc.onicecandidate = null;
     peer.pc.ontrack = null;
     peer.pc.onconnectionstatechange = null;
+    peer.pc.onsignalingstatechange = null;
     peer.pc.close();
     events.onPeerClosed(peer.id);
   };
@@ -295,6 +351,10 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       }
       for (const peer of peers.values()) {
         addTrack(peer, kind);
+        if (kind === "video") {
+          // A new camera may capture at another size
+          applyParams(peer);
+        }
       }
     },
     setPeers(list) {
@@ -304,6 +364,7 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       const wanted = new Map(
         list.filter((p) => p.clientId !== selfId).map((p) => [p.clientId, p]),
       );
+      const before = peers.size;
       for (const peer of [...peers.values()]) {
         const info = wanted.get(peer.id);
         if (!info || info.session !== peer.session) {
@@ -313,6 +374,12 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       for (const info of wanted.values()) {
         if (!peers.has(info.clientId) && !info.reconnecting) {
           createPeer(info);
+        }
+      }
+      if (peers.size !== before) {
+        // The call size changed: every sender's video caps follow
+        for (const peer of peers.values()) {
+          applyParams(peer);
         }
       }
     },

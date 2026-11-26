@@ -5,6 +5,7 @@ export type ShortcutAction =
   | { type: "seekBy"; seconds: number }
   | { type: "volumeBy"; delta: number }
   | { type: "toggleMute" }
+  | { type: "toggleCamera" }
   | { type: "toggleFullscreen" }
   | { type: "chat" }
   | { type: "subtitleOffsetBy"; delta: number }
@@ -89,6 +90,10 @@ export function resolveShortcut(e: KeyLike): ShortcutAction | null {
     case "m":
     case "M":
       return { type: "toggleMute" };
+    case "v":
+    case "V":
+      // Only does something in a voice call (PlayerArea)
+      return { type: "toggleCamera" };
     case "f":
     case "F":
       return { type: "toggleFullscreen" };
@@ -133,6 +138,7 @@ export const SHORTCUT_GROUPS: { title: string; rows: [string, string[]][] }[] =
       title: "Voice call",
       rows: [
         ["Mute / unmute your mic (instead of the video)", ["m"]],
+        ["Camera on / off", ["v"]],
         ["Push to talk (when on in the call panel)", ["hold t"]],
       ],
     },

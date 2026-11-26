@@ -12,11 +12,13 @@ import {
   IconHeadset,
   IconMicrophone,
   IconMicrophoneOff,
+  IconVideo,
+  IconVideoOff,
 } from "@tabler/icons-react";
 import { AvatarStack } from "../../Avatar/Avatar";
 import type { Room } from "../hooks/useRoom";
 import { inCall, memberConnection } from "./callReducer";
-import { PTT_KEY } from "./logic";
+import { CAMERA_KEY, PTT_KEY } from "./logic";
 import { CallPanel } from "./CallPanel";
 import styles from "./Call.module.css";
 
@@ -101,6 +103,7 @@ export const CallControl = ({
 
   return (
     <span className={styles.control}>
+      {joined && !isPhone && <CameraButton room={room} />}
       {joined && <MicButton room={room} />}
       {isPhone ? (
         <>
@@ -134,6 +137,34 @@ export const CallControl = ({
         </Popover>
       )}
     </span>
+  );
+};
+
+/** Camera on/off (V). Desktop only: phones have it in the call panel, to keep the top bar short. */
+const CameraButton = ({ room }: { room: Room }) => {
+  const c = room.state.call;
+  const on = c.camera;
+  return (
+    <Tooltip
+      label={`${on ? "Turn camera off" : "Turn camera on"} (${CAMERA_KEY.toUpperCase()})`}
+    >
+      <ActionIcon
+        variant={on ? "light" : "default"}
+        color={on ? "copper" : undefined}
+        size={36}
+        loading={c.cameraBusy}
+        aria-label={on ? "Turn camera off" : "Turn camera on"}
+        aria-pressed={on}
+        aria-keyshortcuts={CAMERA_KEY}
+        onClick={() => void room.call.toggleCamera()}
+      >
+        {on ? (
+          <IconVideo size={18} className={styles.camOn} />
+        ) : (
+          <IconVideoOff size={18} />
+        )}
+      </ActionIcon>
+    </Tooltip>
   );
 };
 

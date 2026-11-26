@@ -2,6 +2,7 @@
 // status, peers and who's speaking. Pure; useCall dispatches into it.
 import type { MicErrorKind } from "./logic";
 import type { PeerStatus } from "./negotiation";
+import type { CameraErrorKind } from "./video";
 
 export type CallStatus = "idle" | "joining" | "joined";
 
@@ -14,11 +15,19 @@ export interface CallUiState {
   members: CallMember[];
   /** This device's mute toggle (push-to-talk ignores it) */
   muted: boolean;
+  /** This device's camera is on (before joining: the preview, and we join with it on) */
+  camera: boolean;
+  /** Opening the camera */
+  cameraBusy: boolean;
+  /** Why the camera couldn't start (shown in the call panel; never blocks joining with audio) */
+  cameraError: CameraErrorKind | null;
   /** Push-to-talk key/button held */
   pttHeld: boolean;
   /** Per-device preferences (localStorage) */
   pushToTalk: boolean;
   ducking: boolean;
+  /** Don't show the video tiles over the player on this device */
+  tilesHidden: boolean;
   /** Connection to each other member, by clientId */
   peers: Record<string, PeerStatus>;
   /** clientIds speaking right now (us included), sorted */
@@ -34,14 +43,19 @@ export interface CallUiState {
 export const initialCallState = (prefs: {
   pushToTalk: boolean;
   ducking: boolean;
+  tilesHidden?: boolean;
 }): CallUiState => ({
   status: "idle",
   session: null,
   members: [],
   muted: false,
+  camera: false,
+  cameraBusy: false,
+  cameraError: null,
   pttHeld: false,
   pushToTalk: prefs.pushToTalk,
   ducking: prefs.ducking,
+  tilesHidden: prefs.tilesHidden ?? false,
   peers: {},
   speaking: [],
   busy: false,
@@ -62,7 +76,15 @@ export type CallAction =
       patch: Partial<
         Pick<
           CallUiState,
-          "busy" | "micError" | "audioBlocked" | "pushToTalk" | "ducking"
+          | "busy"
+          | "micError"
+          | "audioBlocked"
+          | "pushToTalk"
+          | "ducking"
+          | "camera"
+          | "cameraBusy"
+          | "cameraError"
+          | "tilesHidden"
         >
       >;
     };
@@ -119,6 +141,8 @@ export function callReducer(s: CallUiState, a: CallAction): CallUiState {
         status: "idle",
         session: null,
         pttHeld: false,
+        camera: false,
+        cameraBusy: false,
         peers: {},
         speaking: [],
         busy: false,
@@ -155,6 +179,17 @@ export const inCall = (s: CallUiState) => s.status !== "idle";
 /** Members other than us that we should hold a peer connection with */
 export const remoteMembers = (s: CallUiState, selfId: string) =>
   s.members.filter((m) => m.clientId !== selfId);
+
+/**
+ * Who gets a video tile: members with their camera on, in join order. We count from this device's own camera state
+ * (the server's echo lags a toggle), and only while we're in the call (no peer connections otherwise).
+ */
+export function videoMembers(s: CallUiState, selfId: string): CallMember[] {
+  if (!inCall(s)) {
+    return [];
+  }
+  return s.members.filter((m) => (m.clientId === selfId ? s.camera : m.camera));
+}
 
 /** Shown on a member: "reconnecting" when either their socket or our connection to them is recovering */
 export function memberConnection(
