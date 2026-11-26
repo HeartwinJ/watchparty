@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Loader } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import {
@@ -19,6 +19,14 @@ import { formatOffset } from "../logic/subtitles";
 import { ControlBar, type MenuName } from "./ControlBar";
 import { NextEpisodeCard } from "../nextEpisode/NextEpisodeCard";
 import { ChatOverlay } from "./ChatOverlay";
+import { ChatPanel } from "./ChatPanel";
+import {
+  chatKeyTarget,
+  chatPanelAllowed,
+  chatPanelReserve,
+  chatPanelWidth,
+} from "./chatPanel";
+import { useChatPanel } from "./useChatPanel";
 import { QuickChat } from "./QuickChat";
 import { ReadyCheckPill } from "./ReadyCheckPill";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
@@ -53,6 +61,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   const getVideoEl = useCallback(() => player.html().getVideoEl(), [player]);
   const [shortcuts, setShortcuts] = useState(false);
   const [hovering, setHovering] = useState(false);
+  const [hoveringPanel, setHoveringPanel] = useState(false);
   const [flash, setFlash] = useState<{ play: boolean; key: number } | null>(
     null,
   );
@@ -87,6 +96,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     () => idleTimer.setHold("hover-controls", hovering),
     [idleTimer, hovering],
   );
+  const playerWidth = useElementWidth(container);
 
   // Register the container as the fullscreen target and track fullscreen changes
   useEffect(() => {
@@ -133,14 +143,60 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   }, [store, player, idleTimer]);
 
   const quickChatAllowed = fullscreen || ui.sidebarCollapsed;
-  const openChat = useCallback(() => {
-    if (quickChatAllowed) {
-      setQuickChat(true);
-    } else {
-      // Sidebar is open: use its chat input
-      room.chatRef.current?.focusInput();
+  // The chat panel over the video (fullscreen / sidebar collapsed); starts collapsed every time (chatPanel.ts)
+  const panelAllowed = chatPanelAllowed({
+    fullscreen,
+    sidebarCollapsed: ui.sidebarCollapsed,
+    phoneLayout: phone,
+    playerWidth,
+  });
+  const chatPanel = useChatPanel({
+    allowed: panelAllowed,
+    fullscreen,
+    chat: state.chat,
+    chatInitCount: state.chatInitCount,
+    currentTab: state.currentTab,
+    clientId: room.clientId,
+    store,
+  });
+  const panelOpen = chatPanel.open;
+  const panelChatRef = chatPanel.chatRef;
+  const togglePanel = chatPanel.toggle;
+  const closePanel = chatPanel.close;
+  useEffect(
+    () => idleTimer.setHold("chat-panel", panelOpen && hoveringPanel),
+    [idleTimer, panelOpen, hoveringPanel],
+  );
+  useEffect(() => {
+    if (!panelOpen) {
+      setHoveringPanel(false);
+      return;
     }
-  }, [quickChatAllowed, room.chatRef]);
+    setQuickChat(false);
+    panelChatRef.current?.scrollToBottom();
+    // Opening focuses the input, except on touch screens, where that would pop the keyboard over the video
+    const coarse =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches;
+    if (!coarse) {
+      panelChatRef.current?.focusInput();
+    }
+  }, [panelOpen, panelChatRef]);
+
+  const openChat = useCallback(() => {
+    switch (chatKeyTarget({ quickChatAllowed, panelOpen })) {
+      case "panel":
+        panelChatRef.current?.focusInput();
+        break;
+      case "quick":
+        setQuickChat(true);
+        break;
+      case "sidebar":
+        // Sidebar is open: use its chat input
+        room.chatRef.current?.focusInput();
+        break;
+    }
+  }, [quickChatAllowed, panelOpen, panelChatRef, room.chatRef]);
 
   // Keyboard shortcuts (ignored while typing or in a modal; see logic/shortcuts.ts)
   useEffect(() => {
@@ -158,6 +214,9 @@ export const PlayerArea = ({ room }: { room: Room }) => {
             setShortcuts(false);
           } else if (quickChat) {
             setQuickChat(false);
+          } else if (panelOpen && menu === null) {
+            // Outside fullscreen only: in fullscreen the browser takes Esc to exit it (which closes the panel too)
+            closePanel();
           }
           return;
         case "showShortcuts":
@@ -167,6 +226,14 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         case "chat":
           e.preventDefault();
           openChat();
+          return;
+        case "chatPanel":
+          e.preventDefault();
+          if (panelAllowed) {
+            togglePanel();
+          } else {
+            openChat();
+          }
           return;
         case "toggleMute":
           // In a voice call, M is the mic (the movie keeps its volume control); otherwise it mutes the video
@@ -255,6 +322,11 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     shortcuts,
     quickChat,
     room.call,
+    panelOpen,
+    panelAllowed,
+    togglePanel,
+    closePanel,
+    menu,
   ]);
 
   // Close the quick chat if it no longer applies (left fullscreen with the sidebar open)
@@ -300,6 +372,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   }
   useEffect(() => () => tapRef.current?.cancel(), []);
   const menuOpenAtDown = useRef(false);
+  const panelOpenAtDown = useRef(false);
 
   useEffect(() => {
     if (!ripple) {
@@ -310,7 +383,12 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   }, [ripple]);
 
   const showChatOverlay =
-    ui.chatOverlayEnabled && (fullscreen || ui.sidebarCollapsed) && hasMedia;
+    ui.chatOverlayEnabled &&
+    (fullscreen || ui.sidebarCollapsed) &&
+    hasMedia &&
+    !panelOpen;
+  // The open panel's share of the right edge: tiles, the next-episode card and the centred pills keep clear of it
+  const panelReserve = chatPanelReserve(panelOpen, playerWidth);
   const native = player.usingNative();
 
   return (
@@ -319,6 +397,10 @@ export const PlayerArea = ({ room }: { room: Room }) => {
       className={styles.player}
       data-idle={idle && hasMedia}
       data-fullscreen={fullscreen}
+      data-chat-panel={panelOpen ? "open" : undefined}
+      style={
+        { "--wp-chat-reserve": `${panelReserve}px` } as React.CSSProperties
+      }
       onPointerMove={(e) => {
         if (e.pointerType === "mouse") {
           idleTimer.poke();
@@ -368,10 +450,17 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         aria-hidden="true"
         onPointerDown={() => {
           menuOpenAtDown.current = menu !== null || shortcuts;
+          panelOpenAtDown.current = panelOpen;
         }}
         onPointerUp={(e) => {
           if (e.button !== 0 || menuOpenAtDown.current) {
             // The first click outside an open menu only closes it
+            return;
+          }
+          if (panelOpenAtDown.current) {
+            // Clicking / tapping the video with the chat panel open closes it (and doesn't pause)
+            tapRef.current?.cancel();
+            closePanel();
             return;
           }
           const rect = e.currentTarget.getBoundingClientRect();
@@ -504,6 +593,18 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         />
       )}
 
+      {chatPanel.mounted && (
+        <ChatPanel
+          room={room}
+          open={panelOpen}
+          width={chatPanelWidth(playerWidth)}
+          container={container}
+          chatRef={panelChatRef}
+          onClose={closePanel}
+          onHoverChange={setHoveringPanel}
+        />
+      )}
+
       <NextEpisodeCard room={room} />
 
       <VideoTiles
@@ -512,6 +613,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         fullscreen={fullscreen}
         phone={phone}
         controls={hasMedia}
+        reserveRight={panelReserve}
       />
 
       {hasMedia && (
@@ -529,6 +631,15 @@ export const PlayerArea = ({ room }: { room: Room }) => {
           setSubtitleStyle={setSubtitleStyle}
           onTogglePlay={togglePlay}
           onHoverChange={setHovering}
+          chatPanel={
+            panelAllowed
+              ? {
+                  open: panelOpen,
+                  unread: chatPanel.unread,
+                  onToggle: togglePanel,
+                }
+              : undefined
+          }
         />
       )}
 
@@ -536,3 +647,24 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     </div>
   );
 };
+
+/** The element's width in px (0 until measured), kept current with a ResizeObserver */
+function useElementWidth(el: HTMLElement | null): number {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!el) {
+      setWidth(0);
+      return;
+    }
+    const measure = () => setWidth(el.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return width;
+}

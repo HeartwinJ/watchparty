@@ -1,9 +1,13 @@
 /* Next-episode card: bottom-right over the player, above the control bar (also in fullscreen) */
 .card {
   position: absolute;
-  right: var(--wp-sp-5);
+  /* Left of the open chat panel (--wp-chat-reserve is 0 while it's closed) */
+  right: calc(var(--wp-sp-5) + var(--wp-chat-reserve, 0px));
   bottom: 96px;
-  width: min(380px, calc(100% - 2 * var(--wp-sp-5)));
+  width: min(
+    380px,
+    calc(100% - 2 * var(--wp-sp-5) - var(--wp-chat-reserve, 0px))
+  );
   display: flex;
   gap: var(--wp-sp-3);
   padding: var(--wp-sp-3);
@@ -20,7 +24,9 @@
   user-select: none;
   -webkit-user-select: none;
   animation: wpNextIn var(--wp-dur-slow) var(--wp-ease);
-  transition: bottom var(--wp-dur-slow) var(--wp-ease);
+  transition:
+    bottom var(--wp-dur-slow) var(--wp-ease),
+    right var(--wp-dur-slow) var(--wp-ease);
 }
 
 /* The controls hide while idle, so the card drops down (same as the chat overlay) */

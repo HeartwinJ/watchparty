@@ -29,7 +29,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 
 - Fullscreen with auto-hiding controls and cursor, keyboard shortcuts (`?` lists them) and phone gestures.
 - Subtitles: upload, load from a URL, **search by title** (movies, shows and anime, no API key needed; it guesses the title and episode from what's playing), or get them automatically for movies and shows. Whatever you pick loads for everyone. Adjust the **subtitle offset** for everyone or just yourself; it's remembered per title and episode. **Auto-sync** (the wand in the subtitles menu) listens to a few minutes of the video's audio in your browser and lines the subtitles up with the speech, also correcting frame-rate drift (subtitles made for a 25 fps release on a 23.976 fps video and similar); owners can turn it on for every subtitle loaded in a room (one viewer's device does the work). Size and style are adjustable.
-- Chat with reactions and emoji. Messages show as bubbles over the video in fullscreen or with the sidebar hidden. Videos that start on their own (queue, next episode) get a "Now playing" line.
+- Chat with reactions and emoji. Messages show as bubbles over the video in fullscreen or with the sidebar hidden, where `c` opens a one-line quick reply. The full chat (history, replies, reactions, emoji) can slide in over the right side of the video there too: the chat button in the player controls (with an unread count) or `Shift + C`; the video keeps playing at full size, and it starts collapsed every time. Videos that start on their own (queue, next episode) get a "Now playing" line.
 
 **Rooms and hosting**
 

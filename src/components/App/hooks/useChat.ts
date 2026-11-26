@@ -39,7 +39,11 @@ export function useChat(opts: {
     };
 
     const onInit = (chat: ChatMessage[]) => {
-      store.set({ chat, scrollTimestamp: Date.now() });
+      store.set({
+        chat,
+        scrollTimestamp: Date.now(),
+        chatInitCount: store.get().chatInitCount + 1,
+      });
     };
 
     const onAddReaction = (reaction: Reaction) => {

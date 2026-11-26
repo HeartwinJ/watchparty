@@ -47,6 +47,8 @@ export interface RoomState {
   /** Changes when the chat should scroll to the bottom (if the user is near it) */
   scrollTimestamp: number;
   unreadCount: number;
+  /** Bumped by every REC:chatinit (history load), so views counting new messages can tell history from arrivals */
+  chatInitCount: number;
   /** The visible sidebar tab ("chat" | "queue" | "people"), or "none" when the sidebar/sheet is hidden */
   currentTab: string;
   myName: string;
@@ -162,6 +164,7 @@ export function createInitialRoomState(): RoomState {
     chat: [],
     scrollTimestamp: 0,
     unreadCount: 0,
+    chatInitCount: 0,
     currentTab:
       new URLSearchParams(window.location.search).get("tab") ?? "chat",
     myName: window.localStorage.getItem("watchparty-username") ?? "",
