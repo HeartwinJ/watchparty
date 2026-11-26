@@ -16,7 +16,7 @@ const MAX_LENGTH = 10000;
 
 /**
  * Compact chat input over the video (`c` in fullscreen or with the sidebar collapsed). Enter sends, Esc closes (outside
- * fullscreen; in fullscreen the browser takes Esc), and it closes by itself after 5 s empty (a small ring counts down).
+ * fullscreen; in fullscreen the browser takes Esc), so does Backspace while it's already empty, and it closes by itself after 5 s empty (a small ring counts down).
  * The emoji button opens the Chat's emoji picker above the bar, portaled into `container` (the player, the fullscreen
  * element) so it shows in fullscreen; picks go in at the caret, and the countdown is paused while it's open.
  */
@@ -158,6 +158,15 @@ export function QuickChat(props: {
             } else {
               props.onClose();
             }
+          } else if (
+            e.key === "Backspace" &&
+            !e.repeat &&
+            !pickerOpen &&
+            e.currentTarget.value === ""
+          ) {
+            // Backspace on an already empty input dismisses it (not a held key clearing text, not with the picker open)
+            e.preventDefault();
+            props.onClose();
           }
         }}
         onBlur={(e) => {

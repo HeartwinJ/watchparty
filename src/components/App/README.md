@@ -217,7 +217,9 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   (the open chat panel's input, else quick chat in fullscreen or with the sidebar collapsed, else
   `chatRef.current.focusInput()`; `chatKeyTarget`), Shift+C (the chat panel), `[`/`]`, `?` (also `wp:show-shortcuts`).
 - **Quick chat** (`QuickChat.tsx`, `c`): a one-line input over the video. Enter sends and closes it, and it closes on blur when empty; Esc closes it
-  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). It also closes by itself after
+  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). Backspace in the already empty input
+  closes it too (not the Backspace that deletes the last character, not a held-down repeat, not with the emoji picker
+  open). It also closes by itself after
   **5 s empty** (`quickChatIdle.ts`, pure): the countdown starts when it opens and again whenever the input becomes
   empty, and any text (not just spaces) cancels it. A small ring next to the input empties over those 5 s (`aria-hidden`; a still ring
   with reduced motion) and is hidden while there's text. The bar shows only an Enter hint. The emoji button ("Insert

@@ -153,6 +153,44 @@ describe("QuickChat", () => {
     expect(form.textContent).not.toContain("Esc");
   });
 
+  describe("Backspace", () => {
+    const backspace = (target: Element, repeat = false) =>
+      act(() => {
+        fireEvent.keyDown(target, { key: "Backspace", repeat });
+      });
+
+    it("closes it when the input is already empty", () => {
+      const { onClose, input } = setup();
+      backspace(input);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("deleting the last character doesn't close it; the next Backspace does", () => {
+      const { onClose, input, type } = setup();
+      type("a");
+      // The keydown comes before the character is removed
+      backspace(input);
+      type("");
+      expect(onClose).not.toHaveBeenCalled();
+      backspace(input);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("a held-down (repeating) Backspace doesn't close it", () => {
+      const { onClose, input } = setup();
+      backspace(input, true);
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("doesn't close it while the emoji picker is open", () => {
+      const { onClose, input, clickEmojiButton } = setup();
+      clickEmojiButton();
+      backspace(input);
+      backspace(screen.getByLabelText("Search emoji"));
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
   describe("emoji picker", () => {
     it("opens from the emoji button", () => {
       const { emojiButton, picker, clickEmojiButton } = setup();
