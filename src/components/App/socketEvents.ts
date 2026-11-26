@@ -200,6 +200,8 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
   return {
     setName: (name: string) => emit("CMD:name", name),
     setMedia: (url: string) => emit("CMD:host", url),
+    /** Clears the room's video for everyone (an empty host change; the queue is left alone) */
+    stopVideo: () => emit("CMD:host", ""),
     play: () => emit("CMD:play"),
     pause: () => emit("CMD:pause"),
     seek: (time: number) => emit("CMD:seek", time),

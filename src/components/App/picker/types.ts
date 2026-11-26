@@ -13,6 +13,10 @@ export interface PickerActions {
   shareScreen: () => void;
   shareFile: () => void;
   stopSharing: () => void;
+  /** Clears the room's video for everyone (shares end with stopSharing instead) */
+  stopVideo: () => void;
+  /** Something other than a screen/file share is playing, so it can be stopped */
+  canStopVideo: boolean;
   /** Whether anyone in the room is sharing */
   sharing: "none" | "me" | "other";
   /** The room's current AIOStreams video, to mark "playing now" and prefer the same release */

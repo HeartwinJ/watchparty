@@ -16,6 +16,7 @@ import {
   IconLink,
   IconLogout,
   IconPencil,
+  IconPlayerStop,
   IconSearch,
   IconSettings,
   IconTrash,
@@ -36,6 +37,7 @@ import styles from "./Shell.module.css";
 import { SyncIndicator } from "../PlayerArea";
 import { ConvertStatus } from "../picker/ConvertStatus";
 import { CallControl } from "../call/CallControl";
+import { isWebRTCShare } from "../logic/media";
 
 /**
  * The room's top bar: home link, room name, the source-picker trigger, sync status, avatars, invite,
@@ -58,6 +60,8 @@ export const RoomTopBar = ({
     state.roomMedia,
     room.getMediaDisplayName(state.roomMedia),
   );
+  // Shares end with "Stop sharing" (by the sharer), so only other videos can be stopped from here
+  const canStopVideo = !!state.roomMedia && !isWebRTCShare(state.roomMedia);
   const roomName = roomDisplayName(roomId, state.roomSettings.title);
   const people = state.participants.map((p) => ({
     id: p.id,
@@ -172,6 +176,14 @@ export const RoomTopBar = ({
             >
               Change video
             </Menu.Item>
+            {canStopVideo && (
+              <Menu.Item
+                leftSection={<IconPlayerStop size={16} />}
+                onClick={() => room.cmd.stopVideo()}
+              >
+                Stop video
+              </Menu.Item>
+            )}
             <Menu.Item
               leftSection={<IconSettings size={16} />}
               onClick={ui.openSettings}

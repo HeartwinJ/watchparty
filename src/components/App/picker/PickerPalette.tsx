@@ -314,6 +314,7 @@ function PaletteInner({
       <EmptyView
         idPrefix={idPrefix}
         actions={actions}
+        queueMode={queueMode}
         onOpenContext={openContext}
         close={onClose}
       />

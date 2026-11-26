@@ -34,6 +34,9 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   room-wide settings, room password or "Remove from room" (the server refuses those commands too), no Home link,
   "Leave room" or "Log out". `kicked` and `REC:accessRevoked` call `useAuth().roomAccessLost(roomId, reason)` for
   guests (owners who are kicked go to `/`).
+- **Stop video** (anyone): ⋯ menu → "Stop video" or the picker's "Stop video" row → `room.cmd.stopVideo()`, an empty
+  `CMD:host` (the same server path as ending a share). Everyone's player clears, the chat says "stopped the video" and
+  the queue is untouched. Hidden for screen/file shares, which only the sharer ends ("Stop sharing").
 - **Deleting the room** (owners): ⋯ menu → "Delete room" → `DeleteRoomModal` (`components/DeleteRoomModal/`) →
   `room.cmd.deleteRoom()`. `REC:roomDeleted {by}` removes the room from this device's recent rooms; the owner who
   deleted it goes Home, everyone else gets `state.roomDeleted` and `App` renders `StatusPage/RoomDeleted` instead of
@@ -144,7 +147,8 @@ videoMeta})` ("Pick another"), `pickerTarget`, `pickerMode`.
 - `PickerPalette.tsx` is the testable view (props: `actions: PickerActions`, `target`, `mode`). `SourcePicker.tsx`
   maps the actions onto the room (`usePickerActions`): links use `cmd.setMedia` / `playlist.add` like the old toolbar,
   share actions open the existing `ScreenShareModal` / `FileShareModal` via `store.set`.
-- Levels (a frame stack): root (empty state: share actions + recent sources; pasted link: type badge + Play now /
+- Levels (a frame stack): root (empty state: "Stop video" while a non-share video plays (not in queue mode), share
+  actions + recent sources; pasted link: type badge + Play now /
   Add to queue; text: chips All / Movies & Shows / YouTube, poster grid + YouTube list) → title (movie: header +
   streams; series/anime: season selector + episodes) → episode (header + subtitles found + streams). Esc goes back one
   level then closes, Backspace in an empty input goes back, breadcrumbs are buttons.

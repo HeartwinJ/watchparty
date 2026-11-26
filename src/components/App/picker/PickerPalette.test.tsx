@@ -88,6 +88,8 @@ const makeActions = (over: Partial<PickerActions> = {}): PickerActions => ({
   shareScreen: vi.fn(),
   shareFile: vi.fn(),
   stopSharing: vi.fn(),
+  stopVideo: vi.fn(),
+  canStopVideo: false,
   sharing: "none",
   currentMeta: null,
   ...over,
@@ -473,6 +475,20 @@ describe("PickerPalette: stream list", () => {
 });
 
 describe("PickerPalette: more empty-state and result rows", () => {
+  it("offers Stop video while something plays, but not when adding to the queue", async () => {
+    const actions = makeActions({ canStopVideo: true });
+    const { input, onClose } = renderPalette(actions);
+    await screen.findByText("Stop video");
+    await waitFor(() => expect(activeOption(input)).toBeTruthy());
+    key(input, "Enter");
+    expect(actions.stopVideo).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+    cleanup();
+    renderPalette(makeActions({ canStopVideo: true }), vi.fn(), null, "queue");
+    await screen.findByText("Share screen");
+    expect(screen.queryByText("Stop video")).toBeNull();
+  });
+
   it("offers Stop sharing while we share", async () => {
     const actions = makeActions({ sharing: "me" });
     const { input, onClose } = renderPalette(actions);

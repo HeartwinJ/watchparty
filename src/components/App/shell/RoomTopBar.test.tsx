@@ -166,6 +166,28 @@ describe("RoomTopBar", () => {
     window.removeEventListener("wp:show-shortcuts", shortcuts);
   });
 
+  it("anyone can stop a playing video, but not a share", async () => {
+    const { room } = setup(
+      { role: "guest" },
+      { roomMedia: "https://v.example.com/a.mp4" },
+    );
+    more();
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Stop video" }),
+    );
+    expect(room.cmd.stopVideo).toHaveBeenCalled();
+    cleanup();
+    setup({}, { roomMedia: "screenshare://bob" });
+    more();
+    await screen.findByRole("menuitem", { name: /Change video/ });
+    expect(screen.queryByRole("menuitem", { name: "Stop video" })).toBeNull();
+    cleanup();
+    setup();
+    more();
+    await screen.findByRole("menuitem", { name: /Change video/ });
+    expect(screen.queryByRole("menuitem", { name: "Stop video" })).toBeNull();
+  });
+
   it("owners can leave, log out, and delete the room after confirming", async () => {
     const { room, logout } = setup();
     more();
