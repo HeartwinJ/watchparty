@@ -662,6 +662,8 @@ describe("owner tools", () => {
     owner.socket.emit("CMD:chat", "o1");
     sam.socket.emit("CMD:chat", "s1");
     await barrier(sam.socket);
+    // Messages are identified by author + timestamp (ms): keep s1 and s2 apart
+    await new Promise((r) => setTimeout(r, 5));
     sam.socket.emit("CMD:chat", "s2");
     owner.socket.emit("CMD:chat", "o2");
     await barrier(sam.socket);
