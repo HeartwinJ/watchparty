@@ -34,6 +34,21 @@ export default {
     allowedHosts: true,
   },
   test: {
+    // `npm run coverage` (CI enforces the thresholds, set just below the current levels so coverage can't silently drop)
+    coverage: {
+      provider: "v8",
+      include: ["server/**/*.ts", "src/**/*.{ts,tsx}"],
+      exclude: [
+        "**/*.test.{ts,tsx}",
+        "**/*.d.ts",
+        "words/**",
+        "build/**",
+        "dist-server/**",
+        "src/vite-env.d.ts",
+      ],
+      reporter: ["text-summary", "text", "html"],
+      reportsDirectory: "coverage",
+    },
     projects: [
       {
         extends: true,
