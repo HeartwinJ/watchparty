@@ -29,6 +29,7 @@ const SERVER_EVENT_SET: Record<keyof ServerToClientEvents, true> = {
   "REC:playbackRate": true,
   "REC:subtitle": true,
   "REC:subtitleOffset": true,
+  "REC:subtitleSync": true,
   "REC:loop": true,
   "REC:host": true,
   "REC:chat": true,

@@ -9,6 +9,7 @@ export const DEFAULT_ROOM_SETTINGS: Readonly<RoomSettings> = Object.freeze({
   title: "",
   readyCheck: true,
   nextEpisodeOffset: 25,
+  autoSyncSubtitles: false,
 });
 
 /** The settings keys, in the order they're announced in chat */
@@ -16,6 +17,7 @@ export const ROOM_SETTINGS_KEYS = [
   "title",
   "readyCheck",
   "nextEpisodeOffset",
+  "autoSyncSubtitles",
 ] as const satisfies readonly (keyof RoomSettings)[];
 
 // C0/C1 control characters, plus line/paragraph separators and bidi overrides/isolates (they can reorder the
@@ -66,6 +68,9 @@ export function parseRoomSettingsPatch(
   }
   if (typeof data.readyCheck === "boolean") {
     patch.readyCheck = data.readyCheck;
+  }
+  if (typeof data.autoSyncSubtitles === "boolean") {
+    patch.autoSyncSubtitles = data.autoSyncSubtitles;
   }
   const offset = normalizeNextEpisodeOffset(data.nextEpisodeOffset);
   if (offset !== undefined) {

@@ -21,6 +21,8 @@ export default {
       },
     },
   },
+  // Module workers (subtitle auto-sync) can code-split, so the AC-3 decoder only loads for Dolby audio
+  worker: { format: "es" },
   server: {
     https:
       process.env.SSL_CRT_FILE && process.env.SSL_KEY_FILE

@@ -216,6 +216,14 @@ const RoomWideSettings = ({ room, roomId }: { room: Room; roomId: string }) => {
         checked={roomSettings.readyCheck}
         onChange={(e) => send({ readyCheck: e.currentTarget.checked })}
       />
+      <Switch
+        labelPosition="left"
+        classNames={{ root: styles.switchRow, body: styles.switchBody }}
+        label="Auto-sync subtitles"
+        description="When subtitles are loaded for a video, match them to the speech once (one viewer's device listens) and set the offset for everyone. An offset someone set by hand is kept."
+        checked={roomSettings.autoSyncSubtitles}
+        onChange={(e) => send({ autoSyncSubtitles: e.currentTarget.checked })}
+      />
       <NumberInput
         label="Next-episode card"
         description={`Seconds before the end of an episode to offer the next one (${NEXT_EPISODE_OFFSET_MIN}–${NEXT_EPISODE_OFFSET_MAX}).`}

@@ -35,6 +35,10 @@ import type { NextEpisodeResolver } from "./addons/nextEpisode.ts";
 import { NextEpisodeController } from "./nextEpisodeController.ts";
 import { parseRoomPasswordCommand, RoomAccess } from "./roomAccess.ts";
 import { nowPlayingChatLine, type NowPlayingVia } from "./nowPlaying.ts";
+import {
+  parseSubtitleSyncCommand,
+  SubtitleAutoSync,
+} from "./subtitleAutoSync.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -132,6 +136,8 @@ export class Room {
   /** Watch history / continue watching (utils/history.ts) */
   private history: HistoryRecorder;
   private readyCheck = new ReadyCheck();
+  /** Room auto-sync of subtitles: who computes it, whether the result may be applied (subtitleAutoSync.ts) */
+  private subtitleSync = new SubtitleAutoSync();
   /** Next-episode lookups (set by server.ts when AIOStreams is configured) */
   public static nextEpisodeResolver: NextEpisodeResolver | null = null;
   private nextEpisode = new NextEpisodeController({
@@ -326,6 +332,9 @@ export class Room {
       on("CMD:subtitleOffset", (data: unknown) => {
         this.setSubtitleOffset(socket, data);
       });
+      on("CMD:subtitleSync", (data: unknown) =>
+        this.subtitleSyncCommand(socket, data),
+      );
       on("CMD:askHost", () => {
         socket.emit("REC:host", this.getHostState());
       });
@@ -464,6 +473,7 @@ export class Room {
       this.videoMeta = roomObj.videoMeta;
     }
     this.roomSettings = normalizeRoomSettings(roomObj.roomSettings);
+    this.subtitleSync.reset(this.video, this.subtitleOffset);
     this.access = RoomAccess.from(roomObj.access);
     return Boolean(roomObj.access);
   };
@@ -556,6 +566,7 @@ export class Room {
     this.videoTS = position;
     this.paused = true;
     this.subtitleOffset = this.loadSubtitleOffset(video, meta);
+    this.subtitleSync.reset(video, this.subtitleOffset);
   };
 
   private getHostState = (): HostState => {
@@ -593,6 +604,7 @@ export class Room {
     this.loop = false;
     this.playbackRate = 1;
     this.subtitleOffset = this.loadSubtitleOffset(data, meta);
+    this.subtitleSync.reset(data, this.subtitleOffset);
     this.applyReadyCheck(this.readyCheck.reset(Date.now()));
     this.tsMap = {};
     this.preventTSUpdate = true;
@@ -992,6 +1004,7 @@ export class Room {
     this.history.metaAttached(this.historySnapshot());
     // The metadata gives the video a stable identity, so restore the offset saved for this title/episode
     const offset = this.loadSubtitleOffset(this.video, this.videoMeta);
+    this.subtitleSync.offsetLoaded(offset);
     if (offset !== this.subtitleOffset) {
       this.subtitleOffset = offset;
       this.io.of(this.roomId).emit("REC:subtitleOffset", { offset });
@@ -1146,18 +1159,12 @@ export class Room {
       return;
     }
     this.subtitleOffset = offset;
+    this.subtitleSync.manualOffset();
     socket.broadcast.emit("REC:subtitleOffset", {
       offset,
       actor: this.getActor(socket),
     });
-    const key = subtitleOffsetKey(this.video, this.videoMeta);
-    if (key) {
-      try {
-        saveSubtitleOffset(this.db, key, offset);
-      } catch (e) {
-        console.warn("failed to save subtitle offset:", e);
-      }
-    }
+    this.saveCurrentSubtitleOffset();
     clearTimeout(this.subtitleOffsetChatTimer);
     this.subtitleOffsetChatTimer = setTimeout(() => {
       this.addChatMessage(socket, {
@@ -1166,6 +1173,83 @@ export class Room {
         msg: String(this.subtitleOffset),
       });
     }, Room.SUBTITLE_OFFSET_CHAT_DELAY_MS);
+  };
+
+  /** Saves the room's offset for the current video (when it has a stable key) */
+  private saveCurrentSubtitleOffset = () => {
+    const key = subtitleOffsetKey(this.video, this.videoMeta);
+    if (key) {
+      try {
+        saveSubtitleOffset(this.db, key, this.subtitleOffset);
+      } catch (e) {
+        console.warn("failed to save subtitle offset:", e);
+      }
+    }
+  };
+
+  /**
+   * CMD:subtitleSync (room auto-sync, subtitleAutoSync.ts): grants one viewer the job per (video, subtitle), applies
+   * its result room-wide (REC:subtitleOffset with `auto`, saved like a manual offset, a `subtitleAutoSync` chat line)
+   * unless the offset was set by hand, and tells everyone (REC:subtitleSync).
+   */
+  private subtitleSyncCommand = (socket: Socket, raw: unknown) => {
+    const cmd = parseSubtitleSyncCommand(raw);
+    if (!cmd) {
+      return;
+    }
+    const ns = this.io.of(this.roomId);
+    const ctx = {
+      enabled: this.roomSettings.autoSyncSubtitles,
+      video: this.video,
+      now: Date.now(),
+    };
+    const by = this.getActor(socket);
+    const base = { video: cmd.video, key: cmd.key };
+    if (cmd.action === "claim") {
+      const outcome = this.subtitleSync.claim(socket.clientId, cmd, ctx);
+      if (outcome.granted) {
+        ns.emit("REC:subtitleSync", { status: "running", ...base, by });
+      } else {
+        socket.emit("REC:subtitleSync", {
+          status: "denied",
+          ...base,
+          reason: outcome.reason,
+        });
+      }
+      return;
+    }
+    if (cmd.action === "failed") {
+      if (this.subtitleSync.failed(socket.clientId, cmd)) {
+        ns.emit("REC:subtitleSync", { status: "released", ...base });
+      } else if (this.subtitleSync.isDone(cmd.key)) {
+        ns.emit("REC:subtitleSync", { status: "done", ...base, offset: null });
+      }
+      return;
+    }
+    const outcome = this.subtitleSync.result(socket.clientId, cmd, ctx);
+    if (!outcome) {
+      return;
+    }
+    const offset =
+      outcome.apply && cmd.offset !== null
+        ? normalizeSubtitleOffset(cmd.offset)
+        : undefined;
+    if (offset !== undefined) {
+      this.subtitleOffset = offset;
+      ns.emit("REC:subtitleOffset", { offset, actor: by, auto: true });
+      this.saveCurrentSubtitleOffset();
+      this.addChatMessage(socket, {
+        id: socket.clientId,
+        cmd: "subtitleAutoSync",
+        msg: String(offset),
+      });
+    }
+    ns.emit("REC:subtitleSync", {
+      status: "done",
+      ...base,
+      by,
+      offset: offset ?? null,
+    });
   };
 
   // --- Ready check (see readyCheck.ts) ---
@@ -1252,6 +1336,14 @@ export class Room {
       delete this.tsMap[clientId];
       delete this.socketIdMap[clientId];
       this.applyReadyCheck(this.readyCheck.leave(clientId, Date.now()));
+      const video = this.subtitleSync.getVideo();
+      for (const key of this.subtitleSync.leave(clientId)) {
+        if (video) {
+          this.io
+            .of(this.roomId)
+            .emit("REC:subtitleSync", { status: "released", video, key });
+        }
+      }
     }
     // Keep namemap/picturemap so old chat messages still render correctly after disconnect
     // When serializing we only write values with messages in chat

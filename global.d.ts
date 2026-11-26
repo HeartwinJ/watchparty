@@ -116,6 +116,37 @@ interface RoomSettings {
   readyCheck: boolean;
   /** seconds before the end to show the next-episode card, 5–120 */
   nextEpisodeOffset: number;
+  /** Align newly loaded subtitles to the audio once (one viewer computes it, see server/subtitleAutoSync.ts) */
+  autoSyncSubtitles: boolean;
+}
+
+/**
+ * CMD:subtitleSync (room auto-sync, see server/subtitleAutoSync.ts). `key` names the subtitle (e.g. "room:<url>").
+ * claim: "I can compute it"; result: what it found (offset null = no confident match); failed: couldn't compute.
+ */
+type SubtitleSyncCommand =
+  | { action: "claim"; video: string; key: string }
+  | {
+      action: "result";
+      video: string;
+      key: string;
+      offset: number | null;
+      confidence?: number;
+    }
+  | { action: "failed"; video: string; key: string };
+
+/**
+ * REC:subtitleSync: `running` (to everyone: `by` is computing it), `done` (to everyone; `offset` was applied room-wide,
+ * or null = no confident match), `released` (to everyone: the computing viewer failed or left, someone else may claim),
+ * `denied` (to the claimer only: someone else has it, it's done, or the offset was set by hand).
+ */
+interface SubtitleSyncEvent {
+  status: "running" | "done" | "released" | "denied";
+  video: string;
+  key: string;
+  by?: PlaybackActor;
+  offset?: number | null;
+  reason?: "off" | "stale" | "manual" | "busy" | "done";
 }
 
 /**

@@ -151,6 +151,25 @@ export class HTML implements Player {
     this.applyTrackModes();
   };
 
+  /**
+   * The cues of a track at their original times (before any offset or sharer correction): what auto-sync aligns.
+   * Empty while the track's cues haven't loaded.
+   */
+  getOriginalCues = (
+    index = this.getSelectedSubtitleTrack(),
+  ): { start: number; end: number }[] => {
+    const cues = index >= 0 ? this.getVideoEl()?.textTracks[index]?.cues : null;
+    if (!cues) {
+      return [];
+    }
+    return Array.from(cues, (cue) => {
+      const orig = this.cueOriginals.get(cue);
+      return orig
+        ? { start: orig.start, end: orig.end }
+        : { start: cue.startTime, end: cue.endTime };
+    });
+  };
+
   getSelectedSubtitleTrack = () =>
     this.subtitlesEnabled ? this.selectedTrack : -1;
 

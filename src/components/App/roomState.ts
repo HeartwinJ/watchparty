@@ -89,6 +89,10 @@ export interface RoomState {
   /** "Just me" override, null when following the room */
   localSubtitleOffset: number | null;
   subtitleScope: SubtitleScope;
+  /** Subtitle auto-sync running on this device (subsync/): manual wand or the room's auto-sync, progress 0..1 */
+  subtitleSyncJob: { auto: boolean; progress: number } | null;
+  /** Someone else's device is computing the room's subtitle auto-sync */
+  subtitleSyncRemote: { by: string } | null;
   /** Extra subtitle tracks for the menu (slot for auto subtitles; optional) */
   subtitleTracks?: SubtitleTrackOption[];
   /** A short message for the player's on-screen display (e.g. "Alex paused" in fullscreen) */
@@ -106,6 +110,7 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   title: "",
   readyCheck: true,
   nextEpisodeOffset: 25,
+  autoSyncSubtitles: false,
 };
 
 export type RoomStore = Store<RoomState>;
@@ -177,6 +182,8 @@ export function createInitialRoomState(): RoomState {
     subtitleScope: "everyone",
     playerNotice: null,
     roomSettings: { ...DEFAULT_ROOM_SETTINGS },
+    subtitleSyncJob: null,
+    subtitleSyncRemote: null,
     roomAccess: null,
     roomDeleted: null,
   };
