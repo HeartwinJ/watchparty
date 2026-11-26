@@ -385,11 +385,12 @@
 
 .cues {
   position: absolute;
-  left: 50%;
+  /* Centred on the part of the video the chat panel leaves free (--wp-chat-reserve is 0 while it's closed) */
+  left: calc((100% - var(--wp-chat-reserve, 0px)) / 2);
   bottom: 8%;
   transform: translateX(-50%);
   width: max-content;
-  max-width: 80%;
+  max-width: calc((100% - var(--wp-chat-reserve, 0px)) * 0.8);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -456,7 +457,7 @@
 .osdTop {
   position: absolute;
   top: 18%;
-  left: 50%;
+  left: calc((100% - var(--wp-chat-reserve, 0px)) / 2);
   transform: translateX(-50%);
   padding: 8px 14px;
   border-radius: var(--wp-r-full);
@@ -650,6 +651,126 @@
   color: rgba(255, 255, 255, 0.75);
   font: 600 11px var(--wp-font-mono);
   text-align: center;
+}
+
+/* ---------- chat panel (fullscreen / sidebar collapsed) ---------- */
+
+/*
+ * Over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control bar,
+ * so both stay usable. The glass is drawn by ::before: backdrop-filter (and transform) on the panel itself would make
+ * it the containing block of the chat's position: fixed reaction picker. It's at rest with transform: none.
+ */
+.chatPanel {
+  position: absolute;
+  top: var(--wp-sp-3);
+  right: 12px;
+  bottom: max(88px, calc(var(--wp-kb-inset, 0px) + var(--wp-sp-2)));
+  width: var(--wp-chat-panel-w, 360px);
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  z-index: calc(var(--wp-z-chat-overlay) + 2);
+  border: 1px solid var(--wp-border-strong);
+  border-radius: var(--wp-r-lg);
+  box-shadow: var(--wp-sh-3);
+  color: var(--wp-text);
+  user-select: text;
+  -webkit-user-select: text;
+  transition:
+    transform var(--wp-dur-slow) var(--wp-ease),
+    opacity var(--wp-dur-slow) var(--wp-ease),
+    visibility 0s linear var(--wp-dur-slow);
+}
+
+.chatPanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--wp-glass);
+  backdrop-filter: var(--wp-glass-blur);
+  -webkit-backdrop-filter: var(--wp-glass-blur);
+  pointer-events: none;
+}
+
+.chatPanel[data-open="false"] {
+  transform: translateX(calc(100% + 24px));
+  opacity: 0;
+  visibility: hidden;
+}
+
+.chatPanel[data-open="true"] {
+  transform: none;
+  transition:
+    transform var(--wp-dur-slow) var(--wp-ease),
+    opacity var(--wp-dur-slow) var(--wp-ease),
+    visibility 0s;
+}
+
+.player[data-fullscreen="true"] .chatPanel {
+  /* Below the title bar and its exit-fullscreen button */
+  top: 60px;
+}
+
+/* The on-screen keyboard is up: use the whole height above it */
+.chatPanel[data-kb="true"] {
+  top: var(--wp-sp-2) !important;
+}
+
+.chatPanel[data-kb="true"] .chatPanelHead {
+  display: none;
+}
+
+.chatPanelHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--wp-sp-1) var(--wp-sp-1) var(--wp-sp-1) var(--wp-sp-4);
+  border-bottom: 1px solid var(--wp-border);
+}
+
+.chatPanelHead h2 {
+  margin: 0;
+  font-size: var(--wp-fs-md);
+  font-weight: 600;
+}
+
+.chatPanelChat {
+  min-height: 0;
+}
+
+/* Phones in landscape (short players): the fullscreen title bar and control bar are smaller */
+@container (max-height: 500px) {
+  .chatPanel {
+    top: var(--wp-sp-2);
+    bottom: max(68px, calc(var(--wp-kb-inset, 0px) + var(--wp-sp-2)));
+  }
+
+  .player[data-fullscreen="true"] .chatPanel {
+    top: 48px;
+  }
+
+  .chatPanelHead {
+    padding-left: var(--wp-sp-3);
+  }
+}
+
+/* Unread messages on the control bar's chat button */
+.chatBadge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--wp-r-full);
+  background: var(--wp-accent);
+  color: var(--wp-on-accent);
+  font: 700 10px/16px var(--wp-font);
+  text-align: center;
+  pointer-events: none;
 }
 
 /* ---------- player menus (portalled into the player, always dark glass) ---------- */

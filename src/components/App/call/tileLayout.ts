@@ -38,7 +38,7 @@ export const TILE_GAP = 6;
 
 /**
  * Keeps the strip clear of the player's own UI: the fullscreen title bar (top), the control bar (bottom), and a
- * margin elsewhere. `reserve` adds space along any edge (for a future side panel).
+ * margin elsewhere. `reserve` adds space along any edge (the open chat panel reserves the right one).
  */
 export function stripInsets(opts: {
   fullscreen: boolean;

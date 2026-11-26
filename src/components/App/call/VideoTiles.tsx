@@ -40,6 +40,7 @@ export const VideoTiles = ({
   fullscreen,
   phone,
   controls,
+  reserveRight = 0,
 }: {
   room: Room;
   /** The player (PlayerArea's root): the strip is positioned and clamped inside it */
@@ -48,6 +49,8 @@ export const VideoTiles = ({
   phone: boolean;
   /** The control bar is shown (keep clear of it) */
   controls: boolean;
+  /** Space along the right edge to keep clear (the open chat panel, chatPanelReserve), px */
+  reserveRight?: number;
 }) => {
   const { state, clientId, call } = room;
   const c = state.call;
@@ -81,7 +84,12 @@ export const VideoTiles = ({
     return null;
   }
 
-  const insets = stripInsets({ fullscreen, phone, controls });
+  const insets = stripInsets({
+    fullscreen,
+    phone,
+    controls,
+    reserve: { right: reserveRight },
+  });
   const available = Math.max(
     0,
     player.height - insets.top - insets.bottom - HEADER_H - TILE_GAP,

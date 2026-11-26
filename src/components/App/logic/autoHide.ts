@@ -6,7 +6,13 @@ export const LEAVE_HIDE_MS = 500;
 
 /** Reasons the controls must stay visible */
 export type HoldReason =
-  "paused" | "hover-controls" | "menu" | "quick-chat" | "focus";
+  | "paused"
+  | "hover-controls"
+  | "menu"
+  | "quick-chat"
+  | "focus"
+  /** The pointer is over the open chat panel (reading it shouldn't hide the cursor) */
+  | "chat-panel";
 
 /**
  * Tracks activity and calls onChange(idle) when the controls should hide (idle = true) or show. Activity (`poke`)

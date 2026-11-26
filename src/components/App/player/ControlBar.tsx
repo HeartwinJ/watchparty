@@ -14,6 +14,7 @@ import {
   IconVolume2,
   IconVolumeOff,
   IconCheck,
+  IconMessage,
 } from "@tabler/icons-react";
 import { formatTimestamp } from "../../../utils/utils";
 import type { Room } from "../hooks/useRoom";
@@ -24,6 +25,7 @@ import { SyncIndicator } from "./SyncIndicator";
 import type { PlaybackState } from "./usePlaybackState";
 import type { SubtitleStyle } from "./useSubtitleStyle";
 import type { useTextTracks } from "./useTextTracks";
+import { formatUnread } from "./chatPanel";
 import styles from "./Player.module.css";
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -45,6 +47,8 @@ export function ControlBar(props: {
   setSubtitleStyle: (patch: Partial<SubtitleStyle>) => void;
   onTogglePlay: () => void;
   onHoverChange: (hovering: boolean) => void;
+  /** The chat panel's button (only while the panel is available: fullscreen / sidebar collapsed) */
+  chatPanel?: { open: boolean; unread: number; onToggle: () => void };
 }) {
   const { room, playback, menu, setMenu, fullscreen, phone } = props;
   const { state, player, cmd } = room;
@@ -167,6 +171,32 @@ export function ControlBar(props: {
             variant="mini"
             portalTarget={fullscreen ? props.container : undefined}
           />
+        )}
+        {props.chatPanel && (
+          <button
+            className={styles.btn}
+            aria-label={
+              props.chatPanel.open
+                ? "Hide chat"
+                : props.chatPanel.unread > 0
+                  ? `Show chat (${props.chatPanel.unread} unread)`
+                  : "Show chat"
+            }
+            title={
+              props.chatPanel.open
+                ? "Hide chat (Shift + c)"
+                : "Show chat (Shift + c)"
+            }
+            aria-pressed={props.chatPanel.open}
+            onClick={props.chatPanel.onToggle}
+          >
+            <IconMessage size={22} />
+            {!props.chatPanel.open && props.chatPanel.unread > 0 && (
+              <span className={styles.chatBadge} aria-hidden="true">
+                {formatUnread(props.chatPanel.unread)}
+              </span>
+            )}
+          </button>
         )}
         <button
           ref={ccRef}

@@ -49,6 +49,15 @@ interface ChatProps {
   getMediaDisplayName: (input?: string) => string;
   hide?: boolean;
   ref?: RefObject<Chat | null>;
+  /**
+   * Where Mantine popovers (the "who reacted" hover cards) portal to. The chat panel over the player passes the
+   * player (the fullscreen element): anything portalled to document.body is invisible in element fullscreen.
+   */
+  portalTarget?: HTMLElement | null;
+  /** Narrow layout (the chat panel over the player): a smaller emoji picker */
+  compact?: boolean;
+  /** Placeholder for the message input */
+  placeholder?: string;
 }
 
 export class Chat extends React.Component<ChatProps> {
@@ -255,6 +264,7 @@ export class Chat extends React.Component<ChatProps> {
                 setReactionMenu={this.setReactionMenu}
                 handleReactionClick={this.handleReactionClick}
                 onReply={this.setReplyTo}
+                portalTarget={this.props.portalTarget}
               />
             ))}
           </div>
@@ -275,6 +285,7 @@ export class Chat extends React.Component<ChatProps> {
               theme="dark"
               previewPosition="none"
               maxFrequentRows={1}
+              perLine={this.props.compact ? 7 : undefined}
               onEmojiSelect={this.addEmoji}
               onClickOutside={() => this.setState({ isPickerOpen: false })}
             />
@@ -350,7 +361,7 @@ export class Chat extends React.Component<ChatProps> {
             onChange={this.updateChatMsg}
             value={this.state.chatMsg}
             error={this.chatTooLong() ? "That message is too long." : undefined}
-            placeholder="Message"
+            placeholder={this.props.placeholder ?? "Message"}
             classNames={{ input: styles.input }}
             rightSectionWidth={72}
             rightSectionPointerEvents="all"
@@ -426,6 +437,7 @@ const ChatMessage = ({
   onReply,
   className,
   continued,
+  portalTarget,
 }: {
   message: ChatMessage;
   nameMap: StringDict;
@@ -442,6 +454,7 @@ const ChatMessage = ({
   onReply: (id: string, timestamp: string, msg?: string) => void;
   className: string;
   continued: boolean;
+  portalTarget?: HTMLElement | null;
 }) => {
   const { id, timestamp, cmd, msg, system, reactions, videoTS } = message;
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
@@ -499,7 +512,11 @@ const ChatMessage = ({
             unmountOnExit
           >
             {(nodeRef) => (
-              <HoverCard>
+              <HoverCard
+                portalProps={
+                  portalTarget ? { target: portalTarget } : undefined
+                }
+              >
                 <HoverCard.Target>
                   <button
                     type="button"

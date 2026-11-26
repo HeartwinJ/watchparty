@@ -2,7 +2,8 @@
 .pill {
   position: absolute;
   top: var(--wp-sp-4);
-  left: 50%;
+  /* Centred on the part of the video the chat panel leaves free */
+  left: calc((100% - var(--wp-chat-reserve, 0px)) / 2);
   transform: translateX(-50%);
   z-index: var(--wp-z-controls);
   display: inline-flex;

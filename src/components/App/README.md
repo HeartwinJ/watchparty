@@ -61,6 +61,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar                            |
 | `player/SubtitleCues.tsx`                 | Renders the cues at the video's current time (`cuesAt`, not stale-prone `activeCues`) with the device's style       |
 | `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input                                            |
+| `player/ChatPanel.tsx`, `chatPanel.ts`    | The full chat over the video (fullscreen / sidebar collapsed), `useChatPanel`; pure: availability, width, unread    |
 | `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: system line text incl. `subtitleOffset`, `roomSettings`, `nowPlaying`              |
 | `ui/RoomUi.tsx`                           | `useRoomUi()`: picker open, sidebar collapsed, chat overlay, settings modal                                         |
 | `ui/toast.tsx`                            | `toast(message, {tone, action})`                                                                                    |
@@ -183,8 +184,36 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
 - **Click** on the video = play/pause for everyone (others get "Alex paused": `REC:play`/`REC:pause` carry a
   `PlaybackActor`), **double-click** = fullscreen. Touch: tap = show/hide controls, double-tap left/right = ∓10 s with
   a ripple, centre = fullscreen. Speed and loop are room-wide (`CMD:playbackRate`, `CMD:loop`).
-- Keys (window listener, ignored while typing or in a modal): space/k, ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c (quick chat in fullscreen or
-  with the sidebar collapsed, otherwise `chatRef.current.focusInput()`), `[`/`]`, `?` (also `wp:show-shortcuts`).
+- Keys (window listener, ignored while typing, in a modal or inside a `data-no-shortcuts` area such as the chat panel;
+  Esc always reaches it): space/k, ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c
+  (the open chat panel's input, else quick chat in fullscreen or with the sidebar collapsed, else
+  `chatRef.current.focusInput()`; `chatKeyTarget`), Shift+C (the chat panel), `[`/`]`, `?` (also `wp:show-shortcuts`).
+- **Chat panel** (`ChatPanel.tsx`, `useChatPanel.ts`, pure logic in `chatPanel.ts`): the real `Chat` in a translucent
+  panel over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control
+  bar so both stay usable. Offered where quick chat is (`fullscreen || sidebarCollapsed`, not on the phone layout's
+  page, and only on players ≥ 480 px wide: `chatPanelAllowed`); 40 % of the player, 260–380 px (`chatPanelWidth`).
+  **Starts collapsed every time** it becomes available and closes when it stops (`chatPanelReducer`; open state isn't
+  remembered). Toggle: the control bar's chat button (auto-hides with the controls) or Shift+C; close: its × button,
+  clicking/tapping the video (that click doesn't pause), Esc outside fullscreen (in fullscreen the browser takes Esc and
+  exits fullscreen, which closes it too). Opening focuses its input (not on touch screens, where that would pop the
+  keyboard over the video), hides the bubbles and closes quick chat; `c` then focuses its input. The panel's `Chat` has
+  its own ref (`room.chatRef` stays the sidebar's) and its own draft; it's mounted on the first open and unmounted when
+  the panel stops being available. Its Mantine hover cards portal into the player (`Chat` `portalTarget`): anything
+  in `document.body` is invisible in element fullscreen; the emoji pickers render inside the panel (`compact`: 7 per
+  line). The glass is a `::before` layer and the panel rests at `transform: none`, because `backdrop-filter`/`transform`
+  on it would trap the reaction picker's `position: fixed`. On phones `visualViewport` lifts it above the on-screen
+  keyboard (`keyboardInset`; the header hides while the keyboard is up). iPhone Safari has no element fullscreen (the
+  video goes native fullscreen), so there's nothing to overlay there.
+- **Unread badge** on the chat button (`updateUnread`): messages people typed (not your own, not system lines such as
+  paused/changed the video/now playing, which the OSD and bubbles already show, and not reactions) that arrived since
+  you last had the chat on screen (the open panel, or the sidebar's chat tab outside fullscreen). History loads
+  (`chatinit`, also on reconnect; `state.chatInitCount`) never count. While the panel is open the sidebar tab's
+  `unreadCount` is cleared too.
+- **Making room for the open panel**: `PlayerArea` sets `--wp-chat-reserve` (panel + margin, `chatPanelReserve`; 0
+  while closed) and `data-chat-panel="open"`. The video tiles get it as `stripInsets({reserve: {right}})` (a strip
+  dragged to the right is clamped left of the panel; the default top-left doesn't move), the next-episode card moves
+  left of it, and the ready-check pill, OSD and subtitles centre on the part of the video that's left. Player menus
+  (z-popover) open above it.
 - **Subtitles:** the selected TextTrack is kept in `hidden` mode and `SubtitleCues` draws the cues at the current time (`cuesAt`; browsers can leave re-timed cues in `activeCues`) (size S–XL in
   container units, background none/shadow/box, per device in `localStorage` `wp-subtitle-style`). The timing re-times
   cues from their original times (`retimeCues`: original × scale + offset, the scale corrects frame-rate drift), so

@@ -30,6 +30,42 @@ describe("resolveShortcut", () => {
     expect(k("x")).toBeNull();
   });
 
+  it("Shift+C toggles the chat panel; c (or C with caps lock) is quick chat", () => {
+    const body = document.body;
+    expect(resolveShortcut({ key: "C", shiftKey: true, target: body })).toEqual(
+      { type: "chatPanel" },
+    );
+    expect(resolveShortcut({ key: "C", target: body })).toEqual({
+      type: "chat",
+    });
+    expect(resolveShortcut({ key: "c", target: body })).toEqual({
+      type: "chat",
+    });
+    // Typing a capital C in a chat input is just typing
+    expect(
+      resolveShortcut({
+        key: "C",
+        shiftKey: true,
+        target: el("<input data-t>"),
+      }),
+    ).toBeNull();
+  });
+
+  it("keys inside the chat panel (data-no-shortcuts) stay there, except Esc", () => {
+    const button = el(
+      '<section data-no-shortcuts=""><button data-t>👍</button></section>',
+    );
+    for (const key of [" ", "k", "f", "m", "ArrowLeft"]) {
+      expect(resolveShortcut({ key, target: button })).toBeNull();
+    }
+    expect(resolveShortcut({ key: "C", shiftKey: true, target: button })).toBe(
+      null,
+    );
+    expect(resolveShortcut({ key: "Escape", target: button })).toEqual({
+      type: "escape",
+    });
+  });
+
   it("ignores keys while typing (offset keys included)", () => {
     for (const html of [
       '<input data-t type="text">',

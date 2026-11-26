@@ -8,6 +8,7 @@ export type ShortcutAction =
   | { type: "toggleCamera" }
   | { type: "toggleFullscreen" }
   | { type: "chat" }
+  | { type: "chatPanel" }
   | { type: "subtitleOffsetBy"; delta: number }
   | { type: "showShortcuts" }
   | { type: "escape" };
@@ -17,6 +18,7 @@ export interface KeyLike {
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
+  shiftKey?: boolean;
   target?: EventTarget | null;
   defaultPrevented?: boolean;
 }
@@ -60,6 +62,17 @@ export function isInModal(target: EventTarget | null | undefined) {
   return Boolean((target as Element).closest('[aria-modal="true"]'));
 }
 
+/**
+ * Whether the event happened inside an area that handles its own keys (`data-no-shortcuts`, e.g. the chat panel over
+ * the player: Space on a reaction button presses it instead of pausing the video).
+ */
+export function isInNoShortcutZone(target: EventTarget | null | undefined) {
+  if (!target || typeof (target as Element).closest !== "function") {
+    return false;
+  }
+  return Boolean((target as Element).closest("[data-no-shortcuts]"));
+}
+
 /** Maps a key press to a player action, or null (typing, modifier chords, unknown keys). */
 export function resolveShortcut(e: KeyLike): ShortcutAction | null {
   if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) {
@@ -68,7 +81,11 @@ export function resolveShortcut(e: KeyLike): ShortcutAction | null {
   if (e.key === "Escape") {
     return { type: "escape" };
   }
-  if (isTypingTarget(e.target) || isInModal(e.target)) {
+  if (
+    isTypingTarget(e.target) ||
+    isInModal(e.target) ||
+    isInNoShortcutZone(e.target)
+  ) {
     return null;
   }
   const isSlider =
@@ -99,7 +116,8 @@ export function resolveShortcut(e: KeyLike): ShortcutAction | null {
       return { type: "toggleFullscreen" };
     case "c":
     case "C":
-      return { type: "chat" };
+      // Shift+C: the chat panel over the player; c (or C with caps lock): quick chat / focus the chat input
+      return e.shiftKey ? { type: "chatPanel" } : { type: "chat" };
     case "[":
       return { type: "subtitleOffsetBy", delta: -0.1 };
     case "]":
@@ -130,6 +148,7 @@ export const SHORTCUT_GROUPS: { title: string; rows: [string, string[]][] }[] =
       rows: [
         ["Change video (picker)", ["/"]],
         ["Chat (quick input in fullscreen)", ["c"]],
+        ["Chat panel (fullscreen / sidebar hidden)", ["Shift + c"]],
         ["Close menu / exit fullscreen", ["Esc"]],
         ["This overlay", ["?"]],
       ],
