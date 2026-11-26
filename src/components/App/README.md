@@ -309,7 +309,7 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   10 ms for the offset. The result is `{offset, scale, confidence, peakZ, candidate}`;
   `syncResultToTiming()` (`logic.ts`) turns it into what the player applies. No piecewise mapping.
 - **Audio** (`audio.ts` in `worker.ts`, started by `run.ts` `runAutoSync`, cancelled by terminating the worker):
-  mediabunny reads the direct link via range requests (`UrlSource`, 2 retries, 20 s stall timeout) or the sharer's
+  mediabunny reads the direct link via range requests (`UrlSource`, 3 retries, 20 s stall timeout) or the sharer's
   `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
   (first to last cue); audio is interleaved with video, so listening costs about bitrate × seconds:
   `windowSecondsForBitrate` shortens the windows to stay near 300 MB, never below 4 × 60 s. After the 3rd window a very
