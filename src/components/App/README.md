@@ -68,6 +68,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                       |
 | `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s      |
 | `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)     |
+| `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic               |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                           |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits     |
 
@@ -132,6 +133,18 @@ buffered", progress, heavy, reason}` or null; `picker/ConvertStatus.tsx` renders
   "Pick another" (opens the picker on the same title's streams via `videoMeta`) and, for viewers whose device can play
   it, "Share converted stream" (`share.startUrlShare`: converts once and publishes it over the file-share pipeline,
   then re-attaches the `videoMeta` to the `fileshare://` media).
+
+## Next episode (PLAN 6d)
+
+- Server-authoritative (`server/nextEpisodeController.ts`). `useNextEpisode` sends `cmd.nextEpisode({action: "offer",
+url, time, duration})` every 5 s while this player is within `state.roomSettings.nextEpisodeOffset` seconds of the end
+  of an AIOStreams episode with an empty queue and no loop (`shouldOfferNextEpisode`); `usePlayer.onVideoEnded` sends
+  `{action: "ended", url}`. `state.nextEpisode` is the latest `REC:nextEpisode` (+ `at`).
+- `NextEpisodeCard` (mounted in `PlayerArea`, so it shows in fullscreen) renders `offered`: thumbnail/poster, "Up next ·
+  S01E03 · Title", the countdown (`startAt - this player's currentTime`, so it pauses with the room) and Play now /
+  Cancel (room-wide). `cancelled`/`starting`/`failed` become a toast + the player OSD; `failed` offers "Open picker"
+  (on the next episode's streams when it's known). No Esc shortcut: Esc already exits fullscreen/menus.
+- The card never gets a URL: the server keeps the stream and hosts it with `withDisplayName` + `videoMeta`.
 
 ## Player (Phase 4 + PLAN 6a/6b/6d)
 

@@ -30,6 +30,8 @@ import {
   ReadyCheck,
   type ReadyCheckEffect,
 } from "./readyCheck.ts";
+import type { NextEpisodeResolver } from "./addons/nextEpisode.ts";
+import { NextEpisodeController } from "./nextEpisodeController.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -118,6 +120,23 @@ export class Room {
   /** Watch history / continue watching (utils/history.ts) */
   private history: HistoryRecorder;
   private readyCheck = new ReadyCheck();
+  /** Next-episode lookups (set by server.ts when AIOStreams is configured) */
+  public static nextEpisodeResolver: NextEpisodeResolver | null = null;
+  private nextEpisode = new NextEpisodeController({
+    video: () => this.video,
+    videoMeta: () => this.videoMeta,
+    playlistLength: () => this.playlist.length,
+    loop: () => this.loop,
+    offset: () => this.roomSettings.nextEpisodeOffset,
+    resolver: () => Room.nextEpisodeResolver,
+    emit: (state) => this.io.of(this.roomId).emit("REC:nextEpisode", state),
+    play: (url, meta, by) => {
+      const socket = by
+        ? this.io.of(this.roomId).sockets.get(this.socketIdMap[by.id])
+        : undefined;
+      this.cmdHost(socket ?? null, url, meta);
+    },
+  });
 
   constructor(
     io: Server,
@@ -219,6 +238,7 @@ export class Room {
       socket.emit("REC:videoMeta", this.videoMeta);
       socket.emit("REC:roomSettings", this.roomSettings);
       socket.emit("REC:readyCheck", this.readyCheck.getState());
+      socket.emit("REC:nextEpisode", this.nextEpisode.snapshot());
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
@@ -308,6 +328,9 @@ export class Room {
       );
       on("CMD:roomSettings", (data: unknown) =>
         this.setRoomSettings(socket, data),
+      );
+      on("CMD:nextEpisode", (data: unknown) =>
+        this.nextEpisode.command(data, this.getActor(socket)),
       );
 
       on("CMD:readyState", (data: unknown) => this.setReadyState(socket, data));
@@ -484,6 +507,7 @@ export class Room {
     this.tsMap = {};
     this.preventTSUpdate = true;
     setTimeout(() => (this.preventTSUpdate = false), 1000);
+    this.nextEpisode.reset();
     this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
     this.io.of(this.roomId).emit("REC:host", this.getHostState());
     this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
@@ -683,6 +707,7 @@ export class Room {
       return;
     }
     this.videoTS = data;
+    this.nextEpisode.seek(data);
     socket.broadcast.emit("REC:seek", data);
     const chatMsg = { id: socket.clientId, cmd: "seek", msg: data?.toString() };
     this.addChatMessage(socket, chatMsg);
@@ -736,6 +761,7 @@ export class Room {
     const timeSinceTsMap = Date.now() - this.lastTsMap;
     // console.log(socket.clientId, 'offset', offset, 'ms');
     this.tsMap[socket.clientId] = data - timeSinceTsMap / 1000 + 1;
+    this.nextEpisode.tick(this.videoTS);
   };
 
   private isValidChatMessage = (msg: string | undefined) => {

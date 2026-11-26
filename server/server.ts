@@ -23,7 +23,7 @@ import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { assertPublicUrl, safeFetch } from "./utils/ssrf.ts";
 import { createAuth } from "./utils/auth.ts";
 import { createIceServerProvider } from "./utils/iceServers.ts";
-import { createAddonRouter } from "./addons/routes.ts";
+import { createAddonRouter, createAddonServices } from "./addons/routes.ts";
 import { createHistoryRouter } from "./utils/historyRoutes.ts";
 import {
   openSubtitlesError,
@@ -291,14 +291,24 @@ app.get("/youtubePlaylist/:playlistId", requireAuth, async (req, res) => {
 });
 
 // AIOStreams search/streams/subtitles (/addon/*). 503 when AIOSTREAMS_MANIFEST_URL is unset.
+const addonServices = createAddonServices({
+  manifestUrl: config.AIOSTREAMS_MANIFEST_URL,
+  subtitleLangs: config.SUBTITLE_LANGS,
+  fetchFn: safeFetch,
+});
 app.use(
-  createAddonRouter({
-    manifestUrl: config.AIOSTREAMS_MANIFEST_URL,
-    subtitleLangs: config.SUBTITLE_LANGS,
-    requireAuth,
-    fetchFn: safeFetch,
-  }),
+  createAddonRouter(
+    {
+      manifestUrl: config.AIOSTREAMS_MANIFEST_URL,
+      subtitleLangs: config.SUBTITLE_LANGS,
+      requireAuth,
+      fetchFn: safeFetch,
+    },
+    addonServices,
+  ),
 );
+// Rooms resolve the next episode with the same clients/caches (null without AIOStreams)
+Room.nextEpisodeResolver = addonServices.nextEpisode;
 
 /** Allocates a room name and loads a new Room, or returns undefined if no free name was found */
 function createNewRoom(): Room | undefined {

@@ -270,6 +270,9 @@ export function usePlayer(opts: {
       } else if (action.type === "setMedia") {
         // Play next fileIndex
         cmd.setMedia(action.url);
+      } else if (action.type === "stop" && store.get().videoMeta) {
+        // Starts the next episode if the room is showing its card (the server ignores it otherwise)
+        cmd.nextEpisode({ action: "ended", url: roomMedia });
       }
     };
 

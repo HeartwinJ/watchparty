@@ -38,6 +38,7 @@ const SERVER_EVENTS: (keyof ServerToClientEvents)[] = [
   "playlist",
   "REC:videoMeta",
   "REC:playbackIssue",
+  "REC:nextEpisode",
   "signalSS",
 ];
 

@@ -17,6 +17,7 @@ import { TapDetector, getTapZone, seekForZone } from "../logic/gestures";
 import { resolveShortcut } from "../logic/shortcuts";
 import { formatOffset } from "../logic/subtitles";
 import { ControlBar, type MenuName } from "./ControlBar";
+import { NextEpisodeCard } from "../nextEpisode/NextEpisodeCard";
 import { ChatOverlay } from "./ChatOverlay";
 import { QuickChat } from "./QuickChat";
 import { ReadyCheckPill } from "./ReadyCheckPill";
@@ -467,6 +468,8 @@ export const PlayerArea = ({ room }: { room: Room }) => {
           onClose={() => setQuickChat(false)}
         />
       )}
+
+      <NextEpisodeCard room={room} />
 
       {hasMedia && (
         <ControlBar

@@ -8,6 +8,10 @@ import { TtlCache } from "./cache.ts";
 import { createCatalog, NotFoundError } from "./catalog.ts";
 import { AddonError, createRedactor, type FetchFn } from "./http.ts";
 import { isContentId, isContentType, parseContentId } from "./ids.ts";
+import {
+  createNextEpisodeResolver,
+  type NextEpisodeResolver,
+} from "./nextEpisode.ts";
 import { rankStreams } from "./streamParser.ts";
 import { createSubtitles, parseLangList } from "./subtitles.ts";
 
@@ -29,8 +33,13 @@ export type AddonRouterOptions = {
 const MAX_QUERY_LENGTH = 100;
 const BINGE_GROUP_MAX = 300;
 
-export function createAddonRouter(opts: AddonRouterOptions) {
-  const router = express.Router();
+export type AddonServiceOptions = Omit<AddonRouterOptions, "requireAuth">;
+
+/**
+ * The addon clients behind /addon/*, shared with the rooms (next episode). Build it once in server.ts and pass it
+ * to createAddonRouter so both use the same caches.
+ */
+export function createAddonServices(opts: AddonServiceOptions) {
   const configured = Boolean(opts.manifestUrl.trim());
   const redact = createRedactor(opts.manifestUrl.trim());
   const log = (msg: string) => (opts.log ?? console.warn)(redact(msg));
@@ -58,6 +67,21 @@ export function createAddonRouter(opts: AddonRouterOptions) {
         timeoutMs: opts.aioTimeoutMs,
       })
     : null;
+  /** Null when AIOStreams isn't configured (the room then never offers a next episode) */
+  const nextEpisode: NextEpisodeResolver | null = aio
+    ? createNextEpisodeResolver({ catalog, aio, log })
+    : null;
+  return { configured, log, catalog, subtitles, aio, nextEpisode };
+}
+
+export type AddonServices = ReturnType<typeof createAddonServices>;
+
+export function createAddonRouter(
+  opts: AddonRouterOptions,
+  services: AddonServices = createAddonServices(opts),
+) {
+  const router = express.Router();
+  const { configured, log, catalog, subtitles, aio } = services;
 
   router.use("/addon", opts.requireAuth, (_req, res, next) => {
     if (!configured) {

@@ -1,0 +1,141 @@
+/* Next-episode card: bottom-right over the player, above the control bar (also in fullscreen) */
+.card {
+  position: absolute;
+  right: var(--wp-sp-5);
+  bottom: 96px;
+  width: min(380px, calc(100% - 2 * var(--wp-sp-5)));
+  display: flex;
+  gap: var(--wp-sp-3);
+  padding: var(--wp-sp-3);
+  overflow: hidden;
+  border: 1px solid var(--wp-border-strong);
+  border-radius: var(--wp-r-lg);
+  background: var(--wp-glass);
+  backdrop-filter: var(--wp-glass-blur);
+  -webkit-backdrop-filter: var(--wp-glass-blur);
+  box-shadow: var(--wp-sh-2);
+  color: var(--wp-on-video);
+  font-family: var(--wp-font);
+  z-index: var(--wp-z-chat-overlay);
+  user-select: none;
+  -webkit-user-select: none;
+  animation: wpNextIn var(--wp-dur-slow) var(--wp-ease);
+  transition: bottom var(--wp-dur-slow) var(--wp-ease);
+}
+
+/* The controls hide while idle, so the card drops down (same as the chat overlay) */
+[data-idle="true"] > .card {
+  bottom: var(--wp-sp-5);
+}
+
+.thumb {
+  flex: none;
+  width: 128px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--wp-r-sm);
+  background: var(--wp-surface-3);
+}
+
+.body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.heading {
+  font-size: var(--wp-fs-md);
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.show {
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-on-video-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.countdown {
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  display: flex;
+  gap: var(--wp-sp-2);
+  margin-top: var(--wp-sp-2);
+}
+
+/* Remaining time of the countdown window */
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--wp-accent);
+  transform-origin: left;
+  transition: transform 250ms linear;
+}
+
+/* Small players (phones, narrow windows): the card spans the width and the thumbnail shrinks */
+@container (max-width: 520px) {
+  .card {
+    right: var(--wp-sp-2);
+    left: var(--wp-sp-2);
+    bottom: 64px;
+    width: auto;
+    padding: var(--wp-sp-2);
+    gap: var(--wp-sp-2);
+  }
+
+  [data-idle="true"] > .card {
+    bottom: var(--wp-sp-2);
+  }
+
+  .thumb {
+    width: 88px;
+    align-self: center;
+  }
+}
+
+/* Very short players (phone portrait 16:9 stage): no thumbnail, one compact block */
+@container (max-height: 240px) {
+  .thumb {
+    display: none;
+  }
+
+  .show {
+    display: none;
+  }
+}
+
+@keyframes wpNextIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+    transition: none;
+  }
+
+  .progress {
+    transition: none;
+  }
+}
