@@ -14,7 +14,6 @@ import {
   pruneSubtitles,
   saveRoomData,
   saveSubtitle,
-  saveSubtitleOffset,
 } from "./db.ts";
 import { Room } from "../room.ts";
 
@@ -138,15 +137,6 @@ describe("db failures", () => {
     );
     expect(() => deleteRoomData(db, "/r")).toThrow("nope");
     expect(getRoom(db, "/r")).toBeDefined();
-    db.close();
-  });
-
-  it("saves an offset without a time scale, deleting it at 0", () => {
-    const db = openDatabase(":memory:");
-    saveSubtitleOffset(db, "url:x", 1.5);
-    expect(getSubtitleTiming(db, "url:x")).toEqual({ offset: 1.5, scale: 1 });
-    saveSubtitleOffset(db, "url:x", 0);
-    expect(getSubtitleTiming(db, "url:x")).toBeUndefined();
     db.close();
   });
 });

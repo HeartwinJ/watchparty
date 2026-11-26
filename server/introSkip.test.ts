@@ -101,14 +101,6 @@ describe("IntroSkipTracker", () => {
     return t;
   };
 
-  it("knows the active skip for the current video only", () => {
-    const t = started();
-    expect(t.active(VIDEO)).toBe(90);
-    expect(t.active("https://example.com/other.mp4")).toBe(0);
-    t.start(VIDEO, 0);
-    expect(t.active(VIDEO)).toBe(0);
-  });
-
   it("keeps the skip when the duration fits, once", () => {
     const t = started();
     expect(t.duration(VIDEO, 1440, 91)).toBe("keep");

@@ -148,9 +148,9 @@ describe("CallMembership", () => {
       },
     ]);
     // Only the member's own socket can change it
-    expect(c.setMuted(A, "other", false)).toBe(false);
-    expect(c.setMuted(A, "s1", false)).toBe(true);
-    expect(c.setMuted(A, "s1", false)).toBe(false);
+    expect(c.setState(A, "other", { muted: false })).toBe(false);
+    expect(c.setState(A, "s1", { muted: false })).toBe(true);
+    expect(c.setState(A, "s1", { muted: false })).toBe(false);
     expect(c.leave(A, "other")).toBe(false);
     expect(c.leave(A, "s1")).toBe(true);
     expect(c.size).toBe(0);

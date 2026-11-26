@@ -6,11 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Server } from "socket.io";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import type { DatabaseSync } from "node:sqlite";
-import {
-  getSubtitleOffset,
-  getSubtitleTiming,
-  openDatabase,
-} from "./utils/db.ts";
+import { getSubtitleTiming, openDatabase } from "./utils/db.ts";
 import { subtitleOffsetKey } from "./utils/subtitleOffset.ts";
 import { Room } from "./room.ts";
 
@@ -182,7 +178,7 @@ describe("CMD:subtitleOffset", () => {
     const rec = next(sam.socket, "REC:subtitleOffset");
     alex.socket.emit("CMD:subtitleOffset", -1.5);
     await rec;
-    expect(getSubtitleOffset(db, subtitleOffsetKey(VIDEO)!)).toBe(-1.5);
+    expect(getSubtitleTiming(db, subtitleOffsetKey(VIDEO)!)?.offset).toBe(-1.5);
 
     // Another video starts at 0...
     host = next<HostState>(sam.socket, "REC:host");
