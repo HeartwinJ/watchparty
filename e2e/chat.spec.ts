@@ -16,9 +16,17 @@ const isFullscreen = (page: Page) =>
   page.evaluate(() => Boolean(document.fullscreenElement));
 
 async function enterFullscreen(page: Page) {
-  await focusPlayer(page);
-  await page.keyboard.press("f");
-  await expect.poll(() => isFullscreen(page)).toBe(true);
+  await expectMedia(page, (m) => m.readyState >= 2, "the video loaded");
+  // Setup, not the thing under test: retry if the key press came before the player listened
+  await expect(async () => {
+    await focusPlayer(page);
+    await page.keyboard.press("f");
+    await expect.poll(() => isFullscreen(page), { timeout: 2000 }).toBe(true);
+  }).toPass({ timeout: 10_000 });
+  // The app has noticed too (its shortcuts depend on it): the control bar offers to exit
+  await expect(
+    page.getByRole("button", { name: "Exit fullscreen" }).first(),
+  ).toBeAttached();
 }
 
 test("chat messages reach everyone", async ({ join, baseURL }) => {
