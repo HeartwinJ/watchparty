@@ -13,6 +13,7 @@
  * "Set by hand": any CMD:subtitleOffset for the current video, or a saved non-zero offset loaded with the video
  * (we can't tell how it was made). An offset applied by auto-sync doesn't block a later subtitle from re-syncing.
  */
+import { normalizeSubtitleScale } from "./utils/subtitleOffset.ts";
 
 export const SUBTITLE_SYNC_KEY_MAX = 2000;
 /** A claim without a result after this long is given up (the worker has its own stall timeout well below this) */
@@ -72,7 +73,21 @@ export function parseSubtitleSyncCommand(
         typeof d.confidence === "number" && Number.isFinite(d.confidence)
           ? Math.max(0, Math.min(1, d.confidence))
           : undefined;
-      return { action: "result", ...base, offset, confidence };
+      // Optional time scale (frame-rate drift); an invalid one rejects the result
+      let scale: number | undefined;
+      if (d.scale !== undefined) {
+        scale = normalizeSubtitleScale(d.scale);
+        if (scale === undefined) {
+          return undefined;
+        }
+      }
+      return {
+        action: "result",
+        ...base,
+        offset,
+        confidence,
+        ...(scale !== undefined ? { scale } : {}),
+      };
     }
     default:
       return undefined;
@@ -89,16 +104,16 @@ export class SubtitleAutoSync {
   /** How the room's current offset came about */
   private offsetSource: OffsetSource = "none";
 
-  /** The room's video changed (or a saved offset was loaded for it): forget everything */
-  reset(video: string | null, loadedOffset: number) {
+  /** The room's video changed: forget everything. `savedTiming`: a non-default offset/scale was loaded with it. */
+  reset(video: string | null, savedTiming: boolean) {
     this.video = video;
     this.entries.clear();
-    this.offsetSource = loadedOffset !== 0 ? "manual" : "none";
+    this.offsetSource = savedTiming ? "manual" : "none";
   }
 
-  /** A saved offset was restored for the same video (e.g. its metadata arrived) */
-  offsetLoaded(offset: number) {
-    if (offset !== 0) {
+  /** A saved timing was restored for the same video (e.g. its metadata arrived) */
+  offsetLoaded(savedTiming: boolean) {
+    if (savedTiming) {
       this.offsetSource = "manual";
     }
   }

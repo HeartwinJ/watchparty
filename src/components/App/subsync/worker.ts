@@ -1,7 +1,7 @@
 // Auto subtitle sync worker: decode audio windows → speech activity → alignment. Started by runAutoSync (run.ts),
 // which terminates it to cancel.
 import { AudioReadError, readActivityWindows } from "./audio";
-import { alignWindows, isClearMatch, type SyncResult } from "./signal";
+import { alignWithDrift, isClearMatch, type SyncResult } from "./signal";
 import type { SyncRequest, SyncWorkerMessage } from "./run";
 
 const post = (msg: SyncWorkerMessage) => self.postMessage(msg);
@@ -24,7 +24,7 @@ self.onmessage = async (e: MessageEvent<SyncRequest>) => {
         if (sofar.length < 3) {
           return false;
         }
-        const result = alignWindows(sofar, req.cues, {
+        const result = alignWithDrift(sofar, req.cues, {
           maxOffset: req.maxOffset,
         });
         last = { result, windows: sofar.length };
@@ -36,7 +36,7 @@ self.onmessage = async (e: MessageEvent<SyncRequest>) => {
     const result =
       done && done.windows === windows.length
         ? done.result
-        : alignWindows(windows, req.cues, { maxOffset: req.maxOffset });
+        : alignWithDrift(windows, req.cues, { maxOffset: req.maxOffset });
     post({
       type: "result",
       result,

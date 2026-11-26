@@ -47,6 +47,8 @@ const MIGRATIONS: string[] = [
     UNIQUE (roomId, itemKey)
   );
   CREATE INDEX history_updatedAt ON history (updatedAt);`,
+  // 4: subtitle time scale (frame-rate drift): shown time = original × scale + offset
+  `ALTER TABLE subtitle_offsets ADD COLUMN scale REAL NOT NULL DEFAULT 1;`,
 ];
 
 export function migrate(db: DatabaseSync) {
@@ -193,30 +195,51 @@ export function pruneSubtitles(db: DatabaseSync, now = Date.now()) {
   );
 }
 
+/** The saved subtitle timing (offset in seconds, time scale) for a video key, or undefined if none was saved. */
+export function getSubtitleTiming(
+  db: DatabaseSync,
+  videoKey: string,
+): { offset: number; scale: number } | undefined {
+  const row = db
+    .prepare("SELECT offset, scale FROM subtitle_offsets WHERE videoKey = ?")
+    .get(videoKey) as { offset: number; scale: number } | undefined;
+  return row
+    ? { offset: Number(row.offset), scale: Number(row.scale) }
+    : undefined;
+}
+
 /** The saved subtitle offset (seconds) for a video key, or undefined if none was saved. */
 export function getSubtitleOffset(
   db: DatabaseSync,
   videoKey: string,
 ): number | undefined {
-  const row = db
-    .prepare("SELECT offset FROM subtitle_offsets WHERE videoKey = ?")
-    .get(videoKey) as { offset: number } | undefined;
-  return row ? Number(row.offset) : undefined;
+  return getSubtitleTiming(db, videoKey)?.offset;
 }
 
-/** Saves a video's subtitle offset. An offset of 0 deletes the row (it's the default). */
+/** Saves a video's subtitle timing. Offset 0 with scale 1 deletes the row (it's the default). */
+export function saveSubtitleTiming(
+  db: DatabaseSync,
+  videoKey: string,
+  timing: { offset: number; scale: number },
+  now = Date.now(),
+) {
+  if (timing.offset === 0 && timing.scale === 1) {
+    db.prepare("DELETE FROM subtitle_offsets WHERE videoKey = ?").run(videoKey);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO subtitle_offsets (videoKey, offset, scale, updatedAt) VALUES (?, ?, ?, ?)
+     ON CONFLICT(videoKey) DO UPDATE SET offset = excluded.offset, scale = excluded.scale,
+       updatedAt = excluded.updatedAt`,
+  ).run(videoKey, timing.offset, timing.scale, now);
+}
+
+/** Saves a video's subtitle offset with no time scale. An offset of 0 deletes the row (it's the default). */
 export function saveSubtitleOffset(
   db: DatabaseSync,
   videoKey: string,
   offset: number,
   now = Date.now(),
 ) {
-  if (offset === 0) {
-    db.prepare("DELETE FROM subtitle_offsets WHERE videoKey = ?").run(videoKey);
-    return;
-  }
-  db.prepare(
-    `INSERT INTO subtitle_offsets (videoKey, offset, updatedAt) VALUES (?, ?, ?)
-     ON CONFLICT(videoKey) DO UPDATE SET offset = excluded.offset, updatedAt = excluded.updatedAt`,
-  ).run(videoKey, offset, now);
+  saveSubtitleTiming(db, videoKey, { offset, scale: 1 }, now);
 }

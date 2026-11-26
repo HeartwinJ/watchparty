@@ -199,7 +199,7 @@ export function useRoom(roomId: string) {
       if (!shareSession.isFile) {
         player.current().clearState();
       }
-      subtitles.onHostOffset(data.subtitleOffset);
+      subtitles.onHostOffset(data.subtitleOffset, data.subtitleScale);
       if (data.subtitle) {
         player.current().loadSubtitles(data.subtitle);
         // Room auto-sync (waits for the cues to load; no-op unless the room setting is on)
@@ -371,7 +371,7 @@ export function useRoom(roomId: string) {
       },
       "REC:subtitleOffset": (data) => {
         if (data && typeof data.offset === "number") {
-          subtitles.onRemoteOffset(data.offset);
+          subtitles.onRemoteOffset(data.offset, data.scale);
         }
       },
       "REC:seek": (time) => player.localSeek(time),

@@ -70,6 +70,8 @@ interface HostState {
   loop: boolean;
   /** Room-wide subtitle offset in seconds (positive = later). Missing from older servers. */
   subtitleOffset?: number;
+  /** Room-wide subtitle time scale (frame-rate drift), shown = original × scale + offset; 1 when absent */
+  subtitleScale?: number;
 }
 
 /** Who sent a room-wide playback change (REC:play / REC:pause / REC:subtitleOffset) */
@@ -131,6 +133,8 @@ type SubtitleSyncCommand =
       video: string;
       key: string;
       offset: number | null;
+      /** Time scale for frame-rate drift (0.9–1.1): shown = original × scale + offset; default 1 */
+      scale?: number;
       confidence?: number;
     }
   | { action: "failed"; video: string; key: string };
@@ -146,6 +150,8 @@ interface SubtitleSyncEvent {
   key: string;
   by?: PlaybackActor;
   offset?: number | null;
+  /** With `done`: the time scale applied when it isn't 1 */
+  scale?: number;
   reason?: "off" | "stale" | "manual" | "busy" | "done";
 }
 

@@ -13,6 +13,7 @@ import type { Room } from "../hooks/useRoom";
 import {
   SUBTITLE_OFFSET_SLIDER_MAX,
   describeOffset,
+  describeScale,
   effectiveOffset,
   formatOffset,
   parseOffsetInput,
@@ -284,6 +285,11 @@ export function SubtitlesMenu(props: {
                 onChange={(v) => subtitles.setOffset(v)}
               />
               <small aria-live="polite">{describeOffset(offset)}</small>
+              {subtitles.getTiming().scale !== 1 && (
+                <small title="Corrects a frame-rate mismatch: subtitles timed for the first rate, video at the second. Reset clears it.">
+                  {describeScale(subtitles.getTiming().scale)}
+                </small>
+              )}
             </div>
             <button
               className={styles.step}

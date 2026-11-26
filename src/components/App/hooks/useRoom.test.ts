@@ -316,6 +316,74 @@ describe("useRoom", () => {
     expect(result.current.subtitles.getOffset()).toBe(0.2);
   });
 
+  it("keeps the time scale on nudges, sets it with the timing and resets both", async () => {
+    const { result, socket } = await setup();
+    const scale = 24000 / 1001 / 25;
+    await act(async () =>
+      socket.receive("REC:host", {
+        video: "https://example.com/movie.mp4",
+        videoTS: 0,
+        subtitle: "",
+        paused: true,
+        playbackRate: 1,
+        loop: false,
+        subtitleOffset: 1,
+        subtitleScale: 1.041667,
+      }),
+    );
+    expect(result.current.subtitles.getTiming()).toEqual({
+      offset: 1,
+      scale: 1.041667,
+    });
+    act(() => result.current.subtitles.nudgeOffset(0.1));
+    expect(socket.emits("CMD:subtitleOffset")).toEqual([[1.1]]);
+    expect(result.current.subtitles.getTiming()).toEqual({
+      offset: 1.1,
+      scale: 1.041667,
+    });
+    act(() => void result.current.subtitles.setTiming(-2.35, scale));
+    expect(socket.emits("CMD:subtitleTiming")).toEqual([
+      [{ offset: -2.35, scale: 0.959041 }],
+    ]);
+    // Remote changes carry the scale; an older server's message keeps it
+    act(() =>
+      socket.receive("REC:subtitleOffset", { offset: 0.5, scale: 1.001 }),
+    );
+    expect(result.current.subtitles.getTiming()).toEqual({
+      offset: 0.5,
+      scale: 1.001,
+    });
+    act(() => socket.receive("REC:subtitleOffset", { offset: 0.7 }));
+    expect(result.current.state.roomSubtitleScale).toBe(1.001);
+    // "Just me" copies both and changes them locally
+    act(() => {
+      result.current.subtitles.setScope("me");
+      result.current.subtitles.setTiming(3, 0.96);
+    });
+    expect(socket.emits("CMD:subtitleTiming")).toHaveLength(1);
+    expect(result.current.subtitles.getTiming()).toEqual({
+      offset: 3,
+      scale: 0.96,
+    });
+    act(() => result.current.subtitles.resetOffset());
+    expect(result.current.subtitles.getTiming()).toEqual({
+      offset: 0.7,
+      scale: 1.001,
+    });
+    // Reset for everyone clears both
+    act(() => {
+      result.current.subtitles.setScope("everyone");
+      result.current.subtitles.resetOffset();
+    });
+    expect(socket.emits("CMD:subtitleTiming").at(-1)).toEqual([
+      { offset: 0, scale: 1 },
+    ]);
+    expect(result.current.subtitles.getTiming()).toEqual({
+      offset: 0,
+      scale: 1,
+    });
+  });
+
   it("sends typed commands", async () => {
     const { result, socket } = await setup();
     act(() => {

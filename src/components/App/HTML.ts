@@ -22,6 +22,8 @@ export class HTML implements Player {
   private subtitlesEnabled = false;
   /** User/room offset and the screen-sharer correction, in seconds */
   private subtitleOffset = 0;
+  /** Time scale for frame-rate drift: cues show at original × scale + offset */
+  private subtitleScale = 1;
   private sharerShift = 0;
   private cueOriginals = new WeakMap<CueLike, { start: number; end: number }>();
   /** The <track> element we added for the room subtitle */
@@ -195,9 +197,10 @@ export class HTML implements Player {
     this.applyCueShift();
   };
 
-  /** Room or "just me" subtitle offset in seconds (positive = later) */
-  setSubtitleOffset = (offset: number) => {
+  /** Room or "just me" subtitle offset in seconds (positive = later) and time scale (frame-rate drift, 1 = none) */
+  setSubtitleOffset = (offset: number, scale = 1) => {
     this.subtitleOffset = offset;
+    this.subtitleScale = scale;
     this.applyCueShift();
   };
 
@@ -208,7 +211,7 @@ export class HTML implements Player {
     for (let i = 0; i < (tracks?.length ?? 0); i++) {
       const cues = tracks[i].cues;
       if (cues?.length) {
-        retimeCues(cues, shift, this.cueOriginals);
+        retimeCues(cues, shift, this.cueOriginals, this.subtitleScale);
       }
     }
   };

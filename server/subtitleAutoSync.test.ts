@@ -10,9 +10,9 @@ const V = "https://cdn.example.com/movie.mkv";
 const K = "room:https://subs.example.com/a.srt";
 const on = (now = 0) => ({ enabled: true, video: V, now });
 
-const fresh = (loadedOffset = 0) => {
+const fresh = (savedTiming = false) => {
   const s = new SubtitleAutoSync();
-  s.reset(V, loadedOffset);
+  s.reset(V, savedTiming);
   return s;
 };
 
@@ -47,6 +47,27 @@ describe("parseSubtitleSyncCommand", () => {
         offset: null,
       }),
     ).toMatchObject({ offset: null });
+  });
+
+  it("accepts an optional time scale and rejects a bad one", () => {
+    expect(
+      parseSubtitleSyncCommand({
+        action: "result",
+        video: V,
+        key: K,
+        offset: 1,
+        scale: 0.959041,
+      }),
+    ).toMatchObject({ scale: 0.959041 });
+    expect(
+      parseSubtitleSyncCommand({
+        action: "result",
+        video: V,
+        key: K,
+        offset: 1,
+        scale: 1.5,
+      }),
+    ).toBeUndefined();
   });
 
   it("rejects junk", () => {
@@ -124,7 +145,7 @@ describe("SubtitleAutoSync", () => {
 
   it("never overrides an offset set by hand", () => {
     // Saved non-zero offset loaded with the video
-    expect(fresh(1.5).claim("a", { video: V, key: K }, on())).toMatchObject({
+    expect(fresh(true).claim("a", { video: V, key: K }, on())).toMatchObject({
       reason: "manual",
     });
     // Someone typed an offset before anyone claimed
@@ -142,9 +163,9 @@ describe("SubtitleAutoSync", () => {
     });
     // A saved offset restored when the metadata arrives counts too
     const u = fresh();
-    u.offsetLoaded(0);
+    u.offsetLoaded(false);
     expect(u.getOffsetSource()).toBe("none");
-    u.offsetLoaded(-2);
+    u.offsetLoaded(true);
     expect(u.claim("a", { video: V, key: K }, on())).toMatchObject({
       reason: "manual",
     });
@@ -210,7 +231,7 @@ describe("SubtitleAutoSync", () => {
     s.claim("a", { video: V, key: K }, on());
     s.manualOffset();
     const W = "https://cdn.example.com/next.mkv";
-    s.reset(W, 0);
+    s.reset(W, false);
     expect(
       s.claim("a", { video: W, key: K }, { enabled: true, video: W, now: 0 }),
     ).toEqual({ granted: true });

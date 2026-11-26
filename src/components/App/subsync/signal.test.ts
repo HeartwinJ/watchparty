@@ -7,8 +7,11 @@ import {
   cueSignal,
   detrend,
   downmix,
+  DRIFT_SCALES,
+  alignWithDrift,
   fft,
   isClearMatch,
+  pickScale,
   planWindows,
   windowSecondsForBitrate,
   roundOffset,
@@ -334,5 +337,74 @@ describe("listening budget", () => {
     // Unknown size/duration
     expect(windowSecondsForBitrate(null, hour, 4, 90)).toBe(90);
     expect(windowSecondsForBitrate(1e9, NaN, 4, 90)).toBe(90);
+  });
+});
+
+describe("drift (time scale)", () => {
+  // 50 minutes of dialogue; 45 s windows spread over it, so a 4% drift moves later windows by up to ~2 min
+  const cues = makeCues(21, 5, 3000);
+  const windows = [60, 900, 1700, 2600].map((start) =>
+    activityWindow(synthAudio(cues, start, 45, { seed: start }), start),
+  );
+  const FILM = 24000 / 1001;
+  // Subtitles that need original × scale + offset to match the audio
+  const drifted = (scale: number, offset: number) =>
+    cues.map((c) => ({
+      start: (c.start - offset) / scale,
+      end: (c.end - offset) / scale,
+    }));
+
+  it.each([
+    [FILM / 25, 3.1],
+    [25 / FILM, -4.2],
+    [24 / 25, -10],
+    [25 / 24, 0.5],
+  ])("recovers scale %s and offset %s", (scale, offset) => {
+    const r = alignWithDrift(windows, drifted(scale, offset), {
+      maxOffset: 300,
+    });
+    expect(r.scale).toBeCloseTo(scale, 6);
+    expect(r.offset).not.toBeNull();
+    expect(Math.abs(r.offset! - offset)).toBeLessThanOrEqual(0.1);
+  });
+
+  it("keeps scale 1 when there is no drift", () => {
+    const r = alignWithDrift(windows, drifted(1, 2.35), { maxOffset: 300 });
+    expect(r.scale).toBe(1);
+    expect(r.offset).toBeCloseTo(2.35, 1);
+  });
+
+  it("plain alignment can't match drifted subtitles that drift corrects", () => {
+    const plain = alignWithDrift(windows, drifted(FILM / 25, 0), {
+      maxOffset: 300,
+      scales: [1],
+    });
+    expect(plain.offset === null || Math.abs(plain.offset) > 1).toBe(true);
+  });
+
+  it("refuses noise at every scale", () => {
+    const r1 = rng(9);
+    const noise = [60, 900, 1700].map((start) =>
+      activityWindow(
+        Float32Array.from({ length: 45 * RATE }, () => 0.2 * r1()),
+        start,
+      ),
+    );
+    expect(alignWithDrift(noise, cues, { maxOffset: 300 }).offset).toBeNull();
+  });
+
+  it("prefers 1 unless another scale is clearly better", () => {
+    const r = (scale: number, peakZ: number, ok = true) => ({
+      offset: ok ? 0 : null,
+      scale,
+      confidence: 0.5,
+      peakZ,
+      candidate: 0,
+    });
+    expect(pickScale([r(1, 10), r(1000 / 1001, 10.5)])).toBe(1);
+    expect(pickScale([r(1, 10), r(25 / 24, 11.5)])).toBe(25 / 24);
+    expect(pickScale([r(1, 5, false), r(25 / 24, 7)])).toBe(25 / 24);
+    expect(pickScale([r(1, 5, false), r(0.96, 5, false)])).toBeUndefined();
+    expect(DRIFT_SCALES[0]).toBe(1);
   });
 });

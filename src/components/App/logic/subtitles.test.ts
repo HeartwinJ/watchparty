@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeScale,
+  formatTiming,
+  normalizeScale,
   describeOffset,
   effectiveOffset,
   formatOffset,
@@ -145,5 +148,43 @@ describe("cuesAt", () => {
   it("handles no cues and bad times", () => {
     expect(cuesAt(null, 1)).toEqual([]);
     expect(cuesAt(cues, NaN)).toEqual([]);
+  });
+});
+
+describe("time scale (frame-rate drift)", () => {
+  it("re-times cues to original × scale + shift, from the originals", () => {
+    const cues: CueLike[] = [
+      { startTime: 100, endTime: 102 },
+      { startTime: 1000, endTime: 1004 },
+    ];
+    const originals = new WeakMap<CueLike, { start: number; end: number }>();
+    retimeCues(cues, 2, originals, 0.96);
+    expect(cues[0].startTime).toBeCloseTo(98);
+    expect(cues[1].endTime).toBeCloseTo(1004 * 0.96 + 2);
+    // Repeated calls don't accumulate; scale 1 brings back a plain shift
+    retimeCues(cues, 2, originals, 0.96);
+    expect(cues[0].startTime).toBeCloseTo(98);
+    retimeCues(cues, 0, originals);
+    expect(cues[0]).toEqual({ startTime: 100, endTime: 102 });
+  });
+
+  it("normalizes scales like the server", () => {
+    expect(normalizeScale(24000 / 1001 / 25)).toBe(0.959041);
+    expect(normalizeScale(1.0000001)).toBe(1);
+    expect(normalizeScale(1.5)).toBe(1);
+    expect(normalizeScale(undefined)).toBe(1);
+  });
+
+  it("describes scales with the frame rates they come from", () => {
+    expect(describeScale(1)).toBe("");
+    expect(describeScale(0.959041)).toBe("speed 0.959 (23.976→25 fps)");
+    expect(describeScale(1.042708)).toBe("speed 1.043 (25→23.976 fps)");
+    expect(describeScale(0.96)).toBe("speed 0.960 (24→25 fps)");
+    expect(describeScale(0.999001)).toBe("speed 0.9990 (23.976→24 fps)");
+    expect(describeScale(1.0023)).toBe("speed 1.0023");
+    expect(formatTiming(2.35, 1)).toBe("+2.35 s");
+    expect(formatTiming(2.35, 0.959041)).toBe(
+      "+2.35 s · speed 0.959 (23.976→25 fps)",
+    );
   });
 });
