@@ -191,12 +191,53 @@ describe("room page roles", () => {
         title: "",
         readyCheck: false,
         nextEpisodeOffset: 25,
+        autoSyncSubtitles: false,
       });
     });
     expect(
       (screen.getByRole("switch", { name: /Ready check/ }) as HTMLInputElement)
         .checked,
     ).toBe(false);
+  });
+
+  it("the auto-sync subtitles switch is a room setting for owners", async () => {
+    const socket = await renderRoom("owner");
+    await openSettings();
+    const toggle = (await screen.findByRole("switch", {
+      name: /Auto-sync subtitles/,
+    })) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(socket.emitted).toContainEqual([
+      "CMD:roomSettings",
+      { autoSyncSubtitles: true },
+    ]);
+    await act(async () => {
+      socket.receive("REC:roomSettings", {
+        title: "",
+        readyCheck: false,
+        nextEpisodeOffset: 25,
+        autoSyncSubtitles: true,
+      });
+    });
+    expect(
+      (
+        screen.getByRole("switch", {
+          name: /Auto-sync subtitles/,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+
+    cleanup();
+    sockets.length = 0;
+    await renderRoom("guest");
+    await openSettings();
+    await screen.findByText(/Only the room's owner can change/);
+    expect(
+      screen.queryByRole("switch", { name: /Auto-sync subtitles/ }),
+    ).toBeNull();
   });
 
   it("owners can delete the room after confirming; guests can't", async () => {

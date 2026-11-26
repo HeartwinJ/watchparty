@@ -21,6 +21,7 @@ import {
 } from "../logic/subtitles";
 import type { SubtitleStyle } from "./useSubtitleStyle";
 import type { useTextTracks } from "./useTextTracks";
+import { AutoSyncButton } from "../subsync/AutoSyncButton";
 import styles from "./Player.module.css";
 
 const SIZES: [SubtitleSize, string][] = [
@@ -156,6 +157,7 @@ export function SubtitlesMenu(props: {
                     onClick={() => {
                       player.html().selectSubtitleTrack(t.index);
                       tracks.refresh();
+                      room.subsync.evaluate();
                     }}
                   >
                     <IconCheck size={16} className={styles.check} />
@@ -323,6 +325,7 @@ export function SubtitlesMenu(props: {
               <kbd className={styles.kbd}>]</kbd> ±0.1 s · or type a value
             </span>
           </div>
+          <AutoSyncButton room={room} hasTrack={!off} />
           <div
             className={styles.seg}
             role="group"

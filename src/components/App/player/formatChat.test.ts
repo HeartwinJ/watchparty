@@ -15,6 +15,22 @@ describe("describeChatCommand roomSettings", () => {
     expect(settings({ nextEpisodeOffset: 30 })).toBe(
       "set the next-episode card to 30s before the end",
     );
+    expect(settings({ autoSyncSubtitles: true })).toBe(
+      "turned subtitle auto-sync on",
+    );
+    expect(settings({ autoSyncSubtitles: false })).toBe(
+      "turned subtitle auto-sync off",
+    );
+  });
+
+  it("describes the room's subtitle auto-sync", () => {
+    expect(describeChatCommand("subtitleAutoSync", "2.35")).toBe(
+      "auto-synced the subtitles: +2.35 s for everyone",
+    );
+    expect(describeChatCommand("subtitleAutoSync", "0")).toBe(
+      "auto-synced the subtitles (already in sync)",
+    );
+    expect(describeChatCommand("subtitleAutoSync", "x")).toBeUndefined();
   });
 
   it("returns undefined for unknown or broken payloads", () => {

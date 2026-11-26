@@ -62,6 +62,10 @@ describe("parseRoomSettingsPatch", () => {
     expect(parseRoomSettingsPatch({ readyCheck: true })).toEqual({
       readyCheck: true,
     });
+    expect(
+      parseRoomSettingsPatch({ autoSyncSubtitles: true, readyCheck: 0 }),
+    ).toEqual({ autoSyncSubtitles: true });
+    expect(parseRoomSettingsPatch({ autoSyncSubtitles: "on" })).toBeUndefined();
   });
 
   it("returns undefined when nothing valid is left", () => {
@@ -79,11 +83,13 @@ describe("normalizeRoomSettings", () => {
       title: "",
       readyCheck: true,
       nextEpisodeOffset: 25,
+      autoSyncSubtitles: false,
     });
     expect(normalizeRoomSettings({ title: "Friday", junk: true })).toEqual({
       title: "Friday",
       readyCheck: true,
       nextEpisodeOffset: 25,
+      autoSyncSubtitles: false,
     });
   });
 });

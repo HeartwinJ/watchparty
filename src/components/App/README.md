@@ -88,6 +88,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s                       |
 | `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)                      |
 | `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic                                |
+| `subsync/`                                | Subtitle auto-sync: signal processing, worker, `useSubtitleSync`, the wand (`AutoSyncButton`)                 |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                                            |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits                      |
 | `roomRoles.test.tsx`                      | Owner vs guest room page: settings, room password, remove person, invite links                                |
@@ -106,7 +107,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   the right-hand group) and `{/* SLOT(C): <SourcePicker room={room} /> */}` at the end of `RoomLayout` in `App.tsx`.
   The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
   queue" uses `openPicker({ mode: "queue" })`.
-- **Room settings:** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`) comes
+- **Room settings:** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`, `autoSyncSubtitles`) comes
   from `REC:roomSettings` (on connect and after every change) and starts as `DEFAULT_ROOM_SETTINGS` (`roomState.ts`).
   Change it with `room.cmd.setRoomSettings(patch)`; the server normalizes, broadcasts to everyone and posts a debounced
   `roomSettings` chat line. The settings modal sends the title on blur/Enter, the ready check switch immediately and the
@@ -201,6 +202,46 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   rate proportionally (0.95–1.05× the room speed, start at 0.3 s, stop under 0.1 s), more seeks (3 s cooldown).
   YouTube only uses rates from `getAvailablePlaybackRates()` and otherwise seeks from 1 s. `state.syncStatus` is
   `in-sync` / `catching-up` (seconds behind) / `buffering` / `reconnecting`; `SyncIndicator({ room })` shows it.
+
+## Subtitle auto-sync (`subsync/`)
+
+ffsubsync-style: line the selected subtitle track up with the speech in the audio, entirely in the browser.
+
+- **Pipeline** (`subsync/signal.ts`, pure, no imports, tested with synthetic audio): `SpeechActivityMeter` (mono audio →
+  300–3400 Hz band energy per 10 ms frame, two biquads each side, no resampling) → `speechActivity` (adaptive noise
+  floor that drops at once and rises 1.5 dB/s, soft threshold 12 dB above it, 70 ms smoothing) and `cueSignal` (1 inside
+  a cue at its ORIGINAL time, 0 outside) → `alignWindows`: per audio window, the activity is detrended (5 s) and
+  FFT-cross-correlated with the cue signal over ±10 min, normalized per lag like a Pearson correlation (+ shrinkage, so a
+  stretch with one stray cue can't win); the window curves are summed, the best lag is refined parabolically and
+  rounded to 0.05 s. **Confidence:** `peakZ` (best vs. all lags in std devs) ≥ 6 and `confidence` = 1 − runner-up /
+  best (outside ±1.5 s) ≥ 0.3, with at least two windows contributing; otherwise `offset` is null and nothing changes.
+  The result is `{offset, scale: 1, confidence, peakZ, candidate}`; `syncResultToTiming()` (`logic.ts`) is the one
+  place that turns it into what the player applies, so a later time scale (frame-rate drift) slots in there.
+- **Audio** (`audio.ts` in `worker.ts`, started by `run.ts` `runAutoSync`, cancelled by terminating the worker):
+  mediabunny reads the direct link via range requests (`UrlSource`, 3 retries, 20 s stall timeout) or the sharer's
+  `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
+  (first to last cue); audio is interleaved with video, so listening costs about bitrate × seconds:
+  `windowSecondsForBitrate` shortens the windows to stay near 300 MB, never below 4 × 60 s. After the 3rd window a very
+  clear match (`isClearMatch`) stops early. While converting, it listens to the converter's audio track. The URL is
+  never logged (AIOStreams playback URLs carry a credential).
+- **Where:** direct links and (for the sharer only, via `ShareSession.file`) file shares. Not YouTube, screen share,
+  HLS/DASH or live streams; `autoSyncAvailability()` gives the reason the wand shows instead. Needs `Worker` +
+  WebCodecs `AudioDecoder`.
+- **The wand** (`AutoSyncButton` in the subtitles menu's Timing offset section): `room.subsync.syncNow()` aligns the
+  selected track's original cues (`HTML.getOriginalCues`) and applies the offset through `subtitles.setOffset`, so it
+  respects Everyone / Just me and can be fine-tuned with ±0.1 s. Progress ("Listening… 40%") comes from
+  `state.subtitleSyncJob`; closing the menu or a new video cancels it; a toast says "Subtitles synced: +2.35 s" or
+  "Couldn't find a confident match, offset unchanged".
+- **Room auto-sync** (`roomSettings.autoSyncSubtitles`, owners, default off): whenever a subtitle with cues is
+  selected (a room subtitle via `REC:subtitle`/`REC:host`, picking a track in the menu, or the setting turning on),
+  `useSubtitleSync.evaluate()` waits for the cues (up to 20 s) and, if this device can compute it, sends a claim
+  after a random 0–1.5 s. **The server picks the first claim** (`server/subtitleAutoSync.ts`), so exactly one device
+  per (video, subtitle) does the work; everyone else sees "Bob is syncing subtitles for the room…"
+  (`state.subtitleSyncRemote`). The result goes back to the server, which applies it room-wide unless an offset was
+  set by hand (a saved non-zero offset or any manual change wins; the wand always works). A failed or departed
+  claimer releases the job and the others claim again.
+- Tuned on Tears of Steel (CC-BY Blender Foundation, Wikimedia Commons subtitles): known shifts from −250 s to +480 s
+  are found to within 0.1 s; reversed cues and Sintel (26 lines over a loud score) are refused.
 
 ## Ready check
 

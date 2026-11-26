@@ -19,6 +19,8 @@ export interface ShareSession {
   localStream?: MediaStream;
   /** Whether localStream comes from a file played in our own <video> */
   isFile: boolean;
+  /** The local file being shared, if any (subtitle auto-sync reads its audio) */
+  file?: File;
   /** As the sharer: one connection per viewer, by client id */
   publisherConns: PCDict;
   /** As a viewer: the connection to the sharer */
@@ -52,6 +54,9 @@ export function useShare(opts: {
     ) => {
       session.localStream = stream;
       session.isFile = isFile;
+      if (!stream) {
+        session.file = undefined;
+      }
       store.set({ isPublishing: Boolean(stream) });
     };
 
@@ -146,6 +151,7 @@ export function useShare(opts: {
       } else {
         video.src = URL.createObjectURL(source as File);
       }
+      session.file = typeof source === "string" ? undefined : source;
       video.play();
       //@ts-expect-error captureStream isn't in the DOM types for HTMLMediaElement
       const stream: MediaStream | undefined = video?.captureStream();

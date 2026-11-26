@@ -19,7 +19,11 @@ export interface ServerToClientEvents {
   "REC:subtitleOffset": (data: {
     offset: number;
     actor?: PlaybackActor;
+    /** Applied by the room's auto-sync (sent to everyone, including `actor`) */
+    auto?: boolean;
   }) => void;
+  /** Room auto-sync of subtitles: who's computing it, and the outcome (see server/subtitleAutoSync.ts) */
+  "REC:subtitleSync": (event: SubtitleSyncEvent) => void;
   "REC:seek": (time: number) => void;
   "REC:playbackRate": (rate: number) => void;
   "REC:subtitle": (url: string) => void;
@@ -103,6 +107,8 @@ export interface ClientToServerEvents {
   "CMD:subtitle": (url: string) => void;
   /** Room-wide subtitle offset in seconds (server clamps to ±24 h, rounds to 0.05 s) */
   "CMD:subtitleOffset": (offset: number) => void;
+  /** Room auto-sync: claim the job, report its result, or give it back */
+  "CMD:subtitleSync": (cmd: SubtitleSyncCommand) => void;
   "CMD:askHost": () => void;
   "CMD:playlistNext": (endedUrl: string) => void;
   "CMD:playlistAdd": (item: string | PlaylistAddItem) => void;
@@ -167,6 +173,7 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     leaveScreenShare: () => emit("CMD:leaveScreenShare"),
     setSubtitle: (url: string) => emit("CMD:subtitle", url),
     setSubtitleOffset: (offset: number) => emit("CMD:subtitleOffset", offset),
+    subtitleSync: (cmd: SubtitleSyncCommand) => emit("CMD:subtitleSync", cmd),
     askHost: () => emit("CMD:askHost"),
     playlistNext: (endedUrl: string) => emit("CMD:playlistNext", endedUrl),
     playlistAdd: (url: string) => emit("CMD:playlistAdd", url),

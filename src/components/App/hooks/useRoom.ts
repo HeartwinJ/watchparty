@@ -32,6 +32,7 @@ import { useChat } from "./useChat";
 import { usePlaylist } from "./usePlaylist";
 import { useSubtitles } from "./useSubtitles";
 import { useReadyCheck } from "./useReadyCheck";
+import { useSubtitleSync } from "../subsync/useSubtitleSync";
 import { toast } from "../ui/toast";
 import { useAuth } from "../../AuthGate/AuthGate";
 import { navigate } from "../../../router";
@@ -118,6 +119,14 @@ export function useRoom(roomId: string) {
   const chat = useChat({ store, chatRef });
   const playlist = usePlaylist({ store, cmd });
   const subtitles = useSubtitles({ store, player, clientId, cmd });
+  const subsync = useSubtitleSync({
+    store,
+    player,
+    cmd,
+    clientId,
+    subtitles,
+    share: shareSession,
+  });
   const readyCheck = useReadyCheck({
     store,
     cmd,
@@ -166,6 +175,7 @@ export function useRoom(roomId: string) {
         // Ignore, it's probably a reconnection
         return;
       }
+      subsync.onVideoChange();
       store.set({
         roomMedia: currentMedia,
         roomPaused: data.paused,
@@ -192,6 +202,8 @@ export function useRoom(roomId: string) {
       subtitles.onHostOffset(data.subtitleOffset);
       if (data.subtitle) {
         player.current().loadSubtitles(data.subtitle);
+        // Room auto-sync (waits for the cues to load; no-op unless the room setting is on)
+        subsync.evaluate();
       }
       if (data.playbackRate) {
         player.current().setPlaybackRate(data.playbackRate);
@@ -369,7 +381,11 @@ export function useRoom(roomId: string) {
           player.current().setPlaybackRate(rate);
         }
       },
-      "REC:subtitle": subtitles.onSubtitle,
+      "REC:subtitle": (url) => {
+        subtitles.onSubtitle(url);
+        subsync.evaluate();
+      },
+      "REC:subtitleSync": subsync.onEvent,
       "REC:loop": (loop) => store.set({ roomLoop: loop }),
       "REC:host": onHost,
       "REC:chat": chat.onMessage,
@@ -392,7 +408,14 @@ export function useRoom(roomId: string) {
       "REC:videoMeta": (videoMeta) => store.set({ videoMeta }),
       "REC:playbackIssue": (issue) =>
         store.set({ playbackIssue: { ...issue, at: Date.now() } }),
-      "REC:roomSettings": (roomSettings) => store.set({ roomSettings }),
+      "REC:roomSettings": (roomSettings) => {
+        const was = store.get().roomSettings.autoSyncSubtitles;
+        store.set({ roomSettings });
+        if (roomSettings.autoSyncSubtitles && !was) {
+          // Turned on with subtitles already showing: sync those too
+          subsync.evaluate();
+        }
+      },
       "REC:readyCheck": readyCheck.onState,
       "REC:nextEpisode": (nextEpisode) =>
         store.set({ nextEpisode: { ...nextEpisode, at: Date.now() } }),
@@ -410,6 +433,7 @@ export function useRoom(roomId: string) {
     share,
     chat,
     subtitles,
+    subsync,
     readyCheck,
     shareSession,
     showMessage,
@@ -483,6 +507,7 @@ export function useRoom(roomId: string) {
     share,
     playlist,
     subtitles,
+    subsync,
     readyCheck,
     showError,
     updateName: actions.updateName,

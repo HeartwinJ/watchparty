@@ -34,6 +34,15 @@ export function describeChatCommand(
           : `set subtitles ${formatOffset(n)} for everyone`
         : undefined;
     }
+    case "subtitleAutoSync": {
+      // The room's auto-sync applied an offset computed on this person's device
+      const n = Number(msg);
+      return Number.isFinite(n)
+        ? n === 0
+          ? "auto-synced the subtitles (already in sync)"
+          : `auto-synced the subtitles: ${formatOffset(n)} for everyone`
+        : undefined;
+    }
     case "roomSettings":
       return describeRoomSettingsChange(msg);
     case "nowPlaying":
@@ -112,6 +121,9 @@ function describeRoomSettingsChange(msg: string | undefined) {
   }
   if (typeof change.readyCheck === "boolean") {
     return `turned the ready check ${change.readyCheck ? "on" : "off"}`;
+  }
+  if (typeof change.autoSyncSubtitles === "boolean") {
+    return `turned subtitle auto-sync ${change.autoSyncSubtitles ? "on" : "off"}`;
   }
   if (typeof change.nextEpisodeOffset === "number") {
     return `set the next-episode card to ${change.nextEpisodeOffset}s before the end`;

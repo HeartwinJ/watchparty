@@ -87,6 +87,7 @@ describe("Room settings", () => {
       title: "",
       readyCheck: true,
       nextEpisodeOffset: 25,
+      autoSyncSubtitles: false,
     });
   });
 
@@ -107,6 +108,7 @@ describe("Room settings", () => {
       title: "Movie night",
       readyCheck: true,
       nextEpisodeOffset: 120,
+      autoSyncSubtitles: false,
     };
     expect(await toA).toEqual(expected);
     expect(await toB).toEqual(expected);
@@ -179,6 +181,7 @@ describe("Room settings", () => {
       title: "Saved",
       readyCheck: false,
       nextEpisodeOffset: 25,
+      autoSyncSubtitles: false,
     });
     loaded.destroy();
 
@@ -190,6 +193,7 @@ describe("Room settings", () => {
       title: "",
       readyCheck: true,
       nextEpisodeOffset: 25,
+      autoSyncSubtitles: false,
     });
     legacy.destroy();
   });
