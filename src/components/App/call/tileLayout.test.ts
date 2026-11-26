@@ -122,8 +122,14 @@ describe("tileSize", () => {
 
 describe("tilesPerColumn", () => {
   it("wraps into more columns when the column is full", () => {
-    expect(tilesPerColumn(120, 600)).toBe(4);
-    expect(tilesPerColumn(120, 50)).toBe(1);
+    expect(tilesPerColumn(120, 600, 8)).toBe(4);
+    expect(tilesPerColumn(120, 50, 8)).toBe(1);
+  });
+
+  it("has no more rows than tiles, so the strip stays as tall as its tiles", () => {
+    expect(tilesPerColumn(120, 600, 1)).toBe(1);
+    expect(tilesPerColumn(120, 600, 3)).toBe(3);
+    expect(tilesPerColumn(120, 600, 0)).toBe(1);
   });
 });
 

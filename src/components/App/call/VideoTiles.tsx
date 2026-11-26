@@ -27,6 +27,9 @@ import {
 import { useCallVideo } from "./videoStreams";
 import styles from "./VideoTiles.module.css";
 
+/** What a drag reads from pointer events */
+type DragPointer = Pick<PointerEvent, "pointerId" | "clientX" | "clientY">;
+
 /** The strip's header (grip, collapse, hide), px */
 const HEADER_H = 24;
 
@@ -78,6 +81,13 @@ export const VideoTiles = ({
     moved: boolean;
   } | null>(null);
   const suppressClick = useRef(false);
+  // The latest move/end handlers, for the window listeners a drag adds (they need this render's sizes)
+  const dragHandlers = useRef<{
+    move: (e: DragPointer) => void;
+    end: (e: DragPointer) => void;
+  } | null>(null);
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
 
   const savePosition = (next: StripPosition) => {
     setPrefs(next);
@@ -104,9 +114,11 @@ export const VideoTiles = ({
     ? tileSize(player, { phone, enlarged: true, availableHeight: available })
     : null;
   const small = tileSize(player, { phone, availableHeight: available });
+  const smallMembers = members.filter((m) => m.clientId !== big);
   const rows = tilesPerColumn(
     small.height,
     available - (bigSize ? bigSize.height + TILE_GAP : 0),
+    smallMembers.length,
   );
   const offset = dragOffset ?? stripOffset(prefs, strip, player, insets);
 
@@ -121,8 +133,22 @@ export const VideoTiles = ({
       origin: offset,
       moved: false,
     };
+    // Follow the pointer on the window, not the strip: a quick drag leaves the strip before its first move event
+    stopDrag.current?.();
+    const move = (ev: globalThis.PointerEvent) =>
+      dragHandlers.current?.move(ev);
+    const end = (ev: globalThis.PointerEvent) => dragHandlers.current?.end(ev);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    stopDrag.current = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      stopDrag.current = null;
+    };
   };
-  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+  const onPointerMove = (e: DragPointer) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) {
       return;
@@ -132,10 +158,7 @@ export const VideoTiles = ({
     if (!d.moved && !isDrag(dx, dy)) {
       return;
     }
-    if (!d.moved) {
-      d.moved = true;
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-    }
+    d.moved = true;
     // Clamp live, so it can't be dragged out of the player
     const pos = positionFromOffset(
       { x: d.origin.x + dx, y: d.origin.y + dy },
@@ -145,12 +168,13 @@ export const VideoTiles = ({
     );
     setDragOffset(stripOffset(pos, strip, player, insets));
   };
-  const onPointerEnd = (e: PointerEvent<HTMLDivElement>) => {
+  const onPointerEnd = (e: DragPointer) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) {
       return;
     }
     drag.current = null;
+    stopDrag.current?.();
     if (d.moved && dragOffset) {
       suppressClick.current = true;
       window.setTimeout(() => (suppressClick.current = false), 0);
@@ -158,13 +182,20 @@ export const VideoTiles = ({
     }
     setDragOffset(null);
   };
+  dragHandlers.current = { move: onPointerMove, end: onPointerEnd };
 
   const nameOf = (id: string) => state.nameMap[id] || "Someone";
   const hide = () => {
     call.setTilesHidden(true);
     toast(
       "Video tiles hidden on this device. Show them again in the call panel.",
-      { id: "wp-call-tiles" },
+      {
+        id: "wp-call-tiles",
+        action: {
+          label: "Show again",
+          onClick: () => call.setTilesHidden(false),
+        },
+      },
     );
   };
 
@@ -229,9 +260,6 @@ export const VideoTiles = ({
       data-dragging={dragOffset ? true : undefined}
       data-collapsed={collapsed || undefined}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
       role="region"
       aria-label="Call video"
     >
@@ -281,16 +309,16 @@ export const VideoTiles = ({
               )}
             </div>
           )}
-          <div
-            className={styles.grid}
-            style={{
-              gridTemplateRows: `repeat(${rows}, ${small.height}px)`,
-            }}
-          >
-            {members
-              .filter((m) => m.clientId !== big)
-              .map((m) => tile(m, small))}
-          </div>
+          {smallMembers.length > 0 && (
+            <div
+              className={styles.grid}
+              style={{
+                gridTemplateRows: `repeat(${rows}, ${small.height}px)`,
+              }}
+            >
+              {smallMembers.map((m) => tile(m, small))}
+            </div>
+          )}
         </>
       )}
     </div>

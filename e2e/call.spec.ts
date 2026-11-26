@@ -325,3 +325,52 @@ test("hidden or collapsed video tiles stop receiving camera video; voice and the
     .toBe(2);
   await expectCall([a, b, c], (v) => (v === b ? 2 : 1), "everyone again");
 });
+
+test("the video tile strip can be dragged into every corner with a quick drag", async ({
+  join,
+  baseURL,
+}) => {
+  const room = await createRoom(baseURL!);
+  const a = await joinPage(join, room, "A");
+  await joinCall(a, { cameraFirst: true });
+  const strip = a.page.getByRole("region", { name: "Call video" });
+  await expect(strip).toBeVisible();
+  const player = (await strip.evaluate((el) => {
+    const r = el.parentElement!.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  }))!;
+
+  // Each drag is 3 big steps, so the pointer leaves the strip on the first move
+  for (const [fx, fy] of [
+    [1, 1],
+    [1, 0],
+    [0, 1],
+    [0, 0],
+  ]) {
+    const s = (await strip.boundingBox())!;
+    await a.page.mouse.move(s.x + s.width / 2, s.y + s.height / 2);
+    await a.page.mouse.down();
+    await a.page.mouse.move(
+      player.x + player.width * (0.05 + 0.9 * fx),
+      player.y + player.height * (0.05 + 0.9 * fy),
+      { steps: 3 },
+    );
+    await a.page.mouse.up();
+    await expect
+      .poll(
+        async () => {
+          const b = (await strip.boundingBox())!;
+          // Distance from the strip to the player's edges in the target corner
+          const dx = fx
+            ? player.x + player.width - (b.x + b.width)
+            : b.x - player.x;
+          const dy = fy
+            ? player.y + player.height - (b.y + b.height)
+            : b.y - player.y;
+          return dx < 40 && dy < 40;
+        },
+        { message: `strip in corner ${fx},${fy}` },
+      )
+      .toBe(true);
+  }
+});
