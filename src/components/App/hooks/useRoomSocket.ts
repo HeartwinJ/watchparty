@@ -44,6 +44,7 @@ const SERVER_EVENT_SET: Record<keyof ServerToClientEvents, true> = {
   "REC:videoMeta": true,
   "REC:playbackIssue": true,
   "REC:nextEpisode": true,
+  "REC:introSkip": true,
   signalSS: true,
   "REC:roomSettings": true,
   "REC:readyCheck": true,

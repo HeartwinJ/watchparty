@@ -378,7 +378,8 @@ export type YoutubeLookup = (
  * - save() on pause and seek,
  * - beforeHostChange() with the outgoing video right before the video changes,
  * - metaAttached() when CMD:videoMeta gives the current video a title/episode identity,
- * - setDuration() for a viewer's CMD:duration report, markEnded() when the video played to its end.
+ * - setDuration() for a viewer's CMD:duration report, markEnded() when the video played to its end,
+ * - setIntroSkip() when the new video started past its intro (and with 0 once someone seeks).
  * Database errors are logged and swallowed: history must never break playback.
  */
 export class HistoryRecorder {
@@ -391,6 +392,8 @@ export class HistoryRecorder {
   private current: string | null = null;
   private duration: number | null = null;
   private ended = false;
+  /** Seconds the current video started in (skip intro): the skipped part doesn't count as watched */
+  private introSkip = 0;
   private hint: { name?: string | null; img?: string | null } | null = null;
   private youtubeNames = new Map<string, string>();
 
@@ -411,6 +414,7 @@ export class HistoryRecorder {
       this.current = video;
       this.duration = null;
       this.ended = false;
+      this.introSkip = 0;
       this.hint = null;
       this.lastWriteAt = 0;
     }
@@ -420,6 +424,15 @@ export class HistoryRecorder {
   setHint(video: string, hint: { name?: string | null; img?: string | null }) {
     this.sync(video);
     this.hint = hint;
+  }
+
+  /**
+   * The current video started `seconds` in (skip intro; call after the host change). Until someone seeks, positions
+   * within HISTORY_MIN_POSITION of that start aren't recorded, so a skipped intro alone doesn't look watched.
+   */
+  setIntroSkip(video: string | null, seconds: number) {
+    this.sync(video);
+    this.introSkip = Math.max(0, seconds);
   }
 
   setDuration(video: string | null, raw: unknown) {
@@ -443,7 +456,7 @@ export class HistoryRecorder {
       // Live streams report negative positions: nothing to resume
       return;
     }
-    if (snap.position < HISTORY_MIN_POSITION && !this.ended) {
+    if (snap.position < HISTORY_MIN_POSITION + this.introSkip && !this.ended) {
       return;
     }
     const desc = describeHistoryItem(snap.video, snap.meta, this.hint);

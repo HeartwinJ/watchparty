@@ -120,6 +120,13 @@ interface RoomSettings {
   nextEpisodeOffset: number;
   /** Align newly loaded subtitles to the audio once (one viewer computes it, see server/subtitleAutoSync.ts) */
   autoSyncSubtitles: boolean;
+  /** Skip intro: a video the room switches to from the beginning starts this many seconds in, 0–600 (0 = off) */
+  skipIntro: number;
+}
+
+/** REC:introSkip: the new video started `seconds` in (skip intro); null hides the notice (undone, seeked, live) */
+interface IntroSkipInfo {
+  seconds: number;
 }
 
 /**

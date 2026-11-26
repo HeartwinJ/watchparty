@@ -1,5 +1,6 @@
 // Room-wide settings (CMD:roomSettings / REC:roomSettings): validation, normalization and a light rate limit.
 // Everything here is pure so it can be unit tested without a socket.
+import { normalizeSkipIntro } from "./introSkip.ts";
 
 export const ROOM_TITLE_MAX = 60;
 export const NEXT_EPISODE_OFFSET_MIN = 5;
@@ -10,6 +11,7 @@ export const DEFAULT_ROOM_SETTINGS: Readonly<RoomSettings> = Object.freeze({
   readyCheck: true,
   nextEpisodeOffset: 25,
   autoSyncSubtitles: false,
+  skipIntro: 0,
 });
 
 /** The settings keys, in the order they're announced in chat */
@@ -18,6 +20,7 @@ export const ROOM_SETTINGS_KEYS = [
   "readyCheck",
   "nextEpisodeOffset",
   "autoSyncSubtitles",
+  "skipIntro",
 ] as const satisfies readonly (keyof RoomSettings)[];
 
 // C0/C1 control characters, plus line/paragraph separators and bidi overrides/isolates (they can reorder the
@@ -75,6 +78,10 @@ export function parseRoomSettingsPatch(
   const offset = normalizeNextEpisodeOffset(data.nextEpisodeOffset);
   if (offset !== undefined) {
     patch.nextEpisodeOffset = offset;
+  }
+  const skipIntro = normalizeSkipIntro(data.skipIntro);
+  if (skipIntro !== undefined) {
+    patch.skipIntro = skipIntro;
   }
   return Object.keys(patch).length > 0 ? patch : undefined;
 }

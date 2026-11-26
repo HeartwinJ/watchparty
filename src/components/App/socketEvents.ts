@@ -56,6 +56,8 @@ export interface ServerToClientEvents {
   "REC:roomDeleted": (info: RoomDeletedInfo) => void;
   /** The room-wide next-episode card (also sent on connect) */
   "REC:nextEpisode": (state: NextEpisodeState) => void;
+  /** The new video started past its intro (skip intro, right after REC:host); null hides the notice */
+  "REC:introSkip": (info: IntroSkipInfo | null) => void;
   signalSS: (data: {
     msg: SignalMessage;
     from: string;

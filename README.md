@@ -14,6 +14,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 - One click on the video plays or pauses for everyone, with a toast saying who did it.
 - **Ready check** (on by default, can be turned off per room): when someone buffers or joins mid-play, the room pauses until everyone has enough loaded.
 - **Next episode**: near the end of an episode, everyone gets an "Up next" card. It plays the next episode from the same release automatically unless someone cancels.
+- **Skip intro** (off by default, per room): every video the room switches to from the beginning (a pick, the queue, the next episode) starts a set time in, for everyone at the same spot. Presets from 15 s to 2:00 or a custom value up to 10 minutes. Everyone sees "Skipped intro (1:30) · Watch from start" for a few seconds. Resumed videos, screen/file shares, live streams and short videos (under 5 minutes or twice the skip) start normally, and the skipped part doesn't count as watched.
 - **Continue watching** on the home page: what you were watching, with progress, resumes in a new room where you left off.
 - **Voice and video call**: join from the room's top bar, pick your mic and check its level first. If the video is playing you join muted (so you don't talk over the movie); after that, play/pause never changes your mic. `M` mutes and unmutes, optional push-to-talk (hold `T`), speaking rings on avatars, and an optional per-device "lower the movie while people talk" (40 % quieter while someone speaks). **Camera** is off until you turn it on (`V`, the camera button, or with a live preview in the call panel before joining; your camera choice is remembered per device). Cameras show as small tiles floating over the video, also in fullscreen: drag them anywhere, collapse them, click one to enlarge it, or hide them on your device. Video is kept small and capped by call size (720p for two people down to 360p for four or five) so it never gets in the way of the movie or the voices. Owners can ask someone to mute or turn their camera off, or remove them from the call. Peer-to-peer (fine for a handful of people); a reload or a dropped connection rejoins on its own. **TURN credentials (`CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN`) are strongly recommended**: without a relay, calls between some networks (mobile data, strict NATs) can't connect.
 
@@ -33,7 +34,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 
 **Rooms and hosting**
 
-- Room settings: title, ready check, and when the next-episode card appears.
+- Room settings: title, ready check, when the next-episode card appears, subtitle auto-sync and skip intro.
 - Resizable sidebar on desktop, and a bottom sheet on phones.
 - No user accounts: the owner logs in with the instance password; guests get a room link plus that room's auto-generated password (or a link with the password built in), can only use that one room, and can't change its settings or remove people. The owner can regenerate, set or turn off each room's password, and removing a guest revokes their access.
 - Everything is stored in one SQLite file, so rooms survive restarts. A sidecar container takes a nightly backup.

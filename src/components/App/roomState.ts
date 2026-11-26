@@ -65,6 +65,8 @@ export interface RoomState {
   readyCheck: ReadyCheckState | null;
   /** The latest REC:nextEpisode, with a receive timestamp (see nextEpisode/) */
   nextEpisode: NextEpisodeState & { at: number };
+  /** The latest REC:introSkip for the current video (skip intro), with a receive timestamp; cleared by REC:host */
+  introSkip: (IntroSkipInfo & { at: number }) | null;
   // Client-side conversion (see useConvert)
   /** Per-device "Auto-convert when needed" (default on). Kept as `convertEnabled` for compatibility. */
   convertEnabled: boolean;
@@ -127,6 +129,7 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   readyCheck: true,
   nextEpisodeOffset: 25,
   autoSyncSubtitles: false,
+  skipIntro: 0,
 };
 
 export type RoomStore = Store<RoomState>;
@@ -176,6 +179,7 @@ export function createInitialRoomState(): RoomState {
     playbackIssue: undefined,
     readyCheck: null,
     nextEpisode: { state: "none", at: 0 },
+    introSkip: null,
     convertEnabled: readAutoConvert(),
     playback: undefined,
     convertProgress: undefined,

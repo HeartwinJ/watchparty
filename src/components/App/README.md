@@ -72,7 +72,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `shell/SidebarResize.tsx`                 | Drag/keyboard resize of the desktop sidebar (`sidebarWidth.ts`: clamp + localStorage)                               |
 | `shell/BottomSheet.tsx`                   | Phone sheet snap points min/docked/full (`sheet.ts`: pure snap logic)                                               |
 | `shell/NowPlayingStrip.tsx`               | Phone: title + "Change" under the video                                                                             |
-| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, next-episode, room password)                           |
+| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, next-episode, skip intro, room password)               |
 | `shell/shortcuts.ts`                      | `/` opens the picker; `wp:show-shortcuts` event for the shortcuts overlay                                           |
 | `shell/invite.ts`, `roomInfo.ts`          | Invite links (+ `#pw=`), copy + toast; short media titles, per-person playback state                                |
 | `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                                               |
@@ -90,6 +90,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s                             |
 | `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)                            |
 | `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic                                      |
+| `introSkip/`, `logic/introSkip.ts`        | "Skipped intro (1:30) · Watch from start" notice over the player; m:ss format, presets, when the notice shows       |
 | `subsync/`                                | Subtitle auto-sync: signal processing, worker, `useSubtitleSync`, the wand (`AutoSyncButton`)                       |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                                                  |
 | `call/`                                   | Voice/video call: `useCall`, `CallControl` (top bar), `CallPanel`, `VideoTiles`, transport, pure logic (see below)  |
@@ -110,14 +111,17 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   the right-hand group) and `{/* SLOT(C): <SourcePicker room={room} /> */}` at the end of `RoomLayout` in `App.tsx`.
   The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
   queue" uses `openPicker({ mode: "queue" })`.
-- **Room settings:** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`, `autoSyncSubtitles`) comes
+- **Room settings:** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`, `autoSyncSubtitles`, `skipIntro`) comes
   from `REC:roomSettings` (on connect and after every change) and starts as `DEFAULT_ROOM_SETTINGS` (`roomState.ts`).
   Change it with `room.cmd.setRoomSettings(patch)`; the server normalizes, broadcasts to everyone and posts a debounced
   `roomSettings` chat line. The settings modal sends the title on blur/Enter, the ready check switch immediately and the
-  next-episode seconds 500 ms after the last change. `roomDisplayName(roomId, title)` names the room in the top bar,
+  next-episode seconds 500 ms after the last change. Skip intro (`SkipIntroSetting`) is a row of chips (Off, 15s, 30s,
+  45s, 1:00, 1:30, 2:00) sent on click, plus Custom with a seconds input (1–600, shown as m:ss) sent like the offset;
+  `roomSettingsForm.ts` has `skipIntroToSend`/`skipIntroChip`. `roomDisplayName(roomId, title)` names the room in the top bar,
   the tab title and recent rooms. Ready check and the next-episode card read `state.roomSettings` directly.
   The "Everyone in this room" section (and its `RoomPasswordSettings`: masked password with show/copy, Regenerate,
-  Set your own, "Require a password" switch) is only rendered for owners; guests see a note.
+  Set your own, "Require a password" switch) is only rendered for owners; guests see a note (plus the current skip
+  intro, read-only).
 
 ## Source picker (`picker/`)
 
@@ -172,6 +176,19 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   Cancel (room-wide). `cancelled`/`starting`/`failed` become a toast + the player OSD; `failed` offers "Open picker"
   (on the next episode's streams when it's known). No Esc shortcut: Esc already exits fullscreen/menus.
 - The card never gets a URL: the server keeps the stream and hosts it with `withDisplayName` + `videoMeta`.
+
+## Skip intro
+
+- Server-authoritative (`server/introSkip.ts`): with `roomSettings.skipIntro` set, a new video's `REC:host` already
+  carries `videoTS = skipIntro`, so the normal load path (`setSrcAndTime`/`playUrl(src, time)`, the `canplay` join
+  seek via `getJoinSeekTarget`) starts everyone there; there is no client-side skipping.
+- `REC:introSkip {seconds}` follows `REC:host` when a skip happened; `useRoom` stores it as `state.introSkip` (+ `at`)
+  and clears it on every `REC:host`. `IntroSkipNotice` (mounted in `PlayerArea`, bottom-right above the controls, so
+  it shows in fullscreen) shows "Skipped intro (1:30) · Watch from start" for 10 s (`showIntroSkipNotice`: not for
+  live streams). The button is `player.roomSeek(0)`, a normal seek with a chat line; the server then sends
+  `REC:introSkip null` to everyone, which hides it.
+- Too short for the skip (the first `CMD:duration`, before anyone touched playback): the server sends `REC:seek 0`
+  and `REC:introSkip null`.
 
 ## Player
 

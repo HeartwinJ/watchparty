@@ -18,6 +18,7 @@ import { resolveShortcut } from "../logic/shortcuts";
 import { formatOffset } from "../logic/subtitles";
 import { ControlBar, type MenuName } from "./ControlBar";
 import { NextEpisodeCard } from "../nextEpisode/NextEpisodeCard";
+import { IntroSkipNotice } from "../introSkip/IntroSkipNotice";
 import { ChatOverlay } from "./ChatOverlay";
 import { ChatPanel } from "./ChatPanel";
 import {
@@ -606,6 +607,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
       )}
 
       <NextEpisodeCard room={room} />
+      <IntroSkipNotice room={room} />
 
       <VideoTiles
         room={room}

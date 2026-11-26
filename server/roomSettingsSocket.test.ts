@@ -88,6 +88,7 @@ describe("Room settings", () => {
       readyCheck: true,
       nextEpisodeOffset: 25,
       autoSyncSubtitles: false,
+      skipIntro: 0,
     });
   });
 
@@ -109,6 +110,7 @@ describe("Room settings", () => {
       readyCheck: true,
       nextEpisodeOffset: 120,
       autoSyncSubtitles: false,
+      skipIntro: 0,
     };
     expect(await toA).toEqual(expected);
     expect(await toB).toEqual(expected);
@@ -182,6 +184,7 @@ describe("Room settings", () => {
       readyCheck: false,
       nextEpisodeOffset: 25,
       autoSyncSubtitles: false,
+      skipIntro: 0,
     });
     loaded.destroy();
 
@@ -194,6 +197,7 @@ describe("Room settings", () => {
       readyCheck: true,
       nextEpisodeOffset: 25,
       autoSyncSubtitles: false,
+      skipIntro: 0,
     });
     legacy.destroy();
   });

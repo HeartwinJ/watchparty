@@ -1,0 +1,99 @@
+/* "Skipped intro" notice: bottom-right over the player, above the control bar (also in fullscreen) */
+.notice {
+  position: absolute;
+  right: var(--wp-sp-5);
+  bottom: 96px;
+  max-width: calc(100% - 2 * var(--wp-sp-5));
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wp-sp-2);
+  padding: var(--wp-sp-1) var(--wp-sp-1) var(--wp-sp-1) var(--wp-sp-3);
+  border: 1px solid var(--wp-border-strong);
+  border-radius: var(--wp-r-full);
+  background: var(--wp-glass);
+  backdrop-filter: var(--wp-glass-blur);
+  -webkit-backdrop-filter: var(--wp-glass-blur);
+  box-shadow: var(--wp-sh-2);
+  color: var(--wp-on-video);
+  font-family: var(--wp-font);
+  font-size: var(--wp-fs-sm);
+  z-index: var(--wp-z-chat-overlay);
+  user-select: none;
+  -webkit-user-select: none;
+  animation: wpIntroIn var(--wp-dur-slow) var(--wp-ease);
+  transition: bottom var(--wp-dur-slow) var(--wp-ease);
+}
+
+/* The controls hide while idle, so the notice drops down (same as the next-episode card) */
+[data-idle="true"] > .notice {
+  bottom: var(--wp-sp-5);
+}
+
+.text {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  color: var(--wp-on-video-2);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wp-sp-1);
+  padding: var(--wp-sp-1) var(--wp-sp-3);
+  border: 0;
+  border-radius: var(--wp-r-full);
+  background: transparent;
+  color: var(--wp-accent-text);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--wp-dur-fast) var(--wp-ease);
+}
+
+.action:hover {
+  background: var(--wp-accent-soft);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--wp-accent);
+  outline-offset: 2px;
+}
+
+/* Small players: tighter to the edge, above the smaller control bar */
+@container (max-width: 520px) {
+  .notice {
+    right: var(--wp-sp-2);
+    bottom: 64px;
+    max-width: calc(100% - 2 * var(--wp-sp-2));
+  }
+
+  [data-idle="true"] > .notice {
+    bottom: var(--wp-sp-2);
+  }
+
+  .dot {
+    display: none;
+  }
+}
+
+@keyframes wpIntroIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+    transition: none;
+  }
+}
