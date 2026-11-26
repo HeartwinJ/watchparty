@@ -39,6 +39,7 @@ export function QuickChat(props: {
   const [pickerOpen, setPickerOpen] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const valueRef = useRef(value);
   valueRef.current = value;
   // Caret to restore after inserting an emoji (the controlled re-render would move it to the end)
@@ -81,6 +82,40 @@ export function QuickChat(props: {
       ref.current?.focus({ preventScroll: true });
     }
   };
+  // A press outside the picker and the bar closes the picker. Capture phase on the document: the player's own handlers
+  // (and the bar's) stop click propagation, so emoji-mart's document click listener would miss most of them.
+  const closePickerRef = useRef(closePicker);
+  closePickerRef.current = closePicker;
+  useEffect(() => {
+    if (!pickerOpen) {
+      return;
+    }
+    const onDown = (e: PointerEvent) => {
+      const path = e.composedPath();
+      const inside = [formRef.current, pickerRef.current].some(
+        (el) => el && path.includes(el),
+      );
+      if (!inside) {
+        closePickerRef.current(false);
+      }
+    };
+    // Esc in the picker closes only the picker. Capture phase: emoji-mart handles Esc in its search box itself and the
+    // event never reaches React; stopping it here also keeps it from the player's Esc handling.
+    const wrapper = pickerRef.current;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closePickerRef.current(true);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    wrapper?.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      wrapper?.removeEventListener("keydown", onKey, true);
+    };
+  }, [pickerOpen]);
   const pickEmoji = (emoji: { native: string }) => {
     const input = ref.current;
     const next = insertAtCaret(
@@ -108,14 +143,7 @@ export function QuickChat(props: {
       data-testid="quick-chat-emoji-picker"
       // Keys typed in the picker's search box (inside its shadow root) must not reach the player shortcuts
       data-no-shortcuts=""
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          // Esc closes only the picker (preventDefault keeps it from the player's Esc handling)
-          e.preventDefault();
-          e.stopPropagation();
-          closePicker(true);
-        }
-      }}
+      ref={pickerRef}
     >
       <div className={styles.quickChatPickerBox}>
         <EmojiPicker
@@ -124,14 +152,6 @@ export function QuickChat(props: {
           maxFrequentRows={1}
           perLine={props.compact ? 7 : undefined}
           onEmojiSelect={pickEmoji}
-          onClickOutside={(e) => {
-            // Clicks on the bar (the input, the emoji button) keep it open
-            const form = formRef.current;
-            if (form && e.composedPath().includes(form)) {
-              return;
-            }
-            closePicker(false);
-          }}
         />
       </div>
     </div>
@@ -148,8 +168,10 @@ export function QuickChat(props: {
         >
           {preview.map((l) => (
             <div key={l.key} className={styles.quickChatPreviewLine}>
-              <b>{l.name}</b>
-              {l.text}
+              <span className={styles.quickChatPreviewText}>
+                <b>{l.name}</b>
+                {l.text}
+              </span>
             </div>
           ))}
         </div>

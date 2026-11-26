@@ -695,16 +695,19 @@
   font-size: var(--wp-fs-sm);
   line-height: 1.4;
   overflow-wrap: anywhere;
-  /* Long messages: 2 lines */
+  animation: wpFadeUp var(--wp-dur-slow) var(--wp-ease);
+}
+
+/* Long messages: 2 lines (on an inner element, so the bubble's padding doesn't show a third) */
+.quickChatPreviewText {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-  animation: wpFadeUp var(--wp-dur-slow) var(--wp-ease);
 }
 
-.quickChatPreviewLine b {
+.quickChatPreviewText b {
   margin-right: 6px;
 }
 

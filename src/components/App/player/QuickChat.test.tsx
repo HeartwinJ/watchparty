@@ -1,5 +1,4 @@
 // Quick chat closes by itself after 5 s empty (Esc in fullscreen belongs to the browser), and has an emoji picker.
-import React from "react";
 import {
   act,
   cleanup,
@@ -13,22 +12,7 @@ import { QuickChat } from "./QuickChat";
 
 // emoji-mart's picker (a web component, loaded lazily) replaced by a search box and one emoji button
 vi.mock("../../Chat/EmojiPicker", () => ({
-  EmojiPicker: (props: {
-    onEmojiSelect: (e: { native: string }) => void;
-    onClickOutside?: (e: MouseEvent) => void;
-  }) => {
-    const propsRef = React.useRef(props);
-    propsRef.current = props;
-    // Like emoji-mart: any document click outside the picker
-    React.useEffect(() => {
-      const onDocClick = (e: MouseEvent) => {
-        if (!(e.target as Element).closest?.("[data-fake-picker]")) {
-          propsRef.current.onClickOutside?.(e);
-        }
-      };
-      document.addEventListener("click", onDocClick);
-      return () => document.removeEventListener("click", onDocClick);
-    }, []);
+  EmojiPicker: (props: { onEmojiSelect: (e: { native: string }) => void }) => {
     return (
       <div data-fake-picker="">
         <input aria-label="Search emoji" />
@@ -352,17 +336,27 @@ describe("QuickChat", () => {
       expect(seen).not.toHaveBeenCalledWith(false);
     });
 
-    it("a click outside closes it; clicks on the bar don't", () => {
-      const { input, picker, clickEmojiButton } = setup();
+    it("a press outside closes it (even where clicks are stopped); presses on the bar or in it don't", () => {
+      const { input, picker, clickEmojiButton, ring } = setup();
       clickEmojiButton();
-      act(() => {
-        fireEvent.click(input);
-      });
+      const press = (el: Element) =>
+        act(() => {
+          fireEvent.pointerDown(el);
+        });
+      press(input);
+      press(screen.getByLabelText("Search emoji"));
       expect(picker()).toBeTruthy();
-      act(() => {
-        fireEvent.click(document.body);
-      });
+      // Like the player's scrims, which stop propagation
+      const scrim = document.createElement("div");
+      scrim.addEventListener("pointerdown", (e) => e.stopPropagation());
+      document.body.append(scrim);
+      try {
+        press(scrim);
+      } finally {
+        scrim.remove();
+      }
       expect(picker()).toBeNull();
+      expect(ring()).toBeTruthy();
     });
 
     it("renders into the player container", () => {
