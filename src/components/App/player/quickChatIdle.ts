@@ -19,13 +19,26 @@ export function nextEmptySince(
   return prev ?? now;
 }
 
-/** How long until an empty quick chat closes (0 = now), or null while it has text */
+/**
+ * When the countdown starts after the emoji picker closes: empty restarts it from now (a full 5 s), text keeps it off.
+ */
+export function emptySinceAfterPicker(
+  value: string,
+  now: number,
+): number | null {
+  return value.trim() ? null : now;
+}
+
+/**
+ * How long until an empty quick chat closes (0 = now), or null while it has text or the countdown is paused (the
+ * emoji picker is open).
+ */
 export function idleDelay(
   emptySince: number | null,
   now: number,
-  idleMs = QUICK_CHAT_IDLE_MS,
+  { paused = false, idleMs = QUICK_CHAT_IDLE_MS } = {},
 ): number | null {
-  if (emptySince === null) {
+  if (emptySince === null || paused) {
     return null;
   }
   return Math.max(0, emptySince + idleMs - now);

@@ -217,10 +217,24 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   (the open chat panel's input, else quick chat in fullscreen or with the sidebar collapsed, else
   `chatRef.current.focusInput()`; `chatKeyTarget`), Shift+C (the chat panel), `[`/`]`, `?` (also `wp:show-shortcuts`).
 - **Quick chat** (`QuickChat.tsx`, `c`): a one-line input over the video. Enter sends and closes it, and it closes on blur when empty; Esc closes it
-  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). It also closes by itself after
+  outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). Backspace in the already empty input
+  closes it too (not the Backspace that deletes the last character, not a held-down repeat, not with the emoji picker
+  open). It also closes by itself after
   **5 s empty** (`quickChatIdle.ts`, pure): the countdown starts when it opens and again whenever the input becomes
   empty, and any text (not just spaces) cancels it. A small ring next to the input empties over those 5 s (`aria-hidden`; a still ring
-  with reduced motion) and is hidden while there's text.
+  with reduced motion) and is hidden while there's text. The bar shows only an Enter hint. The emoji button ("Insert
+  emoji") opens the Chat's emoji-mart picker (`Chat/EmojiPicker.tsx`), portaled into the player container (the
+  fullscreen element) above the bar; it shrinks to fit short players and shows 7 per row on phones. Picks go in at the
+  caret (replacing a selection, `insertText.ts`, pure), focus stays in the input and the picker stays open for more.
+  While it's open the countdown is paused and the ring hidden; closing it with the input empty restarts the full 5 s
+  (`emptySinceAfterPicker`). Esc closes only the picker first (outside fullscreen), a click outside it (but not on the
+  bar) closes it, and the picker is a `data-no-shortcuts` zone, so typing in its search box never triggers player
+  shortcuts. Just above the bar, the **last 3 messages** people typed (older history too, oldest first, "You" for your
+  own, clamped to 2 lines, same look as the bubbles) give context for the reply: `recentConversation()`
+  (`quickChatPreview.ts`, pure) skips system and personless lines, so nothing shows without conversation. It's a
+  labelled `role="log"` region, updates live (a new message pushes the oldest out), and goes away with the quick chat.
+  While quick chat is open the 8 s bubbles (`ChatOverlay`) aren't shown, to avoid duplicates; they resume for new
+  messages when it closes. The emoji picker opens over it.
 - **Chat panel** (`ChatPanel.tsx`, `useChatPanel.ts`, pure logic in `chatPanel.ts`): the real `Chat` in a translucent
   panel over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control
   bar so both stay usable. Offered where quick chat is (`fullscreen || sidebarCollapsed`, not on the phone layout's
