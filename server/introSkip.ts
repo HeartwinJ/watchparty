@@ -29,9 +29,9 @@ export function introSkipFits(skip: number, duration: number): boolean {
 
 /**
  * Where a video the room just switched to starts. `from` is the position it was asked to start at: anything but 0
- * (a history resume, a preload with a position) is kept as is. From the beginning it's `skipIntro`, except for no
- * video, screen/file shares (live P2P), anything that isn't an http(s) URL, and a video whose duration is already
- * known (a YouTube queue item) and too short.
+ * is kept as is (no caller passes one today; `preloadVideo`, used by history resume, doesn't skip at all). From the
+ * beginning it's `skipIntro`, except for no video, screen/file shares (live P2P), anything that isn't an http(s)
+ * URL, and a video whose duration is already known (a YouTube queue item) and too short.
  */
 export function introSkipStart(opts: {
   skipIntro: number;

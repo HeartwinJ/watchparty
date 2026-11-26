@@ -39,7 +39,7 @@ async function loadIceServers(): Promise<RTCIceServer[]> {
   }
 }
 
-/** ICE servers (STUN/TURN) for screen and file share, fetched from the server once and cached in memory. */
+/** ICE servers (STUN/TURN) for calls and screen/file share, fetched from the server once and cached in memory. */
 export function getIceServers(now = Date.now()): Promise<RTCIceServer[]> {
   if (!cached || cached.expires <= now) {
     const entry = { promise: loadIceServers(), expires: now + CACHE_TTL_MS };
