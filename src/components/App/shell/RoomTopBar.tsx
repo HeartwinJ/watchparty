@@ -12,6 +12,7 @@ import {
   IconDots,
   IconKeyboard,
   IconLayoutSidebarRight,
+  IconKey,
   IconLink,
   IconLogout,
   IconPencil,
@@ -25,7 +26,7 @@ import { AvatarStack } from "../../Avatar/Avatar";
 import { Brand } from "../../Brand/Brand";
 import type { Room } from "../hooks/useRoom";
 import { useRoomUi } from "../ui/RoomUi";
-import { copyInviteLink } from "./invite";
+import { copyInviteLink, inviteLinkWithPassword, roomPassword } from "./invite";
 import { shortMediaTitle } from "./roomInfo";
 import { requestShortcutsOverlay } from "./shortcuts";
 import styles from "./Shell.module.css";
@@ -47,7 +48,8 @@ export const RoomTopBar = ({
 }) => {
   const { state } = room;
   const ui = useRoomUi();
-  const { authRequired, logout } = useAuth();
+  const { authRequired, logout, role } = useAuth();
+  const isOwner = role === "owner";
   const title = shortMediaTitle(
     state.roomMedia,
     room.getMediaDisplayName(state.roomMedia),
@@ -62,14 +64,18 @@ export const RoomTopBar = ({
 
   return (
     <header className={styles.topbar}>
-      {!isPhone && <Brand showWord={false} />}
+      {/* Guests can't go Home, so their logo isn't a link */}
+      {!isPhone && <Brand showWord={false} link={isOwner} />}
       <UnstyledButton
         className={styles.roomName}
         onClick={ui.openSettings}
         title="Room settings"
       >
         <span className={styles.ellipsis}>{roomName}</span>
-        <IconPencil size={14} aria-hidden="true" className={styles.dim} />
+        {/* Guests can't rename the room (their settings are only "On this device") */}
+        {isOwner && (
+          <IconPencil size={14} aria-hidden="true" className={styles.dim} />
+        )}
       </UnstyledButton>
 
       {!isPhone && (
@@ -108,29 +114,10 @@ export const RoomTopBar = ({
             <AvatarStack users={people} />
           </span>
         )}
-        {isPhone ? (
-          <ActionIcon
-            variant="default"
-            size={36}
-            aria-label="Copy invite link"
-            onClick={() => copyInviteLink()}
-          >
-            <IconLink size={18} />
-          </ActionIcon>
-        ) : (
-          <Button
-            variant="default"
-            size="sm"
-            h={30}
-            px={10}
-            className={styles.invite}
-            leftSection={<IconLink size={16} />}
-            onClick={() => copyInviteLink()}
-            aria-label="Copy invite link"
-          >
-            <span className={styles.inviteLabel}>Invite</span>
-          </Button>
-        )}
+        <InviteButton
+          isPhone={isPhone}
+          password={isOwner ? roomPassword(state.roomAccess) : undefined}
+        />
         {!isPhone && (
           <Tooltip
             label={ui.sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
@@ -192,14 +179,18 @@ export const RoomTopBar = ({
             >
               Keyboard shortcuts
             </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item
-              leftSection={<IconArrowLeft size={16} />}
-              onClick={() => navigate("/")}
-            >
-              Leave room
-            </Menu.Item>
-            {authRequired && (
+            {isOwner && (
+              <>
+                <Menu.Divider />
+                <Menu.Item
+                  leftSection={<IconArrowLeft size={16} />}
+                  onClick={() => navigate("/")}
+                >
+                  Leave room
+                </Menu.Item>
+              </>
+            )}
+            {authRequired && isOwner && (
               <Menu.Item
                 color="var(--wp-danger)"
                 leftSection={<IconLogout size={16} />}
@@ -212,5 +203,71 @@ export const RoomTopBar = ({
         </Menu>
       </div>
     </header>
+  );
+};
+
+/**
+ * "Invite": copies the room link. With a room password (owners), a menu offers the plain link (guests type the
+ * password) or the link with the password in its fragment.
+ */
+const InviteButton = ({
+  isPhone,
+  password,
+}: {
+  isPhone: boolean;
+  password: string | undefined;
+}) => {
+  const trigger = (onClick?: () => void) =>
+    isPhone ? (
+      <ActionIcon
+        variant="default"
+        size={36}
+        aria-label={password ? "Invite" : "Copy invite link"}
+        onClick={onClick}
+      >
+        <IconLink size={18} />
+      </ActionIcon>
+    ) : (
+      <Button
+        variant="default"
+        size="sm"
+        h={30}
+        px={10}
+        className={styles.invite}
+        leftSection={<IconLink size={16} />}
+        onClick={onClick}
+        aria-label={password ? "Invite" : "Copy invite link"}
+      >
+        <span className={styles.inviteLabel}>Invite</span>
+      </Button>
+    );
+  if (!password) {
+    return trigger(() => copyInviteLink());
+  }
+  return (
+    <Menu position="bottom-end" width={260} zIndex={400} withinPortal>
+      <Menu.Target>{trigger()}</Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          leftSection={<IconLink size={16} />}
+          onClick={() => copyInviteLink()}
+        >
+          Copy invite link
+          <div className={styles.menuHint}>They'll type the room password</div>
+        </Menu.Item>
+        <Menu.Item
+          leftSection={<IconKey size={16} />}
+          onClick={() =>
+            copyInviteLink(
+              inviteLinkWithPassword(password),
+              "Link with password copied",
+            )
+          }
+        >
+          Copy link with password
+          <div className={styles.menuHint}>Joins without typing anything</div>
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 };

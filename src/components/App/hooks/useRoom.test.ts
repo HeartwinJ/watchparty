@@ -68,9 +68,26 @@ vi.mock("../../../utils/clientTranscode", async (importOriginal) => ({
 }));
 
 const { useRoom } = await import("./useRoom");
+const { AuthContext } = await import("../../AuthGate/AuthGate");
+const React = await import("react");
 
-async function setup() {
-  const hook = renderHook(() => useRoom("happy-room"));
+const roomAccessLost = vi.fn();
+async function setup(role: "owner" | "guest" = "owner") {
+  const hook = renderHook(() => useRoom("happy-room"), {
+    wrapper: ({ children }: { children: React.ReactNode }) =>
+      React.createElement(
+        AuthContext.Provider,
+        {
+          value: {
+            authRequired: true,
+            role,
+            logout: async () => {},
+            roomAccessLost,
+          },
+        },
+        children,
+      ),
+  });
   await waitFor(() => expect(sockets).toHaveLength(1));
   return { ...hook, socket: sockets[0] };
 }
@@ -79,6 +96,7 @@ beforeEach(() => {
   sockets.length = 0;
   ioMock.mockClear();
   notifyUnauthorized.mockClear();
+  roomAccessLost.mockClear();
   window.localStorage.clear();
   document.body.innerHTML = '<video id="leftVideo"></video>';
 });
@@ -384,6 +402,48 @@ describe("useRoom", () => {
       active: true,
       waitingFor: ["x"],
     });
+  });
+
+  it("stores REC:roomAccess (owners get the password)", async () => {
+    const { result, socket } = await setup();
+    expect(result.current.state.roomAccess).toBeNull();
+    act(() =>
+      socket.receive("REC:roomAccess", {
+        enabled: true,
+        password: "otter-maple-42",
+      }),
+    );
+    expect(result.current.state.roomAccess).toEqual({
+      enabled: true,
+      password: "otter-maple-42",
+    });
+  });
+
+  it("sends guests back to the room password screen when kicked or the password changes", async () => {
+    const { socket } = await setup("guest");
+    act(() => socket.receive("REC:accessRevoked"));
+    expect(roomAccessLost).toHaveBeenLastCalledWith(
+      "happy-room",
+      "passwordChanged",
+    );
+    act(() => socket.receive("kicked"));
+    expect(roomAccessLost).toHaveBeenLastCalledWith("happy-room", "kicked");
+  });
+
+  it("sends room password and kick commands", async () => {
+    const { result, socket } = await setup();
+    result.current.cmd.setRoomPassword({ action: "regenerate" });
+    result.current.cmd.setRoomPassword({ action: "set", password: "popcorn" });
+    result.current.cmd.setRoomPassword({ action: "enable", enabled: false });
+    result.current.cmd.kickUser("someone");
+    expect(socket.emits("CMD:roomPassword")).toEqual([
+      [{ action: "regenerate" }],
+      [{ action: "set", password: "popcorn" }],
+      [{ action: "enable", enabled: false }],
+    ]);
+    expect(socket.emits("CMD:kickUser")).toEqual([
+      [{ userToBeKicked: "someone" }],
+    ]);
   });
 
   it("restores queued metadata when playing a playlist item", async () => {

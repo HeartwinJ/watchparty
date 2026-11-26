@@ -14,6 +14,13 @@ type Client = ClientSocket & { clientId: string };
 async function setup(enabled = true) {
   const server = http.createServer();
   const io = new Server(server, { transports: ["websocket"] });
+  // Everyone here is an owner (server.ts sets this from the session; guests are tested in roomAccessSocket.test.ts)
+  io.on("new_namespace", (nsp) =>
+    nsp.use((s, next) => {
+      s.data.owner = true;
+      next();
+    }),
+  );
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as AddressInfo).port;
   const db = openDatabase(":memory:");

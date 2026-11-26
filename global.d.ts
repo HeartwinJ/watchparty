@@ -113,6 +113,16 @@ interface RoomSettings {
   nextEpisodeOffset: number;
 }
 
+/**
+ * REC:roomAccess: the room password state. Owners get `password`; guests only `enabled` (never the password).
+ * Sent on connect and after every change (CMD:roomPassword).
+ */
+interface RoomAccessInfo {
+  /** Whether guests need the password to join */
+  enabled: boolean;
+  password?: string;
+}
+
 /** Why a ready check started: someone stalled, or someone joined mid-play */
 type ReadyCheckReason = "buffering" | "join";
 /** How a ready check ended: everyone ready, timed out, "Resume now", or a manual pause/play/video change */

@@ -36,6 +36,15 @@ export function describeChatCommand(
     }
     case "roomSettings":
       return describeRoomSettingsChange(msg);
+    case "roomPassword":
+      // msg is what changed, never the password itself
+      return msg === "changed"
+        ? "changed the room password"
+        : msg === "on"
+          ? "turned on the room password"
+          : msg === "off"
+            ? "turned off the room password"
+            : undefined;
     default:
       return undefined;
   }

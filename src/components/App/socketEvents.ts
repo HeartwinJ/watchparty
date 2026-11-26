@@ -42,6 +42,10 @@ export interface ServerToClientEvents {
   "REC:roomSettings": (settings: RoomSettings) => void;
   /** Ready check state (sent on connect and whenever it changes) */
   "REC:readyCheck": (state: ReadyCheckState) => void;
+  /** The room password state: owners get the password, guests only whether it's on (sent on connect and on change) */
+  "REC:roomAccess": (info: RoomAccessInfo) => void;
+  /** Guests: an owner changed the room password or turned it on, so this guest's access ended (then disconnected) */
+  "REC:accessRevoked": () => void;
   /** The room-wide next-episode card (also sent on connect) */
   "REC:nextEpisode": (state: NextEpisodeState) => void;
   signalSS: (data: {
@@ -70,6 +74,12 @@ export type NextEpisodeCommand =
   | { action: "ended"; url: string }
   | { action: "playNow" }
   | { action: "cancel" };
+
+/** CMD:roomPassword (mirrors parseRoomPasswordCommand in server/roomAccess.ts) */
+export type RoomPasswordCommand =
+  | { action: "regenerate" }
+  | { action: "set"; password: string }
+  | { action: "enable"; enabled: boolean };
 
 export interface ClientToServerEvents {
   "CMD:name": (name: string) => void;
@@ -102,6 +112,10 @@ export interface ClientToServerEvents {
   "CMD:playbackIssue": (data: { reason: string }) => void;
   /** Partial update; the server validates/normalizes it and answers everyone with REC:roomSettings */
   "CMD:roomSettings": (patch: Partial<RoomSettings>) => void;
+  /** Owners only: change the room password (the server answers with REC:roomAccess and a chat line) */
+  "CMD:roomPassword": (cmd: RoomPasswordCommand) => void;
+  /** Owners only: disconnect someone; a guest also loses access to the room */
+  "CMD:kickUser": (data: { userToBeKicked: string }) => void;
   /** This device's readiness for the ready check; sent when it changes */
   "CMD:readyState": (data: {
     ready: boolean;
@@ -162,6 +176,10 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
       emit("CMD:playbackIssue", { reason }),
     setRoomSettings: (patch: Partial<RoomSettings>) =>
       emit("CMD:roomSettings", patch),
+    setRoomPassword: (cmd: RoomPasswordCommand) =>
+      emit("CMD:roomPassword", cmd),
+    kickUser: (clientId: string) =>
+      emit("CMD:kickUser", { userToBeKicked: clientId }),
     reportReadyState: (data: {
       ready: boolean;
       buffering?: boolean;

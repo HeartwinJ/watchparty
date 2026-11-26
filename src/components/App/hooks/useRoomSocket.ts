@@ -46,6 +46,8 @@ const SERVER_EVENT_SET: Record<keyof ServerToClientEvents, true> = {
   signalSS: true,
   "REC:roomSettings": true,
   "REC:readyCheck": true,
+  "REC:roomAccess": true,
+  "REC:accessRevoked": true,
 };
 export const SERVER_EVENTS = Object.keys(
   SERVER_EVENT_SET,
@@ -84,7 +86,8 @@ export function useRoomSocket(
     s.on("connect_error", (err) => {
       console.error(err);
       if (err.message === "unauthorized") {
-        // Our session expired or was revoked: go back to the login screen
+        // Our session or room access expired or was revoked: AuthGate shows the instance login (owners) or the
+        // room password screen (guests)
         s.disconnect();
         notifyUnauthorized();
       } else {

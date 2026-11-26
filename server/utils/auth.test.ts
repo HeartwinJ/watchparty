@@ -38,7 +38,11 @@ describe("auth routes", () => {
 
   it("reports session state and protects routes", async () => {
     const session = await (await fetch(base + "/session")).json();
-    expect(session).toEqual({ authenticated: false, authRequired: true });
+    expect(session).toEqual({
+      authenticated: false,
+      authRequired: true,
+      guestRooms: [],
+    });
     const resp = await fetch(base + "/protected");
     expect(resp.status).toBe(401);
     expect(await resp.json()).toEqual({ error: "unauthorized" });
@@ -59,7 +63,7 @@ describe("auth routes", () => {
     ).toBe(200);
     expect(
       await (await fetch(base + "/session", { headers: { cookie } })).json(),
-    ).toEqual({ authenticated: true, authRequired: true });
+    ).toEqual({ authenticated: true, authRequired: true, guestRooms: [] });
     const out = await fetch(base + "/logout", { method: "POST" });
     expect(out.status).toBe(204);
     expect(out.headers.get("set-cookie")).toMatch(/wp_session=;/);
@@ -89,6 +93,7 @@ describe("auth disabled", () => {
       expect(await (await fetch(base + "/session")).json()).toEqual({
         authenticated: true,
         authRequired: false,
+        guestRooms: [],
       });
       expect((await fetch(base + "/protected")).status).toBe(200);
     } finally {

@@ -32,6 +32,7 @@ import { usePlaylist } from "./usePlaylist";
 import { useSubtitles } from "./useSubtitles";
 import { useReadyCheck } from "./useReadyCheck";
 import { toast } from "../ui/toast";
+import { useAuth } from "../../AuthGate/AuthGate";
 
 declare global {
   interface Window {
@@ -71,6 +72,10 @@ export function useRoom(roomId: string) {
   const [ready, setReady] = useState(false);
 
   const { socket, cmd } = useRoomSocket(roomId, clientId, ready, handlersRef);
+  // Read at call time by the socket handlers (kicked / access revoked send guests to the room password screen)
+  const auth = useAuth();
+  const authRef = useRef(auth);
+  authRef.current = auth;
 
   const showMessage = useCallback(
     (key: "errorMessage" | "successMessage", message: string) => {
@@ -303,7 +308,16 @@ export function useRoom(roomId: string) {
       },
       errorMessage: (err) => showMessage("errorMessage", err),
       successMessage: (msg) => showMessage("successMessage", msg),
-      kicked: () => window.location.assign("/"),
+      kicked: () => {
+        if (authRef.current.role === "guest") {
+          authRef.current.roomAccessLost(roomId, "kicked");
+        } else {
+          window.location.assign("/");
+        }
+      },
+      "REC:roomAccess": (roomAccess) => store.set({ roomAccess }),
+      "REC:accessRevoked": () =>
+        authRef.current.roomAccessLost(roomId, "passwordChanged"),
       "REC:play": (_video, actor) => {
         player.localPlay();
         announce(actor, "played");
@@ -356,6 +370,7 @@ export function useRoom(roomId: string) {
 
     return { updateName, displayName, handlers };
   }, [
+    roomId,
     clientId,
     store,
     cmd,

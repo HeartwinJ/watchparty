@@ -35,3 +35,21 @@ export function offsetToSend(
   );
   return offset === current ? undefined : offset;
 }
+
+export const ROOM_PASSWORD_MIN = 4;
+export const ROOM_PASSWORD_MAX = 64;
+
+/** A custom room password draft: trimmed, 4–64 characters, no control characters (mirrors server/roomAccess.ts). */
+export function roomPasswordToSend(draft: string): string | undefined {
+  const pw = draft.trim();
+  const length = Array.from(pw).length;
+  // eslint-disable-next-line no-control-regex
+  if (
+    length < ROOM_PASSWORD_MIN ||
+    length > ROOM_PASSWORD_MAX ||
+    /[\u0000-\u001f\u007f-\u009f]/.test(pw)
+  ) {
+    return undefined;
+  }
+  return pw;
+}
