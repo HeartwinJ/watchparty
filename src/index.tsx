@@ -13,7 +13,8 @@ import { Create } from "./components/Create/Create";
 import { AuthGate } from "./components/AuthGate/AuthGate";
 import { MantineProvider } from "@mantine/core";
 import { NotFound } from "./components/StatusPage/NotFound";
-import { useRoute } from "./router";
+import { ErrorBoundary } from "./components/ErrorBoundary/ErrorBoundary";
+import { useRoute, type Route } from "./router";
 
 // Redirect old-style URLs
 if (window.location.hash && window.location.pathname === "/") {
@@ -21,8 +22,7 @@ if (window.location.hash && window.location.pathname === "/") {
   window.location.href = "/watch/" + hashRoomId;
 }
 
-const Routes = () => {
-  const route = useRoute();
+const Page = ({ route }: { route: Route }) => {
   switch (route.name) {
     case "home":
       return <Home />;
@@ -33,6 +33,16 @@ const Routes = () => {
     case "notFound":
       return <NotFound />;
   }
+};
+
+// Keyed by the route, so navigating away from a crashed page renders the new one
+const Routes = () => {
+  const route = useRoute();
+  return (
+    <ErrorBoundary key={route.name === "watch" ? route.roomId : route.name}>
+      <Page route={route} />
+    </ErrorBoundary>
+  );
 };
 
 const WatchParty = () => {
