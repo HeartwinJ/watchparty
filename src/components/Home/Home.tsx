@@ -1,14 +1,21 @@
-import React, { useMemo, useState } from "react";
-import { Button, TextInput } from "@mantine/core";
-import { IconChevronRight, IconLink, IconPlus } from "@tabler/icons-react";
+import React, { useState } from "react";
+import { ActionIcon, Button, TextInput } from "@mantine/core";
+import {
+  IconChevronRight,
+  IconLink,
+  IconPlus,
+  IconX,
+} from "@tabler/icons-react";
 import { navigate } from "../../router";
 import { examples } from "../../utils/examples";
-import { createRoom, roomDisplayName } from "../../utils/rooms";
+import { createRoom, deleteRoom, roomDisplayName } from "../../utils/rooms";
 import {
   formatVisitedAgo,
   readRecentRooms,
+  removeRecentRoom,
   type RecentRoom,
 } from "../../utils/recentRooms";
+import { DeleteRoomModal } from "../DeleteRoomModal/DeleteRoomModal";
 import { isHttp } from "../../utils/utils";
 import { AppBar } from "../AppBar/AppBar";
 import { avatarColor } from "../Avatar/avatar";
@@ -32,7 +39,31 @@ export const Home = () => {
   const [starting, setStarting] = useState(false);
   const [link, setLink] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
-  const recent = useMemo(() => readRecentRooms(), []);
+  const [recent, setRecent] = useState<RecentRoom[]>(() => readRecentRooms());
+  // Home is owner-only, so every recent room can be deleted from here (DELETE /rooms/:roomId)
+  const [toDelete, setToDelete] = useState<RecentRoom | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const confirmDelete = async () => {
+    if (!toDelete || deleting) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      if (!(await deleteRoom(toDelete.roomId))) {
+        throw new Error("delete failed");
+      }
+      setRecent(removeRecentRoom(toDelete.roomId));
+      toast("Room deleted.");
+      setToDelete(null);
+    } catch (e) {
+      console.error(e);
+      toast("Couldn't delete the room. Try again in a moment.", {
+        tone: "danger",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const start = async (video?: string) => {
     if (starting) {
@@ -161,17 +192,36 @@ export const Home = () => {
           ) : (
             <ul className={styles.rooms}>
               {recent.map((r) => (
-                <RecentRoomRow key={r.roomId} room={r} />
+                <RecentRoomRow
+                  key={r.roomId}
+                  room={r}
+                  onDelete={() => setToDelete(r)}
+                />
               ))}
             </ul>
           )}
         </section>
+        <DeleteRoomModal
+          opened={toDelete !== null}
+          roomName={
+            toDelete ? roomDisplayName(toDelete.roomId, toDelete.roomTitle) : ""
+          }
+          busy={deleting}
+          onCancel={() => setToDelete(null)}
+          onConfirm={confirmDelete}
+        />
       </main>
     </div>
   );
 };
 
-const RecentRoomRow = ({ room }: { room: RecentRoom }) => {
+const RecentRoomRow = ({
+  room,
+  onDelete,
+}: {
+  room: RecentRoom;
+  onDelete: () => void;
+}) => {
   const href = `/watch/${encodeURIComponent(room.roomId)}`;
   const name = roomDisplayName(room.roomId, room.roomTitle);
   const open = (e: React.MouseEvent) => {
@@ -182,7 +232,7 @@ const RecentRoomRow = ({ room }: { room: RecentRoom }) => {
     navigate(href);
   };
   return (
-    <li>
+    <li className={styles.roomItem}>
       <a href={href} onClick={open} className={styles.roomRow}>
         <span
           className={styles.still}
@@ -201,6 +251,17 @@ const RecentRoomRow = ({ room }: { room: RecentRoom }) => {
           <span className={styles.openLabel}>Open</span>
         </span>
       </a>
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        size={30}
+        className={styles.deleteRoom}
+        aria-label={`Delete ${name}`}
+        title="Delete room"
+        onClick={onDelete}
+      >
+        <IconX size={16} />
+      </ActionIcon>
     </li>
   );
 };

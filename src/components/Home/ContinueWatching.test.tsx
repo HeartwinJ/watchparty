@@ -166,3 +166,31 @@ describe("Continue watching", () => {
     expect(text).not.toContain(SECRET_BLOB);
   });
 });
+
+describe("Recent rooms", () => {
+  it("deletes a room after confirming and forgets it", async () => {
+    window.localStorage.setItem(
+      "wp-recent-rooms",
+      JSON.stringify([
+        { roomId: "brave-otter", lastTitle: "", roomTitle: "", visitedAt: 1 },
+      ]),
+    );
+    renderHome();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Delete Brave otter" }),
+      );
+    });
+    expect(await screen.findByText("Delete Brave otter?")).toBeTruthy();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete room" }));
+    });
+    expect(calls).toContainEqual({
+      url: "/rooms/brave-otter",
+      method: "DELETE",
+    });
+    await waitFor(() => expect(screen.queryByText("Brave otter")).toBeNull());
+    expect(window.localStorage.getItem("wp-recent-rooms")).toBe("[]");
+  });
+});

@@ -95,6 +95,8 @@ export interface RoomState {
   roomSettings: RoomSettings;
   /** REC:roomAccess: whether the room password is on, and (owners only) the password. Null until it arrives. */
   roomAccess: RoomAccessInfo | null;
+  /** Set when an owner deleted the room while we were in it (REC:roomDeleted): the room page shows RoomDeleted */
+  roomDeleted: { by: string | null } | null;
 }
 
 /** Mirrors DEFAULT_ROOM_SETTINGS in server/roomSettings.ts */
@@ -173,5 +175,6 @@ export function createInitialRoomState(): RoomState {
     playerNotice: null,
     roomSettings: { ...DEFAULT_ROOM_SETTINGS },
     roomAccess: null,
+    roomDeleted: null,
   };
 }

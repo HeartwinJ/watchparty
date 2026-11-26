@@ -107,6 +107,20 @@ export function recordRecentRoom(
   return list;
 }
 
+/** Forgets a room (it was deleted). Storage errors are ignored. */
+export function removeRecentRoom(
+  roomId: string,
+  storage: StorageLike | null = defaultStorage(),
+): RecentRoom[] {
+  const list = readRecentRooms(storage).filter((r) => r.roomId !== roomId);
+  try {
+    storage?.setItem(RECENT_ROOMS_KEY, JSON.stringify(list));
+  } catch {
+    // Full or unavailable storage
+  }
+  return list;
+}
+
 /** "just now", "5 min ago", "3 h ago", "yesterday", "4 days ago", or a date for older visits. */
 export function formatVisitedAgo(visitedAt: number, now = Date.now()): string {
   const sec = Math.max(0, Math.round((now - visitedAt) / 1000));

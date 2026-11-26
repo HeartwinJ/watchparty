@@ -176,8 +176,11 @@ describe("Room next episode", () => {
     const videoMeta = next<VideoMeta | null>(t.a, "REC:videoMeta", (m) =>
       Boolean(m && m.episode === 3),
     );
+    const chat = next<ChatMessage>(t.a, "REC:chat");
     t.b.emit("CMD:nextEpisode", { action: "playNow" });
     expect((await host).video).toBe(NEXT_STREAM);
+    // Someone chose it: the usual "Sam changed the video" line
+    expect(await chat).toMatchObject({ cmd: "host", msg: NEXT_STREAM });
     expect(await videoMeta).toEqual(nextMeta);
     expect(t.room.videoMeta).toEqual(nextMeta);
   });
@@ -194,8 +197,17 @@ describe("Room next episode", () => {
     // preventTSUpdate is on for 1 s after hosting
     await settle(1000);
     const host = next<HostState>(t.b, "REC:host");
+    const chat = next<ChatMessage>(t.b, "REC:chat", (m) => m.cmd !== "host");
     t.a.emit("CMD:ts", 1200);
     expect((await host).video).toBe(NEXT_STREAM);
+    // Nobody chose it: a chat line without a person, named from the metadata (never the stream URL)
+    const line = await chat;
+    expect(line).toMatchObject({ id: "", cmd: "nowPlaying" });
+    expect(JSON.parse(line.msg!)).toEqual({
+      via: "nextEpisode",
+      title: "Example Show · S01E03",
+    });
+    expect(JSON.stringify(line)).not.toContain("three.mkv");
   });
 
   it("uses the room's nextEpisodeOffset setting", async () => {

@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import type { DatabaseSync } from "node:sqlite";
 import {
+  deleteRoomData,
   getSubtitleOffset,
   saveRoomData,
   saveSubtitleOffset,
@@ -33,6 +34,7 @@ import {
 import type { NextEpisodeResolver } from "./addons/nextEpisode.ts";
 import { NextEpisodeController } from "./nextEpisodeController.ts";
 import { parseRoomPasswordCommand, RoomAccess } from "./roomAccess.ts";
+import { nowPlayingChatLine, type NowPlayingVia } from "./nowPlaying.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -106,7 +108,14 @@ export class Room {
   private io: Server;
   private socketIdMap: StringDict = {};
   private tsInterval: NodeJS.Timeout | undefined = undefined;
+  /** Last activity: moved forward by the save loop while people are in the room (see persistRooms) */
   public lastUpdateTime: Date = new Date();
+  /** When this Room was loaded into memory (ms) */
+  public readonly loadedAt = Date.now();
+  /** Set by destroy(): no more saves, emits or host changes (late async work must not recreate the namespace) */
+  private destroyed = false;
+  /** Called after the room deleted itself (server.ts removes it from its `rooms` Map) */
+  public static onDeleted: ((roomId: string) => void) | null = null;
   private preventTSUpdate = false;
   private db: DatabaseSync;
   private subtitleOffsetChatTimer: NodeJS.Timeout | undefined = undefined;
@@ -132,12 +141,16 @@ export class Room {
     loop: () => this.loop,
     offset: () => this.roomSettings.nextEpisodeOffset,
     resolver: () => Room.nextEpisodeResolver,
-    emit: (state) => this.io.of(this.roomId).emit("REC:nextEpisode", state),
+    emit: (state) => {
+      if (!this.destroyed) {
+        this.io.of(this.roomId).emit("REC:nextEpisode", state);
+      }
+    },
     play: (url, meta, by) => {
       const socket = by
         ? this.io.of(this.roomId).sockets.get(this.socketIdMap[by.id])
         : undefined;
-      this.cmdHost(socket ?? null, url, meta);
+      this.cmdHost(socket ?? null, url, meta, { via: "nextEpisode" });
     },
   });
 
@@ -146,10 +159,15 @@ export class Room {
     db: DatabaseSync,
     roomId: string,
     roomData?: string | null | undefined,
+    /** The stored lastUpdateTime (ms) of a room loaded from the database, so loading it doesn't count as activity */
+    lastUpdateTime?: number,
   ) {
     this.roomId = roomId;
     this.io = io;
     this.db = db;
+    if (lastUpdateTime !== undefined && Number.isFinite(lastUpdateTime)) {
+      this.lastUpdateTime = new Date(lastUpdateTime);
+    }
     this.history = new HistoryRecorder(db, roomId, {
       lookupYoutube: fetchYoutubeVideo,
     });
@@ -345,6 +363,10 @@ export class Room {
         "CMD:roomPassword",
         ownerOnly((data) => this.setRoomPassword(socket, data)),
       );
+      on(
+        "CMD:deleteRoom",
+        ownerOnly(() => this.deleteRoom(this.getActor(socket))),
+      );
 
       on("CMD:videoMeta", (data: unknown) => this.setVideoMeta(data));
       on("CMD:playbackIssue", (data: unknown) =>
@@ -447,6 +469,9 @@ export class Room {
   };
 
   public saveRoom = () => {
+    if (this.destroyed) {
+      return;
+    }
     try {
       saveRoomData(
         this.db,
@@ -459,7 +484,32 @@ export class Room {
     }
   };
 
+  /**
+   * Deletes the room for good (CMD:deleteRoom from an owner, DELETE /rooms/:roomId, the inactivity sweep): removes
+   * its database rows (room + watch history), tells everyone connected (`REC:roomDeleted {by}`), disconnects them,
+   * destroys the Room and calls Room.onDeleted so the server forgets it. The link 404s afterwards.
+   */
+  public deleteRoom = (by: PlaybackActor | null): boolean => {
+    if (this.destroyed) {
+      return false;
+    }
+    try {
+      deleteRoomData(this.db, this.roomId);
+    } catch (e) {
+      console.warn("failed to delete room %s:", this.roomId, e);
+      return false;
+    }
+    const ns = this.io.of(this.roomId);
+    const info: RoomDeletedInfo = { by };
+    ns.emit("REC:roomDeleted", info);
+    ns.disconnectSockets();
+    this.destroy();
+    Room.onDeleted?.(this.roomId);
+    return true;
+  };
+
   public destroy = () => {
+    this.destroyed = true;
     if (this.tsInterval) {
       clearInterval(this.tsInterval);
     }
@@ -520,12 +570,18 @@ export class Room {
     };
   };
 
+  /**
+   * Changes the room's video. `socket` is who chose it (chat: "Alex changed the video to …"); without one, `auto`
+   * says why it changed on its own (the queue advanced, the next episode started), which posts a `nowPlaying` chat
+   * line without a person.
+   */
   private cmdHost = (
     socket: Socket | null,
     data: string,
     meta: VideoMeta | null = null,
+    auto?: { via: NowPlayingVia; name?: string | null },
   ) => {
-    if (data && data.length > 50000) {
+    if ((data && data.length > 50000) || this.destroyed) {
       return;
     }
     this.history.beforeHostChange(this.historySnapshot());
@@ -548,6 +604,11 @@ export class Room {
     if (socket && data) {
       const chatMsg = { id: socket.clientId, cmd: "host", msg: data };
       this.addChatMessage(socket, chatMsg);
+    } else if (!socket && data && auto) {
+      this.addChatMessage(
+        null,
+        nowPlayingChatLine(auto.via, data, meta, auto.name),
+      );
     }
     if (data === "") {
       this.playlistNext(null);
@@ -615,7 +676,10 @@ export class Room {
     const next = this.playlist.shift();
     this.io.of(this.roomId).emit("playlist", this.playlist);
     if (next) {
-      this.cmdHost(null, next.url, next.meta ?? null);
+      this.cmdHost(null, next.url, next.meta ?? null, {
+        via: "queue",
+        name: next.name,
+      });
       this.history.setHint(next.url, next);
     }
   };
@@ -646,6 +710,10 @@ export class Room {
     } catch (e) {
       // Failed to fetch YouTube video info but can still add the URL
       console.warn(e);
+    }
+    if (this.destroyed) {
+      // Deleted or unloaded while the YouTube lookup ran
+      return;
     }
     if (video) {
       this.playlist.push(video);
@@ -1170,6 +1238,10 @@ export class Room {
 
   private onDisconnect = (socket: Socket) => {
     const { clientId } = socket;
+    if (this.destroyed) {
+      // The room was deleted: io.of() would recreate its namespace
+      return;
+    }
     // Disconnecting socket is the current one
     if (socket.id === this.socketIdMap[clientId]) {
       let index = this.roster.findIndex((user) => user.id === clientId);

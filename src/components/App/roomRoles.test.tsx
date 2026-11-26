@@ -170,4 +170,86 @@ describe("room page roles", () => {
     expect(screen.queryByLabelText("Room title")).toBeNull();
     expect(document.body.textContent).not.toContain(PASSWORD);
   });
+
+  it("the ready check switch asks the server and follows its REC:roomSettings", async () => {
+    const socket = await renderRoom("owner");
+    await openSettings();
+    const toggle = (await screen.findByRole("switch", {
+      name: /Ready check/,
+    })) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(socket.emitted).toContainEqual([
+      "CMD:roomSettings",
+      { readyCheck: true },
+    ]);
+    await act(async () => {
+      socket.receive("REC:roomSettings", {
+        title: "",
+        readyCheck: true,
+        nextEpisodeOffset: 25,
+      });
+    });
+    expect(
+      (screen.getByRole("switch", { name: /Ready check/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+  });
+
+  it("owners can delete the room after confirming; guests can't", async () => {
+    const socket = await renderRoom("owner");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText("Delete room"));
+    });
+    expect(
+      await screen.findByText(/Everyone in it will be sent out/),
+    ).toBeTruthy();
+    expect(socket.emitted.some(([e]) => e === "CMD:deleteRoom")).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete room" }));
+    });
+    expect(socket.emitted).toContainEqual(["CMD:deleteRoom"]);
+
+    cleanup();
+    sockets.length = 0;
+    await renderRoom("guest");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    });
+    await screen.findByText("Room settings", { selector: "[role=menuitem] *" });
+    expect(screen.queryByText("Delete room")).toBeNull();
+  });
+
+  it("shows everyone else that the room was deleted and forgets it", async () => {
+    const socket = await renderRoom("guest");
+    expect(window.localStorage.getItem("wp-recent-rooms")).toContain(
+      "roles-room",
+    );
+    await act(async () => {
+      socket.receive("REC:roomDeleted", { by: { id: "bob", name: "Bob" } });
+    });
+    expect(await screen.findByText("This room was deleted")).toBeTruthy();
+    expect(screen.getByText(/Bob deleted this room/)).toBeTruthy();
+    // Guests can't go Home
+    expect(screen.queryByRole("button", { name: "Go home" })).toBeNull();
+    expect(window.localStorage.getItem("wp-recent-rooms")).not.toContain(
+      "roles-room",
+    );
+  });
+
+  it("takes the owner who deleted it Home", async () => {
+    window.history.replaceState(null, "", "/watch/roles-room");
+    const socket = await renderRoom("owner");
+    const me = window.localStorage.getItem("watchparty-clientid");
+    await act(async () => {
+      socket.receive("REC:roomDeleted", { by: { id: me, name: "Sam" } });
+    });
+    expect(window.location.pathname).toBe("/");
+    expect(screen.queryByText("This room was deleted")).toBeNull();
+  });
 });

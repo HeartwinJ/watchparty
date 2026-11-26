@@ -78,6 +78,49 @@ describe("Chat", () => {
     expect(screen.getByText("set the playback rate to auto")).toBeTruthy();
   });
 
+  it("shows automatic video changes without a person", () => {
+    const { container } = render(
+      <MantineProvider>
+        <Chat
+          chat={[
+            {
+              id: "",
+              timestamp: new Date(0).toISOString(),
+              cmd: "nowPlaying",
+              msg: JSON.stringify({ via: "queue", title: "Spring" }),
+            },
+            {
+              id: "",
+              timestamp: new Date(1).toISOString(),
+              cmd: "nowPlaying",
+              msg: JSON.stringify({
+                via: "queue",
+                url: "https://example.com/a.mp4",
+              }),
+            },
+          ]}
+          nameMap={{}}
+          pictureMap={{}}
+          cmd={{
+            sendChat: vi.fn(),
+            sendChatV2: vi.fn(),
+            addReaction: vi.fn(),
+            removeReaction: vi.fn(),
+          }}
+          scrollTimestamp={0}
+          getMediaDisplayName={() => "a.mp4"}
+        />
+      </MantineProvider>,
+    );
+    expect(
+      screen.getByText("Now playing Spring (from the queue)"),
+    ).toBeTruthy();
+    expect(screen.getByText("Now playing a.mp4 (from the queue)")).toBeTruthy();
+    // No name, no avatar, nothing to react to
+    expect(container.querySelector("b")).toBeNull();
+    expect(screen.queryByLabelText("Add reaction")).toBeNull();
+  });
+
   it("toggles a reaction off when we already reacted", () => {
     const me = window.localStorage.getItem("watchparty-clientid")!;
     const cmd = renderChat([

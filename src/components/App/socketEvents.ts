@@ -46,6 +46,8 @@ export interface ServerToClientEvents {
   "REC:roomAccess": (info: RoomAccessInfo) => void;
   /** Guests: an owner changed the room password or turned it on, so this guest's access ended (then disconnected) */
   "REC:accessRevoked": () => void;
+  /** An owner deleted the room; the server disconnects everyone right after */
+  "REC:roomDeleted": (info: RoomDeletedInfo) => void;
   /** The room-wide next-episode card (also sent on connect) */
   "REC:nextEpisode": (state: NextEpisodeState) => void;
   signalSS: (data: {
@@ -116,6 +118,8 @@ export interface ClientToServerEvents {
   "CMD:roomPassword": (cmd: RoomPasswordCommand) => void;
   /** Owners only: disconnect someone; a guest also loses access to the room */
   "CMD:kickUser": (data: { userToBeKicked: string }) => void;
+  /** Owners only: delete the room for good (everyone gets REC:roomDeleted and is disconnected) */
+  "CMD:deleteRoom": () => void;
   /** This device's readiness for the ready check; sent when it changes */
   "CMD:readyState": (data: {
     ready: boolean;
@@ -180,6 +184,7 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
       emit("CMD:roomPassword", cmd),
     kickUser: (clientId: string) =>
       emit("CMD:kickUser", { userToBeKicked: clientId }),
+    deleteRoom: () => emit("CMD:deleteRoom"),
     reportReadyState: (data: {
       ready: boolean;
       buffering?: boolean;

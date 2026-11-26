@@ -18,7 +18,10 @@ import {
   IconPencil,
   IconSearch,
   IconSettings,
+  IconTrash,
 } from "@tabler/icons-react";
+import { useState } from "react";
+import { DeleteRoomModal } from "../../DeleteRoomModal/DeleteRoomModal";
 import { navigate } from "../../../router";
 import { roomDisplayName } from "../../../utils/rooms";
 import { useAuth } from "../../AuthGate/AuthGate";
@@ -61,6 +64,7 @@ export const RoomTopBar = ({
     picture: state.pictureMap[p.id],
   }));
   const unread = ui.sidebarCollapsed && state.unreadCount > 0;
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <header className={styles.topbar}>
@@ -188,6 +192,13 @@ export const RoomTopBar = ({
                 >
                   Leave room
                 </Menu.Item>
+                <Menu.Item
+                  color="var(--wp-danger)"
+                  leftSection={<IconTrash size={16} />}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  Delete room
+                </Menu.Item>
               </>
             )}
             {authRequired && isOwner && (
@@ -202,6 +213,18 @@ export const RoomTopBar = ({
           </Menu.Dropdown>
         </Menu>
       </div>
+      {isOwner && (
+        <DeleteRoomModal
+          opened={confirmDelete}
+          roomName={roomName}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            // The server answers with REC:roomDeleted, which takes us Home
+            room.cmd.deleteRoom();
+            setConfirmDelete(false);
+          }}
+        />
+      )}
     </header>
   );
 };

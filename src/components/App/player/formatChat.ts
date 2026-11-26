@@ -36,6 +36,8 @@ export function describeChatCommand(
     }
     case "roomSettings":
       return describeRoomSettingsChange(msg);
+    case "nowPlaying":
+      return describeNowPlaying(msg, mediaName);
     case "roomPassword":
       // msg is what changed, never the password itself
       return msg === "changed"
@@ -48,6 +50,48 @@ export function describeChatCommand(
     default:
       return undefined;
   }
+}
+
+/**
+ * A line without a person (`id: ""`): the server posts these for things nobody chose, like the queue advancing or
+ * the next episode starting (`nowPlaying`). The chat shows them without a name or avatar.
+ */
+export function isPersonlessLine(m: Pick<ChatMessageBase, "id">): boolean {
+  return !m.id;
+}
+
+/**
+ * `nowPlaying` lines: msg is JSON `{via: "queue"|"nextEpisode", title}` (the server's readable name, never an
+ * AIOStreams URL) or `{via, url}` when it had none, named like a `host` line. → "Now playing Spring (from the queue)"
+ */
+function describeNowPlaying(
+  msg: string | undefined,
+  mediaName: (url?: string) => string,
+) {
+  let data: { via?: unknown; title?: unknown; url?: unknown };
+  try {
+    data = JSON.parse(msg ?? "");
+  } catch {
+    return undefined;
+  }
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+  const name =
+    typeof data.title === "string" && data.title
+      ? data.title
+      : typeof data.url === "string" && data.url
+        ? mediaName(data.url)
+        : "";
+  const why =
+    data.via === "queue"
+      ? " (from the queue)"
+      : data.via === "nextEpisode"
+        ? " (next episode)"
+        : "";
+  return name
+    ? `Now playing ${name}${why}`
+    : `Now playing the next video${why}`;
 }
 
 /** `roomSettings` lines: msg is JSON with the one setting that changed, e.g. `{"readyCheck":true}` */

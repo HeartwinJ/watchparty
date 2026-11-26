@@ -25,6 +25,9 @@ const defaults = {
   // Optional, AIOStreams manifest URL (https://host/stremio/<uuid>/<config>/manifest.json). Enables /addon/*.
   // SECRET: it embeds the AIOStreams config and debrid credentials. Server-side only, never log/return/commit it.
   AIOSTREAMS_MANIFEST_URL: "",
+  // Rooms nobody has been in for this many days are deleted (room + its watch history), checked at startup and daily.
+  // 0 disables it.
+  ROOM_MAX_IDLE_DAYS: 60,
   SUBTITLE_LANGS: "en", // Preferred subtitle languages for /addon/subtitles, ISO 639-1, comma-separated, e.g. "en,es"
 };
 

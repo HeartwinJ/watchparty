@@ -78,6 +78,11 @@ interface PlaybackActor {
   name?: string;
 }
 
+/** REC:roomDeleted: an owner deleted the room (`by` is null for Home's delete button and the inactivity sweep) */
+interface RoomDeletedInfo {
+  by: PlaybackActor | null;
+}
+
 /**
  * What the room's current video is, when it came from the AIOStreams picker (CMD:videoMeta / REC:videoMeta).
  * Cleared whenever a different video is hosted. Used for "Pick another", next episode, history and subtitles.

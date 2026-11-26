@@ -26,7 +26,10 @@ import {
   TransitionGroup,
 } from "react-transition-group";
 import type { CSSTransitionProps } from "react-transition-group/CSSTransition";
-import { describeChatCommand } from "../App/player/formatChat";
+import {
+  describeChatCommand,
+  isPersonlessLine,
+} from "../App/player/formatChat";
 
 const clientId = getOrCreateClientId();
 const truncateReply = (input?: string, max = 30) =>
@@ -210,7 +213,7 @@ export class Chat extends React.Component<ChatProps> {
       return `set the playback rate to ${msg === "0" ? "auto" : `${msg}x`}`;
     }
     // Newer commands (e.g. subtitleOffset) are described by the player's helper
-    return describeChatCommand(cmd, msg) ?? cmd;
+    return describeChatCommand(cmd, msg, this.props.getMediaDisplayName) ?? cmd;
   };
 
   addEmoji = (emoji: any) => {
@@ -442,6 +445,8 @@ const ChatMessage = ({
   const { id, timestamp, cmd, msg, system, reactions, videoTS } = message;
   const spellFull = 5; // the number of people whose names should be written out in full in the reaction popup
   const imageMsg = renderImageString(msg);
+  // Lines nobody caused (the queue advanced, the next episode started) have no person: no name, avatar or reactions
+  const personless = isPersonlessLine(message);
   const name = system ? "System" : nameMap[id] || id;
   const time = formatTime(timestamp);
 
@@ -458,20 +463,22 @@ const ChatMessage = ({
           <IconArrowBackUp size={16} />
         </ActionIcon>
       )}
-      <ActionIcon
-        variant="subtle"
-        color="gray"
-        size={26}
-        aria-label="Add reaction"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          setTimeout(() => {
-            setReactionMenu(true, id, timestamp, rect.top, rect.right);
-          }, 100);
-        }}
-      >
-        <IconMoodSmile size={16} />
-      </ActionIcon>
+      {!personless && (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size={26}
+          aria-label="Add reaction"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setTimeout(() => {
+              setReactionMenu(true, id, timestamp, rect.top, rect.right);
+            }, 100);
+          }}
+        >
+          <IconMoodSmile size={16} />
+        </ActionIcon>
+      )}
     </div>
   );
 
@@ -557,14 +564,20 @@ const ChatMessage = ({
     return (
       <div className={`${styles.comment} ${styles.sys} ${className}`}>
         <span className={styles.sysIcon} aria-hidden="true">
-          {cmd === "host" || cmd === "playlistAdd" ? (
+          {cmd === "host" || cmd === "playlistAdd" || cmd === "nowPlaying" ? (
             <IconMovie size={14} />
           ) : (
             <IconPlayerPlay size={14} />
           )}
         </span>
         <div className={styles.sysBody}>
-          <b>{name}</b> {formatMessage(cmd, msg)}
+          {personless ? (
+            formatMessage(cmd, msg)
+          ) : (
+            <>
+              <b>{name}</b> {formatMessage(cmd, msg)}
+            </>
+          )}
           {reactionChips}
         </div>
         {actions}

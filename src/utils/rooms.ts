@@ -26,6 +26,18 @@ export async function createRoom(
   return name.replace(/^\//, "");
 }
 
+/**
+ * Owners: DELETE /rooms/:roomId (Home's recent rooms; the room page uses the CMD:deleteRoom socket command).
+ * Resolves true when the room is gone (deleted now, or it didn't exist anymore).
+ */
+export async function deleteRoom(roomId: string): Promise<boolean> {
+  const response = await apiFetch(
+    `/rooms/${encodeURIComponent(roomId.replace(/^\//, ""))}`,
+    { method: "DELETE" },
+  );
+  return response.status === 204 || response.status === 404;
+}
+
 /** What to call a room: its title from room settings when set, otherwise the readable generated name. */
 export function roomDisplayName(roomId: string, title?: string): string {
   return title?.trim() || prettyRoomName(roomId);
