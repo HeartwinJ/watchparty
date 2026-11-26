@@ -30,8 +30,9 @@ jobs:
         run: npm run typecheck
       - name: Typecheck (server)
         run: npm run typecheckServer
-      - name: Unit tests
-        run: npm test
+      # Fails when coverage drops below the thresholds in vite.config.ts
+      - name: Unit tests with coverage
+        run: npm run coverage
       - name: Build client
         run: npx vite build
         env:

@@ -44,10 +44,26 @@ export default {
         "words/**",
         "build/**",
         "dist-server/**",
-        "src/vite-env.d.ts",
+        // The process entry point (listen, timers, signals); the app itself is createApp() in server/app.ts
+        "server/server.ts",
       ],
-      reporter: ["text-summary", "text", "html"],
+      reporter: ["text-summary", "html", "json-summary"],
       reportsDirectory: "coverage",
+      // Just below the current levels; raise them as coverage goes up
+      thresholds: {
+        "server/**": {
+          lines: 98,
+          statements: 98,
+          functions: 99,
+          branches: 95,
+        },
+        "src/**": {
+          lines: 68,
+          statements: 68,
+          functions: 64,
+          branches: 63,
+        },
+      },
     },
     projects: [
       {
