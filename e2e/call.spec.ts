@@ -1,5 +1,15 @@
 import { expect, type Page } from "@playwright/test";
-import { createRoom, focusPlayer, test, type Viewer } from "./helpers.ts";
+import {
+  createRoom,
+  expectMedia,
+  focusPlayer,
+  LONG,
+  playing,
+  playUrl,
+  showControls,
+  test,
+  type Viewer,
+} from "./helpers.ts";
 
 // Voice/video call with Chromium's fake mic and camera (--use-fake-device-for-media-stream).
 // Every RTCPeerConnection is recorded so the tests can check connection states and real RTP stats.
@@ -373,4 +383,31 @@ test("the video tile strip can be dragged into every corner with a quick drag", 
       )
       .toBe(true);
   }
+});
+
+test("the collapsed video pill hides and shows with the player controls", async ({
+  join,
+  baseURL,
+}) => {
+  const room = await createRoom(baseURL!);
+  const a = await joinPage(join, room, "A");
+  await joinCall(a, { cameraFirst: true });
+  await playUrl(a.page, LONG);
+  await expectMedia(a.page, playing(LONG), "A plays the video");
+
+  const strip = a.page.getByRole("region", { name: "Call video" });
+  await strip.hover();
+  await a.page.getByRole("button", { name: "Collapse call video" }).click();
+  const pill = a.page.getByRole("button", { name: /^Show call video/ });
+  await expect(pill).toBeVisible();
+  const opacity = () => strip.evaluate((el) => getComputedStyle(el).opacity);
+
+  // The controls auto-hide while playing: the pill goes with them
+  await expect.poll(opacity, { timeout: 15_000 }).toBe("0");
+  await showControls(a.page);
+  await expect.poll(opacity).toBe("1");
+  await pill.click();
+  await expect(
+    a.page.getByRole("button", { name: "Collapse call video" }),
+  ).toBeAttached();
 });
