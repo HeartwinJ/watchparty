@@ -321,6 +321,21 @@ describe("CallPanel camera", () => {
     expect(api.toggleCamera).toHaveBeenCalled();
   });
 
+  it("survives a camera listed twice with the same id", async () => {
+    const { room, api } = fakeRoom(joinedCall());
+    api.listCameras.mockResolvedValue([
+      { kind: "videoinput", deviceId: "cam-1", label: "Desk cam" },
+      { kind: "videoinput", deviceId: "cam-1", label: "Desk cam" },
+      { kind: "videoinput", deviceId: "cam-2", label: "USB cam" },
+    ]);
+    renderPanel(room);
+    const select = (await screen.findAllByLabelText("Camera")).find(
+      (e) => e.tagName === "INPUT",
+    )!;
+    fireEvent.click(select);
+    expect(await screen.findAllByRole("option")).toHaveLength(2);
+  });
+
   it("shows the preview while it's on", async () => {
     const play = vi.fn(async () => {});
     Object.defineProperty(HTMLMediaElement.prototype, "play", {

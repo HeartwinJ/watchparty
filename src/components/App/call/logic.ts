@@ -274,3 +274,27 @@ export function createStateThrottle<T>(
     },
   };
 }
+
+/**
+ * Picker options for media devices. Skips devices without an id (no permission yet) and repeats of an id: some
+ * systems (e.g. Linux with PipeWire) list the same camera twice, and Mantine's Select throws on duplicate values,
+ * which took the whole room page down.
+ */
+export function deviceOptions(
+  devices: Pick<MediaDeviceInfo, "deviceId" | "label">[],
+  fallbackLabel: string,
+): { value: string; label: string }[] {
+  const seen = new Set<string>();
+  const out: { value: string; label: string }[] = [];
+  for (const d of devices) {
+    if (!d.deviceId || seen.has(d.deviceId)) {
+      continue;
+    }
+    seen.add(d.deviceId);
+    out.push({
+      value: d.deviceId,
+      label: d.label || `${fallbackLabel} ${out.length + 1}`,
+    });
+  }
+  return out;
+}
