@@ -136,6 +136,8 @@ export class Room {
   /** Called after the room deleted itself (server.ts removes it from its `rooms` Map) */
   public static onDeleted: ((roomId: string) => void) | null = null;
   private preventTSUpdate = false;
+  /** Positions reported before this time (ms) are ignored: they were sent before a seek reached the player */
+  private ignoreTsUntil = 0;
   private db: DatabaseSync;
   private subtitleOffsetChatTimer: NodeJS.Timeout | undefined = undefined;
   /** How long the subtitle offset has to stay unchanged before it's announced in chat */
@@ -898,6 +900,10 @@ export class Room {
     // Someone picked a position (e.g. "Watch from start"): the skip is over, and positions count as watched again
     this.history.setIntroSkip(this.video, 0);
     this.endIntroSkip();
+    // Forget everyone's old positions: otherwise drift correction pulls the room back to where it was
+    this.tsMap = {};
+    this.ignoreTsUntil = Date.now() + 1000;
+    this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
     socket.broadcast.emit("REC:seek", data);
     const chatMsg = { id: socket.clientId, cmd: "seek", msg: data?.toString() };
     this.addChatMessage(socket, chatMsg);
@@ -936,8 +942,8 @@ export class Room {
     if (typeof data !== "number" || !Number.isFinite(data)) {
       return;
     }
-    // Prevent lagging TS updates from the old video from messing up our timestamps
-    if (this.preventTSUpdate) {
+    // Prevent lagging TS updates from the old video (or from before a seek) from messing up our timestamps
+    if (this.preventTSUpdate || Date.now() < this.ignoreTsUntil) {
       return;
     }
     // This is negative for live streams, so allow overwriting

@@ -278,3 +278,31 @@ describe("Room skip intro", () => {
     expect(listHistory(t.db)).toMatchObject([{ position: 130 }]);
   });
 });
+
+describe("seeking", () => {
+  const cleanups: (() => Promise<void>)[] = [];
+  afterEach(async () => {
+    for (const fn of cleanups.splice(0)) {
+      await fn();
+    }
+  });
+
+  it("forgets old positions so the room isn't pulled back to them", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    const a = await t.join();
+    const b = await t.join();
+    a.emit("CMD:host", EP2);
+    await new Promise((r) => setTimeout(r, 1100));
+    a.emit("CMD:ts", 120);
+    b.emit("CMD:ts", 120);
+    await settle();
+    const cleared = next<NumberDict>(a, "REC:tsMap");
+    b.emit("CMD:seek", 10);
+    expect(await cleared).toEqual({});
+    // A position a player sent before it got the seek
+    a.emit("CMD:ts", 121);
+    await settle();
+    expect(t.room.videoTS).toBe(10);
+  });
+});
