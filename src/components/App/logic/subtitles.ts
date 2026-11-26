@@ -17,12 +17,12 @@ export function toWebVtt(text: string): string {
   return "WEBVTT\n\n" + body.trim() + "\n";
 }
 
-/** The slider and step buttons cover ±10 s; the server accepts up to ±30 s */
+/** The slider covers ±10 s; larger offsets are typed into the menu. ±24 h is only a sanity bound. */
 export const SUBTITLE_OFFSET_SLIDER_MAX = 10;
-export const SUBTITLE_OFFSET_MAX = 30;
+export const SUBTITLE_OFFSET_MAX = 24 * 60 * 60;
 export const SUBTITLE_OFFSET_STEP = 0.1;
 
-/** Clamps to ±30 s and rounds to 0.05 s (same as the server), without float noise or -0 */
+/** Clamps to ±24 h and rounds to 0.05 s (same as the server), without float noise or -0 */
 export function normalizeOffset(value: number): number {
   if (!Number.isFinite(value)) {
     return 0;
@@ -48,6 +48,28 @@ export function formatOffset(offset: number) {
   const abs = Math.abs(offset);
   const digits = Math.round(abs * 100) % 10 === 0 ? 1 : 2;
   return `${offset > 0 ? "+" : "−"}${abs.toFixed(digits)} s`;
+}
+
+/**
+ * Parses an offset typed into the menu: seconds ("2.5", "+2.5", "-1.25 s", "−3" with a real minus) or minutes:seconds
+ * ("1:30", "-1:05.5"). Returns the normalized offset, or undefined if it isn't a number.
+ */
+export function parseOffsetInput(raw: string): number | undefined {
+  const text = raw
+    .trim()
+    .replace(/[\u2212\u2013]/g, "-")
+    .replace(/\s*s(ec(onds?)?)?$/i, "")
+    .replace(",", ".");
+  const m = /^([+-])?(?:(\d+):)?(\d+(?:\.\d*)?|\.\d+)$/.exec(text);
+  if (!m) {
+    return undefined;
+  }
+  const [, sign, minutes, seconds] = m;
+  const abs = Number(minutes ?? 0) * 60 + Number(seconds);
+  if (minutes !== undefined && Number(seconds) >= 60) {
+    return undefined;
+  }
+  return normalizeOffset(sign === "-" ? -abs : abs);
 }
 
 /** Plain-language hint under the value in the menu */

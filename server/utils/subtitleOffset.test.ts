@@ -14,9 +14,10 @@ describe("normalizeSubtitleOffset", () => {
     expect(Object.is(normalizeSubtitleOffset(-0.01), -0)).toBe(false);
   });
 
-  it("clamps to ±30 s", () => {
-    expect(normalizeSubtitleOffset(31)).toBe(30);
-    expect(normalizeSubtitleOffset(-1e9)).toBe(-30);
+  it("allows large offsets, with only a ±24 h sanity bound", () => {
+    expect(normalizeSubtitleOffset(31)).toBe(31);
+    expect(normalizeSubtitleOffset(-754.3)).toBe(-754.3);
+    expect(normalizeSubtitleOffset(-1e9)).toBe(-86400);
   });
 
   it("rejects anything that isn't a finite number", () => {
