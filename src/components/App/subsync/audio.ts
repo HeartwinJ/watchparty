@@ -30,6 +30,16 @@ export interface AudioReadOptions {
 
 export class AudioReadError extends Error {}
 
+/** Failed range requests are retried this many times (then the read fails) */
+export const URL_READ_RETRIES = 3;
+
+/**
+ * mediabunny's getRetryDelay: seconds before the next try, or null to give up. mediabunny counts `attempts` from 1
+ * (the failed tries so far), so 1..URL_READ_RETRIES retry after 2, 3, 4 s.
+ */
+export const urlRetryDelay = (attempts: number): number | null =>
+  attempts <= URL_READ_RETRIES ? attempts + 1 : null;
+
 /** Reads the planned windows and returns their speech activity. Throws AudioReadError with a readable message. */
 export async function readActivityWindows(
   opts: AudioReadOptions,
@@ -41,7 +51,7 @@ export async function readActivityWindows(
         ? new mb.UrlSource(opts.source, {
             parallelism: 4,
             // The default retries forever; a stalled read fails through the watchdog instead
-            getRetryDelay: (attempts) => (attempts < 3 ? attempts + 1 : null),
+            getRetryDelay: urlRetryDelay,
           })
         : new mb.BlobSource(opts.source),
     formats: mb.ALL_FORMATS,

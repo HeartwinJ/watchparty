@@ -4,6 +4,7 @@ import {
   getVideoDuration,
   getYoutubeVideoID,
   isYouTube,
+  parseYoutubeQuery,
   searchYoutube,
   setYoutubeClient,
   youtubePlaylist,
@@ -185,5 +186,16 @@ describe("youtube client", () => {
     expect(isYouTube("https://www.youtube.com/watch?v=x")).toBe(true);
     expect(isYouTube("https://youtu.be/x")).toBe(true);
     expect(isYouTube("https://example.com/youtube")).toBe(false);
+  });
+});
+
+describe("parseYoutubeQuery", () => {
+  it("accepts a search string and rejects missing, blank, repeated or huge ones", () => {
+    expect(parseYoutubeQuery("cats & dogs")).toBe("cats & dogs");
+    for (const raw of [undefined, "", "   ", ["a", "b"], { q: "a" }]) {
+      expect(parseYoutubeQuery(raw)).toBeUndefined();
+    }
+    expect(parseYoutubeQuery("a".repeat(500))).toBe("a".repeat(500));
+    expect(parseYoutubeQuery("a".repeat(501))).toBeUndefined();
   });
 });

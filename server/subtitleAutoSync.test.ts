@@ -200,7 +200,7 @@ describe("SubtitleAutoSync", () => {
     expect(s.claim("b", { video: V, key: K }, on())).toEqual({
       granted: true,
     });
-    expect(s.leave("b")).toEqual([K]);
+    expect(s.leave("b")).toEqual([{ key: K, status: "released" }]);
     expect(s.claim("c", { video: V, key: K }, on())).toEqual({
       granted: true,
     });
@@ -213,17 +213,50 @@ describe("SubtitleAutoSync", () => {
     });
   });
 
-  it("a claim without a result expires", () => {
+  it("a claim without a result expires (via expireStale)", () => {
     const s = fresh();
     s.claim("a", { video: V, key: K }, on(0));
     expect(s.claim("b", { video: V, key: K }, on(1000))).toMatchObject({
       reason: "busy",
     });
+    expect(s.expireStale(SUBTITLE_SYNC_CLAIM_TTL_MS)).toEqual([]);
+    // Still busy until the sweep ends it, so every end gets announced
+    expect(
+      s.claim("b", { video: V, key: K }, on(SUBTITLE_SYNC_CLAIM_TTL_MS + 1)),
+    ).toMatchObject({ reason: "busy" });
+    expect(s.expireStale(SUBTITLE_SYNC_CLAIM_TTL_MS + 1)).toEqual([
+      { key: K, status: "released" },
+    ]);
+    expect(s.expireStale(SUBTITLE_SYNC_CLAIM_TTL_MS + 2)).toEqual([]);
     expect(
       s.claim("b", { video: V, key: K }, on(SUBTITLE_SYNC_CLAIM_TTL_MS + 1)),
     ).toEqual({ granted: true });
     // The late result from "a" no longer counts
     expect(s.result("a", { video: V, key: K, offset: 1 }, on())).toBeNull();
+  });
+
+  it("the last attempt ending without a result (left or expired) is reported as done", () => {
+    const s = fresh();
+    s.claim("a", { video: V, key: K }, on(0));
+    s.failed("a", { video: V, key: K });
+    s.claim("b", { video: V, key: K }, on(0));
+    s.failed("b", { video: V, key: K });
+    s.claim("c", { video: V, key: K }, on(0));
+    expect(s.leave("c")).toEqual([{ key: K, status: "done" }]);
+    expect(s.isDone(K)).toBe(true);
+
+    const t = fresh();
+    t.claim("a", { video: V, key: K }, on(0));
+    t.leave("a");
+    t.claim("b", { video: V, key: K }, on(0));
+    t.leave("b");
+    t.claim("c", { video: V, key: K }, on(0));
+    expect(t.expireStale(SUBTITLE_SYNC_CLAIM_TTL_MS + 1)).toEqual([
+      { key: K, status: "done" },
+    ]);
+    expect(t.claim("d", { video: V, key: K }, on(0))).toMatchObject({
+      reason: "done",
+    });
   });
 
   it("a new video forgets everything", () => {
@@ -257,6 +290,13 @@ describe("SubtitleAutoSync limits", () => {
     for (let i = 0; i < SUBTITLE_SYNC_MAX_ATTEMPTS; i++) {
       expect(s.claim("a", { video: V, key: K }, on(now)).granted).toBe(true);
       now += SUBTITLE_SYNC_CLAIM_TTL_MS + 1;
+      // The room's timer ends the stale claim: released, then done after the last attempt
+      expect(s.expireStale(now)).toEqual([
+        {
+          key: K,
+          status: i < SUBTITLE_SYNC_MAX_ATTEMPTS - 1 ? "released" : "done",
+        },
+      ]);
     }
     expect(s.claim("b", { video: V, key: K }, on(now))).toEqual({
       granted: false,
@@ -270,10 +310,11 @@ describe("SubtitleAutoSync limits", () => {
     for (let i = 0; i < SUBTITLE_SYNC_MAX_ATTEMPTS - 1; i++) {
       s.claim("a", { video: V, key: K }, on(now));
       now += SUBTITLE_SYNC_CLAIM_TTL_MS + 1;
+      s.expireStale(now);
     }
     s.claim("a", { video: V, key: K }, on(now));
-    // The third attempt's claimer leaves: nothing to release, it's done
-    expect(s.leave("a")).toEqual([]);
+    // The third attempt's claimer leaves: nothing left to try, it's done
+    expect(s.leave("a")).toEqual([{ key: K, status: "done" }]);
     expect(s.isDone(K)).toBe(true);
   });
 });

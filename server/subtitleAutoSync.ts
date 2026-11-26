@@ -6,6 +6,8 @@
  *   none ──claim (setting on, video current, offset not set by hand)──▶ running {by}   → REC:subtitleSync running
  *   running ──result from `by`──▶ done (offset applied room-wide unless someone set one by hand meanwhile)
  *   running ──failed from `by` / `by` left / 3 min without a result──▶ released (anyone may claim again; 3 tries)
+ *     after the 3rd try it's done instead (offset null). The room announces every end of a running job to everyone
+ *     (REC:subtitleSync released / done), so no viewer keeps showing "X is syncing…".
  *   any other claim ──▶ denied (to that viewer only)
  * A new video clears everything. The state is in memory only: after a restart a saved non-zero offset still counts
  * as set by hand, so nothing is redone over it.
@@ -94,6 +96,12 @@ export function parseSubtitleSyncCommand(
   }
 }
 
+/** How a running job ended without a result: free for another try, or given up (out of attempts) */
+export interface SubtitleSyncEnd {
+  key: string;
+  status: "released" | "done";
+}
+
 export type ClaimOutcome =
   | { granted: true }
   | { granted: false; reason: NonNullable<SubtitleSyncEvent["reason"]> };
@@ -141,7 +149,8 @@ export class SubtitleAutoSync {
     if (this.offsetSource === "manual") {
       return { granted: false, reason: "manual" };
     }
-    const entry = this.expire(cmd.key, ctx.now);
+    // An expired claim stays "busy" until expireStale() (the room's 1 s timer) ends and announces it
+    const entry = this.entries.get(cmd.key);
     if (entry?.status === "done") {
       return { granted: false, reason: "done" };
     }
@@ -202,17 +211,35 @@ export class SubtitleAutoSync {
     return this.release(cmd.key, entry.attempts);
   }
 
-  /** A viewer left: release whatever they were computing. Returns the released keys. */
-  leave(clientId: string): string[] {
-    const released: string[] = [];
+  /** A viewer left: end whatever they were computing (released, or done when out of attempts) */
+  leave(clientId: string): SubtitleSyncEnd[] {
+    const ended: SubtitleSyncEnd[] = [];
     for (const [key, entry] of this.entries) {
       if (entry.status === "running" && entry.by === clientId) {
-        if (this.release(key, entry.attempts)) {
-          released.push(key);
-        }
+        ended.push({
+          key,
+          status: this.release(key, entry.attempts) ? "released" : "done",
+        });
       }
     }
-    return released;
+    return ended;
+  }
+
+  /** Claims without a result for SUBTITLE_SYNC_CLAIM_TTL_MS: given up like a failure. Call regularly. */
+  expireStale(now: number): SubtitleSyncEnd[] {
+    const ended: SubtitleSyncEnd[] = [];
+    for (const [key, entry] of this.entries) {
+      if (
+        entry.status === "running" &&
+        now - entry.at > SUBTITLE_SYNC_CLAIM_TTL_MS
+      ) {
+        ended.push({
+          key,
+          status: this.release(key, entry.attempts) ? "released" : "done",
+        });
+      }
+    }
+    return ended;
   }
 
   getVideo() {
@@ -231,22 +258,5 @@ export class SubtitleAutoSync {
     }
     this.entries.set(key, { status: "released", attempts });
     return true;
-  }
-
-  private expire(key: string, now: number): Entry | undefined {
-    const entry = this.entries.get(key);
-    if (
-      entry?.status === "running" &&
-      now - entry.at > SUBTITLE_SYNC_CLAIM_TTL_MS
-    ) {
-      const released: Entry = { status: "released", attempts: entry.attempts };
-      if (entry.attempts >= SUBTITLE_SYNC_MAX_ATTEMPTS) {
-        this.entries.set(key, { status: "done" });
-        return { status: "done" };
-      }
-      this.entries.set(key, released);
-      return released;
-    }
-    return entry;
   }
 }

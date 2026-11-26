@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs as root only long enough to make the data directory writable by the app user,
-# then drops privileges. This avoids "unable to open database file" when the host's
-# ./data bind mount was created by Docker (root-owned) or never chown'ed.
+# then drops privileges. This avoids "unable to open database file" when the data volume
+# (compose.yaml's named volume `data`, or a bind mount) is root-owned or was never chown'ed.
 set -e
 
 DATA_DIR="${DATA_DIR:-/app/data}"
@@ -17,7 +17,7 @@ if [ "$(id -u)" = "0" ]; then
   fi
   if ! su-exec node test -w "$DATA_DIR"; then
     echo "entrypoint: ERROR: $DATA_DIR is not writable by uid $APP_UID." >&2
-    echo "entrypoint: On SELinux hosts add ':z' to the ./data volume in compose.yaml." >&2
+    echo "entrypoint: On SELinux hosts with a bind mount instead of the named volume, add ':z' to it." >&2
     exit 1
   fi
   exec su-exec node "$@"

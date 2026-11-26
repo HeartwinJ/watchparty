@@ -516,11 +516,20 @@ describe("YouTube", () => {
     expect(youtube.searchYoutube).toHaveBeenCalledWith("cats");
   });
 
-  it("answers 500 for a missing query or a failed search", async () => {
+  it("answers 400 for a missing or bad query and 500 for a failed search", async () => {
     await start();
-    expect((await call("GET", "/youtube")).json).toEqual({
-      error: "query must be a string",
-    });
+    for (const q of [
+      "",
+      "?q=",
+      "?q=%20%20",
+      "?q=a&q=b",
+      "?q=" + "a".repeat(501),
+    ]) {
+      const bad = await call("GET", "/youtube" + q);
+      expect(bad.status, q).toBe(400);
+      expect(bad.json).toEqual({ error: "invalid_params" });
+    }
+    expect(youtube.searchYoutube).not.toHaveBeenCalled();
     youtube.searchYoutube.mockRejectedValue(new Error("quota"));
     const r = await call("GET", "/youtube?q=x");
     expect(r.status).toBe(500);
