@@ -7,7 +7,7 @@ export const NEXT_EPISODE_OFFSET_MAX = 120;
 
 export const DEFAULT_ROOM_SETTINGS: Readonly<RoomSettings> = Object.freeze({
   title: "",
-  readyCheck: false,
+  readyCheck: true,
   nextEpisodeOffset: 25,
 });
 

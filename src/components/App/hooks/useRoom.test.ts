@@ -591,7 +591,7 @@ describe("useRoom", () => {
     expect(result.current.state.convertEnabled).toBe(true);
   });
 
-  it("reports the position and the duration (watch history) once connected", async () => {
+  it("reports the position and the duration (watch history) once connected and loaded", async () => {
     const { socket } = await setup();
     const video = document.getElementById("leftVideo") as HTMLVideoElement;
     video.play = vi.fn(async () => {});
@@ -610,6 +610,12 @@ describe("useRoom", () => {
       }),
     );
     act(() => socket.receive("connect"));
+    // Nothing is reported while the media is still loading (its position would be a bogus ~0)
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(socket.emits("CMD:ts")).toEqual([]);
+    act(() => {
+      video.dispatchEvent(new Event("canplay"));
+    });
     await waitFor(
       () => expect(socket.emits("CMD:duration")).toEqual([[3600]]),
       {

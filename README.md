@@ -12,7 +12,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 
 - Synced play, pause, seek, speed and loop for everyone in the room. Small drift is corrected by briefly nudging the playback speed instead of jumping, and an "In sync" indicator shows how far behind each person is.
 - One click on the video plays or pauses for everyone, with a toast saying who did it.
-- Optional **ready check**: when someone buffers or joins mid-play, the room pauses until everyone has enough loaded.
+- **Ready check** (on by default, can be turned off per room): when someone buffers or joins mid-play, the room pauses until everyone has enough loaded.
 - **Next episode**: near the end of an episode, everyone gets an "Up next" card. It plays the next episode from the same release automatically unless someone cancels.
 - **Continue watching** on the home page: what you were watching, with progress, resumes in a new room where you left off.
 

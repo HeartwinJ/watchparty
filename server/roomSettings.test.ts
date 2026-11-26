@@ -77,12 +77,12 @@ describe("normalizeRoomSettings", () => {
     expect(normalizeRoomSettings(undefined)).toEqual(DEFAULT_ROOM_SETTINGS);
     expect(DEFAULT_ROOM_SETTINGS).toEqual({
       title: "",
-      readyCheck: false,
+      readyCheck: true,
       nextEpisodeOffset: 25,
     });
     expect(normalizeRoomSettings({ title: "Friday", junk: true })).toEqual({
       title: "Friday",
-      readyCheck: false,
+      readyCheck: true,
       nextEpisodeOffset: 25,
     });
   });
@@ -93,7 +93,7 @@ describe("applyRoomSettingsPatch / diffRoomSettings", () => {
     const current = { ...DEFAULT_ROOM_SETTINGS };
     const noop = applyRoomSettingsPatch(current, {
       title: "",
-      readyCheck: false,
+      readyCheck: true,
     });
     expect(noop.changed).toEqual([]);
     expect(noop.settings).toBe(current);

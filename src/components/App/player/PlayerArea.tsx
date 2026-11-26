@@ -47,6 +47,8 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   const [idle, setIdle] = useState(false);
   const [menu, setMenu] = useState<MenuName | null>(null);
   const [quickChat, setQuickChat] = useState(false);
+  // Stable, so SubtitleCues doesn't re-subscribe on every render
+  const getVideoEl = useCallback(() => player.html().getVideoEl(), [player]);
   const [shortcuts, setShortcuts] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [flash, setFlash] = useState<{ play: boolean; key: number } | null>(
@@ -325,6 +327,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
       {native && (
         <SubtitleCues
           track={tracks.active}
+          getMedia={getVideoEl}
           style={subtitleStyle}
           lift={hasMedia}
         />

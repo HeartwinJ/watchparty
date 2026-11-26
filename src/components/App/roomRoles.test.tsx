@@ -177,25 +177,26 @@ describe("room page roles", () => {
     const toggle = (await screen.findByRole("switch", {
       name: /Ready check/,
     })) as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
+    // On by default
+    expect(toggle.checked).toBe(true);
     await act(async () => {
       fireEvent.click(toggle);
     });
     expect(socket.emitted).toContainEqual([
       "CMD:roomSettings",
-      { readyCheck: true },
+      { readyCheck: false },
     ]);
     await act(async () => {
       socket.receive("REC:roomSettings", {
         title: "",
-        readyCheck: true,
+        readyCheck: false,
         nextEpisodeOffset: 25,
       });
     });
     expect(
       (screen.getByRole("switch", { name: /Ready check/ }) as HTMLInputElement)
         .checked,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("owners can delete the room after confirming; guests can't", async () => {

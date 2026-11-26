@@ -104,7 +104,7 @@ export interface RoomState {
 /** Mirrors DEFAULT_ROOM_SETTINGS in server/roomSettings.ts */
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
   title: "",
-  readyCheck: false,
+  readyCheck: true,
   nextEpisodeOffset: 25,
 };
 
