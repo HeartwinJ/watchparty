@@ -24,8 +24,8 @@ const TOAST_ID = "wp-subsync";
 
 /**
  * Auto subtitle sync on this device (see "Subtitle auto-sync" in components/App/README.md):
- * - `syncNow()`: the wand in the subtitles menu. Aligns the selected track and applies the offset in the current
- *   scope (Everyone / Just me) through `subtitles.setOffset`, like typing it.
+ * - `syncNow()`: the wand in the subtitles menu. Aligns the selected track and applies offset + scale in the current
+ *   scope (Everyone / Just me) through `subtitles.setTiming`.
  * - Room auto-sync (RoomSettings.autoSyncSubtitles): whenever a subtitle with cues is selected for a direct video,
  *   every viewer that *could* compute it asks the server (CMD:subtitleSync claim) after a short random delay; the
  *   server grants the first claim per (video, subtitle) and denies the rest, so exactly one device does the work. Its

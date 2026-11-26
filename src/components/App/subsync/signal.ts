@@ -301,8 +301,8 @@ export interface ActivityWindow {
 }
 
 /**
- * What alignment found. `offset` is what to add to every cue (seconds, rounded to 0.05 s); `scale` is 1 for now (a
- * later version may also estimate frame-rate drift: shown time = original × scale + offset). `confidence` is 0..1;
+ * What alignment found. `offset` is what to add to every cue (seconds, rounded to 0.05 s); `scale` corrects frame-rate
+ * drift (shown time = original × scale + offset; 1 when there's none, see `alignWithDrift`). `confidence` is 0..1;
  * `offset` is null when the match wasn't confident enough to use.
  */
 export interface SyncResult {

@@ -83,7 +83,7 @@ const RoomLayout = ({ room, roomId }: { room: Room; roomId: string }) => {
       <RoomTopBar room={room} roomId={roomId} isPhone={isPhone} />
       <main className={styles.stage} aria-label="Video">
         <div className={styles.player}>
-          {/* The player (agent B) fills this box; fullscreen is handled inside it */}
+          {/* The player fills this box; fullscreen is handled inside it */}
           <PlayerArea room={room} />
         </div>
       </main>

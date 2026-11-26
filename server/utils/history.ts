@@ -420,7 +420,7 @@ export class HistoryRecorder {
     }
   }
 
-  /** Name/thumbnail of the queue item that's about to play (call right before the host change) */
+  /** Name/thumbnail of the queue item that just started (call right after the host change, which drops any earlier hint) */
   setHint(video: string, hint: { name?: string | null; img?: string | null }) {
     this.sync(video);
     this.hint = hint;

@@ -3,8 +3,8 @@
 //
 // The strip is a column of small tiles (wrapping into more columns when they don't fit). Its position is stored as
 // fractions of the free space inside the safe area, so it stays in the same corner when the player resizes or goes
-// fullscreen. To move the default, change DEFAULT_STRIP_POSITION; to keep room for something along an edge (e.g. a
-// chat panel sliding in from the right in fullscreen), pass a bigger inset for that edge to `stripInsets`.
+// fullscreen. To move the default, change DEFAULT_STRIP_POSITION; to keep room for something along an edge (e.g. the
+// chat panel sliding in from the right), pass a bigger inset for that edge to `stripInsets`.
 
 export interface Size {
   width: number;
@@ -25,7 +25,7 @@ export interface StripPosition {
 }
 
 /**
- * Top-left: away from the right edge (where a fullscreen chat panel will slide in), the subtitles and the controls
+ * Top-left: away from the right edge (where the chat panel slides in), the subtitles and the controls
  * (bottom), the ready check pill (top centre) and the next-episode card (bottom right).
  */
 export const DEFAULT_STRIP_POSITION: StripPosition = { fx: 0, fy: 0 };

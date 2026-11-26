@@ -21,8 +21,8 @@ const SWEEP_LOAD_GRACE_MS = 10 * 60 * 1000;
 
 /**
  * The 1 s save loop. A room with people in it is active: its lastUpdateTime moves to `now` and it's saved. An empty
- * room isn't saved (nothing changes without people) and keeps its lastUpdateTime; it's unloaded once it has been
- * idle, and loaded, for `idleUnloadMs` (being loaded counts, so a room loaded for a join isn't unloaded before the
+ * room isn't saved (nothing changes without people) and keeps its lastUpdateTime; it's saved one last time and unloaded
+ * once it has been idle, and loaded, for `idleUnloadMs` (being loaded counts, so a room loaded for a join isn't unloaded before the
  * socket arrives).
  */
 export function persistRooms(
