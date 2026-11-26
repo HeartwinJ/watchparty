@@ -50,7 +50,7 @@ export function useSlashShortcut(onOpen: () => void) {
   }, []);
 }
 
-/** The overflow menu's "Keyboard shortcuts" item fires this; the player (agent B) shows the overlay. */
+/** The overflow menu's "Keyboard shortcuts" item fires this; the player shows the overlay. */
 export const SHOW_SHORTCUTS_EVENT = "wp:show-shortcuts";
 
 export function requestShortcutsOverlay() {
