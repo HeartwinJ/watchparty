@@ -72,7 +72,10 @@ export const RoomTopBar = ({
         title="Room settings"
       >
         <span className={styles.ellipsis}>{roomName}</span>
-        <IconPencil size={14} aria-hidden="true" className={styles.dim} />
+        {/* Guests can't rename the room (their settings are only "On this device") */}
+        {isOwner && (
+          <IconPencil size={14} aria-hidden="true" className={styles.dim} />
+        )}
       </UnstyledButton>
 
       {!isPhone && (
