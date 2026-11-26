@@ -19,6 +19,7 @@ import { formatOffset } from "../logic/subtitles";
 import { ControlBar, type MenuName } from "./ControlBar";
 import { ChatOverlay } from "./ChatOverlay";
 import { QuickChat } from "./QuickChat";
+import { ReadyCheckPill } from "./ReadyCheckPill";
 import { ShortcutsOverlay } from "./ShortcutsOverlay";
 import { SubtitleCues } from "./SubtitleCues";
 import { usePlaybackState } from "./usePlaybackState";
@@ -426,6 +427,13 @@ export const PlayerArea = ({ room }: { room: Room }) => {
           {osd.text}
         </div>
       )}
+      <ReadyCheckPill
+        state={state.readyCheck}
+        nameMap={state.nameMap}
+        pictureMap={state.pictureMap}
+        clientId={room.clientId}
+        onSkip={room.readyCheck.skip}
+      />
       {ripple && (
         <div
           key={ripple.key}

@@ -1,0 +1,174 @@
+import { describe, expect, it } from "vitest";
+import {
+  bufferedAhead,
+  describeReadyCheckChange,
+  formatNames,
+  isReadyToPlay,
+  StallDebounce,
+  waitingLabel,
+} from "./readyCheck";
+
+const base = {
+  notBlocking: false,
+  loading: false,
+  currentTime: 10,
+  duration: 100,
+  ranges: [] as { start: number; end: number }[],
+};
+
+describe("bufferedAhead", () => {
+  it("measures the range containing the playhead", () => {
+    const ranges = [
+      { start: 0, end: 5 },
+      { start: 9.9, end: 20 },
+    ];
+    expect(bufferedAhead(ranges, 12)).toBe(8);
+    expect(bufferedAhead(ranges, 9.8)).toBeCloseTo(10.2); // just before a range after a seek
+    expect(bufferedAhead(ranges, 7)).toBe(0);
+    expect(bufferedAhead([], 1)).toBe(0);
+  });
+});
+
+describe("isReadyToPlay", () => {
+  it("never blocks without media / for shares and live", () => {
+    expect(isReadyToPlay({ ...base, notBlocking: true, loading: true })).toBe(
+      true,
+    );
+  });
+
+  it("needs enough buffered ahead, with hysteresis", () => {
+    expect(isReadyToPlay({ ...base, ranges: [{ start: 0, end: 13 }] })).toBe(
+      false,
+    );
+    expect(isReadyToPlay({ ...base, ranges: [{ start: 0, end: 16 }] })).toBe(
+      true,
+    );
+    expect(
+      isReadyToPlay({
+        ...base,
+        ranges: [{ start: 0, end: 13 }],
+        wasReady: true,
+      }),
+    ).toBe(true);
+    expect(
+      isReadyToPlay({
+        ...base,
+        ranges: [{ start: 0, end: 11 }],
+        wasReady: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("is ready when buffered to the end", () => {
+    expect(
+      isReadyToPlay({
+        ...base,
+        currentTime: 98,
+        ranges: [{ start: 90, end: 100 }],
+      }),
+    ).toBe(true);
+  });
+
+  it("trusts HAVE_ENOUGH_DATA, except while converting", () => {
+    expect(isReadyToPlay({ ...base, readyState: 4 })).toBe(true);
+    expect(isReadyToPlay({ ...base, readyState: 3 })).toBe(false);
+    expect(isReadyToPlay({ ...base, readyState: 4, converting: true })).toBe(
+      false,
+    );
+  });
+
+  it("isn't ready while loading or YouTube is buffering", () => {
+    const full = [{ start: 0, end: 100 }];
+    expect(isReadyToPlay({ ...base, ranges: full, loading: true })).toBe(false);
+    expect(isReadyToPlay({ ...base, ranges: full, ytBuffering: true })).toBe(
+      false,
+    );
+  });
+});
+
+describe("StallDebounce", () => {
+  it("only reports stalls that last 1.5 s", () => {
+    const d = new StallDebounce();
+    expect(d.update(true, 0)).toBe(false);
+    expect(d.update(true, 1499)).toBe(false);
+    expect(d.update(true, 1500)).toBe(true);
+    expect(d.update(false, 1600)).toBe(false);
+    expect(d.update(true, 1700)).toBe(false);
+  });
+});
+
+const names = { a: "Sam", b: "Alex", c: "Kim", d: "Lee" };
+
+describe("formatNames / waitingLabel", () => {
+  it("lists names readably", () => {
+    expect(formatNames(["a"], names, "me")).toBe("Sam");
+    expect(formatNames(["a", "me"], names, "me")).toBe("Sam and you");
+    expect(formatNames(["a", "b", "c"], names, "me")).toBe("Sam, Alex and Kim");
+    expect(formatNames(["a", "b", "c", "d"], names, "me")).toBe(
+      "Sam, Alex and 2 others",
+    );
+    expect(formatNames(["x"], names, "me")).toBe("someone");
+  });
+
+  it("labels the pill", () => {
+    expect(waitingLabel(null, names, "me")).toBe("");
+    expect(
+      waitingLabel({ active: true, waitingFor: ["a", "b"] }, names, "me"),
+    ).toBe("Waiting for Sam and Alex…");
+  });
+});
+
+describe("describeReadyCheckChange", () => {
+  const active: ReadyCheckState = {
+    active: true,
+    waitingFor: ["a"],
+    reason: "buffering",
+    trigger: "a",
+  };
+
+  it("announces the pause", () => {
+    expect(describeReadyCheckChange(null, active, names, "me")).toEqual({
+      text: "Paused — waiting for Sam to buffer",
+      tone: "warning",
+    });
+    expect(
+      describeReadyCheckChange(
+        null,
+        { ...active, reason: "join", trigger: "me" },
+        names,
+        "me",
+      )?.text,
+    ).toBe("Paused — waiting for you to load the video");
+    // Already active: no new toast
+    expect(describeReadyCheckChange(active, active, names, "me")).toBeNull();
+  });
+
+  it("announces a timeout and someone else's skip, quietly ends otherwise", () => {
+    const end = (s: Partial<ReadyCheckState>) =>
+      describeReadyCheckChange(
+        active,
+        { active: false, waitingFor: [], ...s },
+        names,
+        "me",
+      );
+    expect(end({ outcome: "timeout" })).toEqual({
+      text: "Resumed without waiting longer for Sam",
+      tone: "warning",
+    });
+    expect(end({ outcome: "skipped", actorId: "b" })?.text).toBe(
+      "Alex resumed without waiting",
+    );
+    expect(end({ outcome: "skipped", actorId: "me" })).toBeNull();
+    expect(end({ outcome: "ready" })).toBeNull();
+    expect(end({ outcome: "cancelled" })).toBeNull();
+    // The initial state on connect isn't a change
+    expect(
+      describeReadyCheckChange(
+        null,
+        { active: false, waitingFor: [], outcome: "timeout" },
+        names,
+        "me",
+      ),
+    ).toBeNull();
+  });
+});

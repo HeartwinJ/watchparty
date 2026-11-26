@@ -1,0 +1,57 @@
+/* Ready check pill (PLAN 6d): top-centre of the player while the room waits for someone to buffer */
+.pill {
+  position: absolute;
+  top: var(--wp-sp-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--wp-z-controls);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wp-sp-2);
+  max-width: calc(100% - 2 * var(--wp-sp-4));
+  padding: var(--wp-sp-1) var(--wp-sp-1) var(--wp-sp-1) var(--wp-sp-3);
+  border: 1px solid var(--wp-warning-soft);
+  border-radius: var(--wp-r-full);
+  background: var(--wp-glass);
+  backdrop-filter: var(--wp-glass-blur);
+  -webkit-backdrop-filter: var(--wp-glass-blur);
+  color: var(--wp-on-video);
+  font-size: var(--wp-fs-sm);
+  font-weight: 600;
+  animation: fadeIn var(--wp-dur-fast) var(--wp-ease);
+}
+
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--wp-r-full);
+  background: var(--wp-warning);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .dot {
+    animation: none;
+  }
+}

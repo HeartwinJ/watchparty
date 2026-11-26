@@ -67,6 +67,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/chat.ts`                           | Immutable chat updates (append with 100 cap, reactions), chat sound rule                     |
 | `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                       |
 | `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s      |
+| `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)     |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                           |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits     |
 
@@ -156,6 +157,18 @@ buffered", progress, heavy, reason}` or null; `picker/ConvertStatus.tsx` renders
   rate proportionally (0.95–1.05× the room speed, start at 0.3 s, stop under 0.1 s), more seeks (3 s cooldown).
   YouTube only uses rates from `getAvailablePlaybackRates()` and otherwise seeks from 1 s. `state.syncStatus` is
   `in-sync` / `catching-up` (seconds behind) / `buffering` / `reconnecting`; `SyncIndicator({ room })` shows it.
+
+## Ready check (PLAN 6d)
+
+- Only while `state.roomSettings.readyCheck` is on, `hooks/useReadyCheck.ts` polls this device every 500 ms and sends `cmd.reportReadyState({ready, buffering, time})`
+  only when `ready`/`buffering` change (and again on a new video, reconnect or when a check starts). Ready = no media
+  / share / live / can't play, or ≥ 6 s buffered ahead (stays ready down to 2 s), buffered to the end, or
+  `readyState >= HAVE_ENOUGH_DATA` (not while converting: the converter's MediaSource buffer is measured instead).
+  YouTube uses its BUFFERING state and loaded fraction. `buffering` = stalled > 1.5 s while the room plays.
+- The server (`server/readyCheck.ts`) decides when to pause/resume; `REC:readyCheck` lands in `state.readyCheck`.
+  `player/ReadyCheckPill.tsx` ("Waiting for Sam…", avatars, Resume now → `room.readyCheck.skip()`) sits on the
+  player, the People tab shows "Buffering…" for whoever is waited for, and toasts come from
+  `describeReadyCheckChange`. The pause has no actor, so it doesn't show "Alex paused"; drift sync is off while paused.
 
 ## Notes for the redesign
 

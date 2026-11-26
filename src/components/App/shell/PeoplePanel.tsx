@@ -64,12 +64,14 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
           {people.map((p) => {
             const isMe = p.id === clientId;
             const name = state.nameMap[p.id] || "Someone";
-            const playback = describePlayback({
-              ts: state.tsMap[p.id],
-              referenceTs,
-              hasMedia,
-              hasDuration,
-            });
+            const playback = state.readyCheck?.waitingFor.includes(p.id)
+              ? { label: "Buffering…", tone: "warn" as const }
+              : describePlayback({
+                  ts: state.tsMap[p.id],
+                  referenceTs,
+                  hasMedia,
+                  hasDuration,
+                });
             const sharing = p.isScreenShare
               ? isFileShare(state.roomMedia)
                 ? "Sharing a file"

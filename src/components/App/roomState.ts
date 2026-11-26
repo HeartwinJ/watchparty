@@ -51,6 +51,8 @@ export interface RoomState {
   videoMeta: VideoMeta | null;
   /** The latest REC:playbackIssue, with a receive timestamp so repeats are distinct */
   playbackIssue: (PlaybackIssue & { at: number }) | undefined;
+  /** REC:readyCheck (null until the server sends it) */
+  readyCheck: ReadyCheckState | null;
   // Client-side conversion (see useConvert)
   /** Per-device "Auto-convert when needed" (default on). Kept as `convertEnabled` for compatibility. */
   convertEnabled: boolean;
@@ -142,6 +144,7 @@ export function createInitialRoomState(): RoomState {
     isLiveStream: false,
     videoMeta: null,
     playbackIssue: undefined,
+    readyCheck: null,
     convertEnabled: readAutoConvert(),
     playback: undefined,
     convertProgress: undefined,

@@ -40,6 +40,8 @@ export interface ServerToClientEvents {
   "REC:playbackIssue": (issue: PlaybackIssue) => void;
   /** The full room-wide settings: sent on connect and after every change (to everyone, including the sender) */
   "REC:roomSettings": (settings: RoomSettings) => void;
+  /** Ready check state (sent on connect and whenever it changes) */
+  "REC:readyCheck": (state: ReadyCheckState) => void;
   signalSS: (data: {
     msg: SignalMessage;
     from: string;
@@ -88,6 +90,14 @@ export interface ClientToServerEvents {
   "CMD:playbackIssue": (data: { reason: string }) => void;
   /** Partial update; the server validates/normalizes it and answers everyone with REC:roomSettings */
   "CMD:roomSettings": (patch: Partial<RoomSettings>) => void;
+  /** This device's readiness for the ready check; sent when it changes */
+  "CMD:readyState": (data: {
+    ready: boolean;
+    buffering?: boolean;
+    time?: number;
+  }) => void;
+  /** "Resume now": end the ready check and play for everyone */
+  "CMD:readyCheckSkip": () => void;
   signalSS: (data: {
     to: string;
     msg: SignalMessage;
@@ -138,6 +148,12 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
       emit("CMD:playbackIssue", { reason }),
     setRoomSettings: (patch: Partial<RoomSettings>) =>
       emit("CMD:roomSettings", patch),
+    reportReadyState: (data: {
+      ready: boolean;
+      buffering?: boolean;
+      time?: number;
+    }) => emit("CMD:readyState", data),
+    skipReadyCheck: () => emit("CMD:readyCheckSkip"),
     signal: (to: string, msg: SignalMessage, sharer?: boolean) =>
       emit("signalSS", { to, msg, sharer }),
   };

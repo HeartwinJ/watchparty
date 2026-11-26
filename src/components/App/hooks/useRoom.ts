@@ -30,6 +30,7 @@ import { createShareSession, useShare } from "./useShare";
 import { useChat } from "./useChat";
 import { usePlaylist } from "./usePlaylist";
 import { useSubtitles } from "./useSubtitles";
+import { useReadyCheck } from "./useReadyCheck";
 import { toast } from "../ui/toast";
 
 declare global {
@@ -109,6 +110,13 @@ export function useRoom(roomId: string) {
   const chat = useChat({ store, chatRef });
   const playlist = usePlaylist({ store, cmd });
   const subtitles = useSubtitles({ store, player, clientId, cmd });
+  const readyCheck = useReadyCheck({
+    store,
+    cmd,
+    player,
+    clientId,
+    connected: Boolean(socket),
+  });
 
   const actions = useMemo(() => {
     const updateName = (name: string) => {
@@ -340,6 +348,7 @@ export function useRoom(roomId: string) {
       "REC:playbackIssue": (issue) =>
         store.set({ playbackIssue: { ...issue, at: Date.now() } }),
       "REC:roomSettings": (roomSettings) => store.set({ roomSettings }),
+      "REC:readyCheck": readyCheck.onState,
       signalSS: share.handleSignal,
     };
 
@@ -353,6 +362,7 @@ export function useRoom(roomId: string) {
     share,
     chat,
     subtitles,
+    readyCheck,
     shareSession,
     showMessage,
   ]);
@@ -425,6 +435,7 @@ export function useRoom(roomId: string) {
     share,
     playlist,
     subtitles,
+    readyCheck,
     showError,
     updateName: actions.updateName,
     getMediaDisplayName: actions.displayName,
