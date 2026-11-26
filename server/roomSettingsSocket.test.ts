@@ -141,6 +141,24 @@ describe("Room settings", () => {
     ]);
   });
 
+  it("credits each person only with their own edits", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    const a = await t.join();
+    const b = await t.join();
+    const chat: ChatMessage[] = [];
+    a.on("REC:chat", (m: ChatMessage) => chat.push(m));
+    a.emit("CMD:roomSettings", { title: "Friday" });
+    await settle(30);
+    b.emit("CMD:roomSettings", { readyCheck: true });
+    await settle(300);
+    expect(chat.map((m) => JSON.parse(m.msg ?? ""))).toEqual([
+      { title: "Friday" },
+      { readyCheck: true },
+    ]);
+    expect(chat[0].id).not.toBe(chat[1].id);
+  });
+
   it("serializes with the room; old rooms get the default", async () => {
     const t = await setup();
     cleanups.push(t.close);

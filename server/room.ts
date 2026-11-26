@@ -841,6 +841,10 @@ export class Room {
     if (!changed.length || !this.settingsLimiter.allow()) {
       return;
     }
+    // Announce someone else's pending edits before applying this one, so they aren't attributed to them
+    if (this.settingsChat && this.settingsChat.actorId !== socket.clientId) {
+      this.flushSettingsChat();
+    }
     const before = this.roomSettings;
     this.roomSettings = settings;
     this.io.of(this.roomId).emit("REC:roomSettings", this.roomSettings);
@@ -852,10 +856,6 @@ export class Room {
    * `cmd: "roomSettings"` line per setting that ended up different. Another person's edit flushes the pending ones.
    */
   private queueSettingsChat = (actorId: string, before: RoomSettings) => {
-    const pending = this.settingsChat;
-    if (pending && pending.actorId !== actorId) {
-      this.flushSettingsChat();
-    }
     clearTimeout(this.settingsChat?.timer);
     this.settingsChat = {
       actorId,
