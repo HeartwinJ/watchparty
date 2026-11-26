@@ -131,3 +131,39 @@ describe("createRedactor", () => {
     expect(createRedactor("")("anything")).toBe("anything");
   });
 });
+
+describe("fetchJson edge cases", () => {
+  it("treats an empty body as invalid JSON", async () => {
+    const fetchFn: FetchFn = async () => new Response(null, { status: 200 });
+    const e = await fetchJson(fetchFn, "https://x.example.com", opts).then(
+      unexpected,
+      asErr,
+    );
+    expect(e.kind).toBe("invalid_json");
+  });
+
+  it("maps a body that fails mid-stream to a network error", async () => {
+    const body = new ReadableStream({
+      pull(controller) {
+        controller.error(new Error("reset"));
+      },
+    });
+    const fetchFn: FetchFn = async () => new Response(body);
+    const e = await fetchJson(fetchFn, "https://x.example.com", opts).then(
+      unexpected,
+      asErr,
+    );
+    expect(e).toBeInstanceOf(AddonError);
+    expect(e.kind).toBe("network");
+  });
+});
+
+describe("createRedactor edge cases", () => {
+  it("redacts URL passwords and whole non-URL secrets", () => {
+    const redact = createRedactor("https://user:hunter2pass@aio.example.com/x");
+    expect(redact("auth hunter2pass here")).toBe("auth [redacted] here");
+    const raw = createRedactor("not a url at all");
+    expect(raw("log: not a url at all!")).toBe("log: [redacted]!");
+    expect(createRedactor("")("unchanged")).toBe("unchanged");
+  });
+});

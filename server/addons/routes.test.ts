@@ -704,3 +704,31 @@ describe("GET /addon/next", () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
+
+describe("unexpected failures", () => {
+  it("answers 500 and logs only the error name", async () => {
+    const { get, logs } = await start({
+      // Not a Response: fetchJson trips over it outside its own error handling
+      handler: () => ({ ok: true, headers: null }) as unknown as Response,
+    });
+    const r = await get("/addon/meta/movie/tt0111161");
+    expect(r.status).toBe(500);
+    expect(r.body).toEqual({ error: "internal_error" });
+    expect(logs).toEqual(["[addon] meta failed: TypeError"]);
+  });
+
+  it("passes an upstream failure of the next-episode lookup on as 502", async () => {
+    const { get } = await start({
+      handler: () => new Response("down", { status: 503 }),
+    });
+    const r = await get("/addon/next/series/tt0903747:1:1");
+    expect(r.status).toBe(502);
+    expect(r.body).toEqual({ error: "upstream_error" });
+  });
+
+  it("defaults the subtitle languages to English", async () => {
+    const { get } = await start({ subtitleLangs: "" });
+    const r = await get("/addon/subtitles/movie/tt0111161");
+    expect(r.body[0].lang).toBe("en");
+  });
+});
