@@ -7,6 +7,7 @@ Personal fork of [howardchung/watchparty](https://github.com/howardchung/watchpa
 - `origin` = `HeartwinJ/watchparty` (my fork, **public** repo, so never commit secrets). `upstream` = `howardchung/watchparty`, **fetch-only** (its push URL is deliberately disabled).
 - **Never push to upstream and never open PRs/issues against `howardchung/watchparty`.** Because this is a fork, `gh pr create` may default to the parent repo, so **always** pass `--repo HeartwinJ/watchparty --base master`.
 - Work on a feature branch (`feat/…`, `chore/…`, `fix/…`), open a PR to `master` on the fork, and merge only after CI is green.
+- **Commit messages are small and human readable**: a short plain-English subject line (a conventional prefix like `fix:` or `feat:` is fine) and, only if needed, a few short body lines saying what changed for the user and why. No walls of text or implementation dumps. One commit per fix or feature is nice. Keep PR titles and bodies concise and readable too.
 - Before opening a PR, run `npm run format:check && npm run check && npx vite build`.
 - **Keep the docs in step with the code, in the same PR.** Any change to a feature or to behaviour that users, operators or future contributors need to know about must update the relevant docs:
   - `README.md`: the feature list, configuration table and deployment notes.
