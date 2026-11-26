@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyMedia,
   findSharer,
+  getAttachedDisplayName,
   getMediaDisplayName,
   hasDuration,
   isWebRTCShare,
@@ -110,5 +111,37 @@ describe("getMediaDisplayName", () => {
     expect(getMediaDisplayName("https://example.com/a.mp4", ctx)).toBe(
       "https://example.com/a.mp4",
     );
+  });
+});
+
+describe("getAttachedDisplayName edge cases", () => {
+  it("ignores fragments without a name, empty names and broken encoding", () => {
+    expect(
+      getAttachedDisplayName("https://v.example.com/a.mp4"),
+    ).toBeUndefined();
+    expect(
+      getAttachedDisplayName("https://v.example.com/a.mp4#t=10"),
+    ).toBeUndefined();
+    expect(
+      getAttachedDisplayName("https://v.example.com/a.mp4#wp-name="),
+    ).toBeUndefined();
+    expect(
+      getAttachedDisplayName("https://v.example.com/a.mp4#wp-name=%E0%A4%A"),
+    ).toBeUndefined();
+    expect(
+      getAttachedDisplayName(
+        "https://v.example.com/a.mp4#t=1&wp-name=Show%20%C2%B7%20S01E02",
+      ),
+    ).toBe("Show · S01E02");
+  });
+
+  it("names a file share after the roster's sharer when the URL's id is unknown", () => {
+    expect(
+      getMediaDisplayName("fileshare://", {
+        roomMedia: "",
+        participants: [{ id: "u9", isScreenShare: true } as User],
+        nameMap: { u9: "Kim" },
+      }),
+    ).toBe("Kim's file");
   });
 });

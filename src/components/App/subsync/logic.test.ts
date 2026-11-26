@@ -8,6 +8,8 @@ import {
 } from "./logic";
 import {
   AutoSyncError,
+  createSyncWorker,
+  isAutoSyncSupported,
   runAutoSync,
   type SyncRequest,
   type SyncWorker,
@@ -190,5 +192,95 @@ describe("runAutoSync", () => {
     await expect(p2).rejects.toMatchObject({ cancelled: true });
     expect(w2.terminated).toBe(true);
     expect(new AutoSyncError("x").cancelled).toBe(false);
+  });
+});
+
+describe("runAutoSync edge cases", () => {
+  const cues = [{ start: 1, end: 2 }];
+
+  it("rejects at once (without a worker) when already cancelled", async () => {
+    const ctl = new AbortController();
+    ctl.abort();
+    const create = vi.fn(() => new FakeWorker());
+    await expect(
+      runAutoSync(
+        { source: "https://x.example.com/a.mp4", cues, signal: ctl.signal },
+        create,
+      ),
+    ).rejects.toMatchObject({ cancelled: true, message: "Cancelled" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("passes options through and rejects when the worker crashes", async () => {
+    const w = new FakeWorker();
+    const p = runAutoSync(
+      {
+        source: "https://x.example.com/a.mp4",
+        cues,
+        trackId: 4,
+        windowCount: 2,
+        windowSeconds: 30,
+        maxOffset: 60,
+      },
+      () => w,
+    );
+    expect(w.posted[0]).toMatchObject({
+      trackId: 4,
+      windowCount: 2,
+      windowSeconds: 30,
+      maxOffset: 60,
+      stallTimeoutMs: 20000,
+    });
+    // Progress without a listener is fine
+    w.send({ type: "progress", fraction: 0.1 });
+    w.onerror?.({} as ErrorEvent);
+    await expect(p).rejects.toThrow("Subtitle sync stopped unexpectedly");
+    expect(w.terminated).toBe(true);
+  });
+});
+
+describe("autoSyncAvailability edge cases", () => {
+  it("explains every unsupported kind of media", () => {
+    const why = (media: string, extra: object = {}) => {
+      const r = autoSyncAvailability({ ...base, media, ...extra });
+      return r.ok ? "ok" : r.reason;
+    };
+    expect(why("")).toBe("Nothing is playing");
+    expect(why("https://cdn.example.com/live.m3u8")).toBe(
+      "Not available for streams (HLS/DASH)",
+    );
+    expect(why("https://www.twitch.tv/somechannel")).toBe(
+      "Not available for this kind of link",
+    );
+    expect(why("https://cdn.example.com/a.mp4", { isLiveStream: true })).toBe(
+      "Not available for live streams",
+    );
+  });
+});
+
+describe("worker support", () => {
+  it("needs Worker and WebCodecs audio decoding", () => {
+    vi.stubGlobal("Worker", class {});
+    vi.stubGlobal("AudioDecoder", undefined);
+    expect(isAutoSyncSupported()).toBe(false);
+    vi.stubGlobal("AudioDecoder", class {});
+    expect(isAutoSyncSupported()).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("starts the module worker", () => {
+    const created: unknown[][] = [];
+    vi.stubGlobal(
+      "Worker",
+      class {
+        constructor(...args: unknown[]) {
+          created.push(args);
+        }
+      },
+    );
+    createSyncWorker();
+    expect(String(created[0][0])).toMatch(/worker\.ts/);
+    expect(created[0][1]).toEqual({ type: "module", name: "subtitle-sync" });
+    vi.unstubAllGlobals();
   });
 });

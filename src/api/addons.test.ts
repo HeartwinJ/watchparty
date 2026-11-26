@@ -13,6 +13,7 @@ import {
   resetAddonsConfigured,
   searchTitles,
   searchYouTube,
+  toSearchResults,
   toStreamList,
 } from "./addons";
 
@@ -328,5 +329,74 @@ describe("createDebouncedSearch", () => {
     await vi.advanceTimersByTimeAsync(250);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0][0].code).toBe("upstream_error");
+  });
+});
+
+describe("addon client edge cases", () => {
+  it("treats a 401 as unauthorized whatever the body says", async () => {
+    mockFetch(() => json({ error: "upstream_error" }, 401));
+    const err = await getMeta("movie", "tt1").catch((e) => e);
+    expect(err).toBeInstanceOf(AddonApiError);
+    expect(err.code).toBe("unauthorized");
+  });
+
+  it("ignores error codes it doesn't know", async () => {
+    mockFetch(() => json({ error: "something_new" }, 500));
+    expect((await getMeta("movie", "tt1").catch((e) => e)).code).toBe(
+      "unknown",
+    );
+  });
+
+  it("has no next episode when the server sends none", async () => {
+    mockFetch(() => json({}));
+    await expect(getNextEpisode("series", "tt1:1:1")).resolves.toBeNull();
+  });
+
+  it("maps search items defensively (kitsu ids are anime, bad items dropped)", () => {
+    const res = toSearchResults({
+      movies: [
+        { id: "tt1", type: "movie", name: "Film", year: "1999", poster: 5 },
+        { id: 7, name: "bad id" },
+        null,
+      ],
+      series: [{ id: "kitsu:5", type: "series", name: "Anime as series" }],
+      anime: "not an array",
+    });
+    expect(res.movies).toEqual([
+      {
+        id: "tt1",
+        type: "movie",
+        kind: "movie",
+        name: "Film",
+        year: null,
+        poster: null,
+      },
+    ]);
+    expect(res.series[0]).toMatchObject({ kind: "anime", type: "series" });
+    expect(res.anime).toEqual([]);
+    expect(toSearchResults(null)).toEqual({
+      movies: [],
+      series: [],
+      anime: [],
+    });
+  });
+
+  it("takes the counts from the server, zero when missing or malformed", () => {
+    const list = toStreamList({
+      streams: [
+        { url: "a", tier: "direct" },
+        { url: "b", tier: "convert-heavy" },
+      ],
+      counts: { direct: 12, "convert-heavy": "3" },
+      total: 40,
+    });
+    expect(list.counts).toEqual({
+      direct: 12,
+      "convert-light": 0,
+      "convert-heavy": 0,
+      unlikely: 0,
+    });
+    expect(list.total).toBe(40);
+    expect(toStreamList(undefined).streams).toEqual([]);
   });
 });

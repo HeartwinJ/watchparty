@@ -61,6 +61,7 @@ describe("offset math", () => {
     expect(formatOffset(2)).toBe("+2.0 s");
     expect(describeOffset(1)).toMatch(/later/);
     expect(describeOffset(-1)).toMatch(/earlier/);
+    expect(describeOffset(0)).toBe("no offset");
   });
 
   it("lets a local override win over the room value", () => {

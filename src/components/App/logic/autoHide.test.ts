@@ -79,4 +79,17 @@ describe("IdleTimer", () => {
     vi.advanceTimersByTime(10_000);
     expect(changes).toEqual([]);
   });
+
+  it("ignores a hold that doesn't change anything", () => {
+    const { t, changes } = setup();
+    t.setHold("menu", false);
+    t.setHold("menu", true);
+    t.setHold("menu", true);
+    vi.advanceTimersByTime(IDLE_HIDE_MS * 2);
+    expect(t.isIdle()).toBe(false);
+    t.setHold("menu", false);
+    vi.advanceTimersByTime(IDLE_HIDE_MS);
+    expect(t.isIdle()).toBe(true);
+    expect(changes).toEqual([true]);
+  });
 });

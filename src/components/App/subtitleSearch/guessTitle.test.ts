@@ -252,3 +252,28 @@ describe("rankTitleResults", () => {
     ).toBe(2021);
   });
 });
+
+describe("guessing edge cases", () => {
+  it("reads file names from non-URLs and keeps undecodable names", () => {
+    expect(fileNameFromUrl("folder/My%20Show.S01E02.mkv?dl=1")).toBe(
+      "My Show.S01E02.mkv",
+    );
+    expect(fileNameFromUrl("https://cdn.example.com/100%25%zz.mkv")).toBe(
+      "100%25%zz.mkv",
+    );
+  });
+
+  it("treats a lone season tag (a season pack) as the end of the title", () => {
+    expect(guessFromName("Some.Show.S03.1080p.WEB-DL.x264-GRP")).toMatchObject({
+      query: "Some Show",
+      season: 3,
+      episode: null,
+    });
+  });
+
+  it("falls back to the cleaned name when the title is all tags", () => {
+    expect(guessFromName("1080p.Holiday.Video.mkv").query).toBe(
+      "Holiday Video",
+    );
+  });
+});

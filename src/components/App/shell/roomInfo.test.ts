@@ -84,3 +84,49 @@ describe("avatars and names", () => {
     expect(roomDisplayName("brave-otter")).toBe("Brave otter");
   });
 });
+
+describe("shortMediaTitle edge cases", () => {
+  it("uses the name attached to the URL, never the URL", () => {
+    expect(
+      shortMediaTitle(
+        "https://aio.example.com/api/v1/debrid/playback/x#wp-name=Show%20%C2%B7%20S01E02",
+        "https://aio.example.com/api/v1/debrid/playback/x",
+      ),
+    ).toBe("Show · S01E02");
+  });
+
+  it("names YouTube links without an id, and falls back for unparseable URLs", () => {
+    expect(
+      shortMediaTitle("https://www.youtube.com/", "https://www.youtube.com/"),
+    ).toBe("YouTube video");
+    expect(shortMediaTitle("https://youtu.be/xyz", "")).toBe("YouTube · xyz");
+    expect(shortMediaTitle("not a url", "")).toBe("not a url");
+  });
+});
+
+describe("describePlayback edge cases", () => {
+  const base = { hasMedia: true, hasDuration: true };
+  it("covers joining, live media and a missing reference", () => {
+    expect(
+      describePlayback({ ...base, ts: undefined, referenceTs: 1 }),
+    ).toEqual({
+      label: "Joining…",
+      tone: "idle",
+    });
+    expect(describePlayback({ ...base, ts: NaN, referenceTs: 1 }).label).toBe(
+      "Joining…",
+    );
+    expect(
+      describePlayback({ ...base, hasDuration: false, ts: 5, referenceTs: 1 }),
+    ).toEqual({ label: "Watching", tone: "ok" });
+    expect(
+      describePlayback({ ...base, ts: 75, referenceTs: undefined }),
+    ).toEqual({
+      label: "At 01:15",
+      tone: "ok",
+    });
+    expect(
+      describePlayback({ ...base, ts: 75, referenceTs: Infinity }).label,
+    ).toBe("At 01:15");
+  });
+});

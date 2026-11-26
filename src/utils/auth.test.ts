@@ -426,3 +426,42 @@ describe("room guests API", () => {
     expect(replaceState).not.toHaveBeenCalled();
   });
 });
+
+describe("auth edge cases", () => {
+  it("ignores app events until the session is known", () => {
+    const loading: AuthState = { status: "loading" };
+    expect(authReducer(loading, { type: "loginSuccess" })).toBe(loading);
+    expect(authReducer(loading, { type: "unauthorized", roomId: "r" })).toBe(
+      loading,
+    );
+    const error: AuthState = { status: "error" };
+    expect(authReducer(error, { type: "roomJoined", roomId: "r" })).toBe(error);
+  });
+
+  it("joinRoom reports a network failure as an error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("offline");
+      }),
+    );
+    expect(await joinRoom("r", "p")).toEqual({ result: "error" });
+  });
+
+  it("takePasswordFromHash treats an empty #pw= as no password but still strips it", () => {
+    const replaceState = vi.fn();
+    expect(
+      takePasswordFromHash(
+        { hash: "#pw=", pathname: "/watch/r", search: "?x=1" },
+        { replaceState, state: null },
+      ),
+    ).toBeUndefined();
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/watch/r?x=1");
+    expect(
+      takePasswordFromHash(
+        { hash: "", pathname: "/watch/r", search: "" },
+        { replaceState, state: null },
+      ),
+    ).toBeUndefined();
+  });
+});

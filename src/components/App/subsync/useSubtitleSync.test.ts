@@ -499,3 +499,125 @@ describe("room auto-sync", () => {
     expect(t.cmd.subtitleSync).not.toHaveBeenCalled();
   });
 });
+
+describe("auto-sync edge cases", () => {
+  const grant = (t: ReturnType<typeof setup>) =>
+    act(() =>
+      t.result.current.sync.onEvent({
+        status: "running",
+        video: VIDEO,
+        key: KEY,
+        by: { id: "me" },
+      }),
+    );
+
+  it("ignores malformed events", () => {
+    const t = setup();
+    act(() => t.result.current.sync.onEvent(null as never));
+    act(() =>
+      t.result.current.sync.onEvent({ status: "done", video: 1 } as never),
+    );
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("doesn't claim when the video changed during the jitter", () => {
+    const t = setup();
+    t.autoOn();
+    act(() => t.result.current.sync.evaluate());
+    act(() =>
+      t.result.current.store.set({
+        roomMedia: "https://cdn.example.com/other.mkv",
+      }),
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    expect(t.cmd.subtitleSync).not.toHaveBeenCalled();
+  });
+
+  it("gives a granted job back when the selection no longer matches", () => {
+    const t = setup();
+    t.autoOn();
+    act(() => t.result.current.sync.evaluate());
+    act(() => vi.advanceTimersByTime(2000));
+    // The track was deselected before the grant arrived
+    t.tracks.selected = -1;
+    grant(t);
+    expect(t.run).not.toHaveBeenCalled();
+    expect(t.cmd.subtitleSync).toHaveBeenLastCalledWith({
+      action: "failed",
+      video: VIDEO,
+      key: KEY,
+    });
+  });
+
+  it("a track index without track info counts as nothing selected", () => {
+    const t = setup();
+    t.tracks.selected = 3;
+    act(() => {
+      void t.result.current.sync.syncNow();
+    });
+    expect(toast).toHaveBeenCalledWith(
+      "Pick a subtitle track first",
+      expect.anything(),
+    );
+  });
+
+  it("the wand does nothing while a job runs, and reports unexpected failures", async () => {
+    const t = setup();
+    act(() => {
+      void t.result.current.sync.syncNow();
+    });
+    act(() => {
+      void t.result.current.sync.syncNow();
+    });
+    expect(t.run).toHaveBeenCalledTimes(1);
+    // Progress before and after it finished
+    act(() => t.calls[0].onProgress?.(0.42));
+    expect(t.result.current.state.subtitleSyncJob).toEqual({
+      auto: false,
+      progress: 0.4,
+    });
+    t.fail("weird");
+    await flush();
+    expect(toast).toHaveBeenLastCalledWith("Couldn't sync subtitles", {
+      id: expect.any(String),
+      tone: "danger",
+    });
+    act(() => t.calls[0].onProgress?.(0.9));
+    expect(t.result.current.state.subtitleSyncJob).toBeNull();
+  });
+
+  it("the menu closing cancels only a manual job", async () => {
+    const t = setup();
+    t.autoOn();
+    act(() => t.result.current.sync.evaluate());
+    act(() => vi.advanceTimersByTime(2000));
+    grant(t);
+    act(() => t.result.current.sync.cancel("manual"));
+    expect(t.calls[0].signal?.aborted).toBe(false);
+    act(() => t.result.current.sync.onVideoChange());
+    expect(t.calls[0].signal?.aborted).toBe(true);
+  });
+
+  it("listens to the converted audio track while converting", () => {
+    const t = setup();
+    act(() =>
+      t.result.current.store.set({
+        playback: { mode: "convert", heavy: false, reason: "" },
+        audioTrackId: 3,
+      }),
+    );
+    act(() => {
+      void t.result.current.sync.syncNow();
+    });
+    expect(t.calls[0].trackId).toBe(3);
+  });
+
+  it("says why the wand is unavailable", () => {
+    const t = setup({ supported: false });
+    expect(t.result.current.sync.unavailableReason()).toEqual(
+      expect.any(String),
+    );
+    const ok = setup();
+    expect(ok.result.current.sync.unavailableReason()).toBeNull();
+  });
+});

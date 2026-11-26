@@ -1,13 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   baseContentId,
   buildVideoMeta,
   contextFromVideoMeta,
   detectLink,
   episodeCode,
+  formatAirDate,
   formatSize,
   groupStreams,
   interleave,
+  isFuture,
   isUrlInput,
   loadRecents,
   resolutionLabel,
@@ -240,5 +242,209 @@ describe("recents", () => {
   it("survives corrupt storage", () => {
     window.localStorage.setItem("wp-recent-sources", "{nope");
     expect(loadRecents()).toEqual([]);
+  });
+});
+
+describe("detectLink edge cases", () => {
+  it("rejects text that isn't a parseable URL", () => {
+    expect(detectLink("hello world")).toBeNull();
+    expect(detectLink("https://exa mple.com/x.mp4")).toBeNull();
+  });
+
+  it("warns about containers browsers rarely play", () => {
+    expect(detectLink("https://cdn.example.com/a/old.avi")).toMatchObject({
+      kind: "direct",
+      label: "Direct video · AVI",
+      title: "old.avi",
+      warning: "AVI files usually don't play in browsers.",
+    });
+    expect(detectLink("https://cdn.example.com/b.M2TS")?.warning).toBe(
+      "M2TS files usually don't play in browsers.",
+    );
+  });
+
+  it("names a link without a file by its host, and decodes file names", () => {
+    expect(detectLink("https://cdn.example.com/")?.title).toBe(
+      "cdn.example.com",
+    );
+    expect(detectLink("https://cdn.example.com/My%20Movie.mp4")?.title).toBe(
+      "My Movie.mp4",
+    );
+    // A dot-file isn't an extension
+    expect(detectLink("https://cdn.example.com/.mp4")?.kind).toBe("unknown");
+  });
+});
+
+describe("streamBadges edge cases", () => {
+  it("flags 10-bit H.264, problem audio and unknown containers", () => {
+    expect(
+      streamBadges(
+        stream({
+          videoCodec: "h264",
+          bitDepth: 10,
+          audio: ["truehd", "atmos", "weird" as never],
+          container: "other:rmvb",
+          hdr: ["DV", "HDR10"],
+          remux: true,
+        }),
+      ),
+    ).toEqual([
+      { label: "H.264 10-bit", tone: "problem" },
+      { label: "TrueHD", tone: "problem" },
+      { label: "Atmos", tone: "neutral" },
+      { label: "WEIRD", tone: "neutral" },
+      { label: "RMVB", tone: "problem" },
+      { label: "DV", tone: "neutral" },
+      { label: "HDR10", tone: "neutral" },
+      { label: "REMUX", tone: "problem" },
+    ]);
+  });
+
+  it("shows unknown video codecs as-is and skips missing fields", () => {
+    expect(
+      streamBadges(
+        stream({
+          videoCodec: "theora" as never,
+          bitDepth: null,
+          audio: [],
+          container: null,
+        }),
+      ),
+    ).toEqual([{ label: "theora", tone: "neutral" }]);
+    expect(
+      streamBadges(stream({ videoCodec: null, audio: [], container: "ts" })),
+    ).toEqual([{ label: "TS", tone: "problem" }]);
+  });
+});
+
+describe("buildVideoMeta edge cases", () => {
+  it("keeps only http(s) posters, truncates long fields and has no imdb id for kitsu", () => {
+    const long = "x".repeat(400);
+    const meta = buildVideoMeta(
+      {
+        title: {
+          ...show,
+          id: "kitsu:11",
+          kind: "anime",
+          name: long,
+          poster: "data:image/png;base64,AAAA",
+        },
+        episode: {
+          id: "kitsu:11:3",
+          season: 1,
+          episode: 3,
+          title: long,
+          released: null,
+          thumbnail: null,
+        },
+      },
+      { bingeGroup: long },
+    );
+    expect(meta.poster).toBeNull();
+    expect(meta.imdbId).toBeNull();
+    expect(meta.title).toHaveLength(300);
+    expect(meta.episodeTitle).toHaveLength(300);
+    expect(meta.bingeGroup).toHaveLength(300);
+    expect(meta.id).toBe("kitsu:11:3");
+  });
+
+  it("uses an explicit imdb id and null episode fields for movies", () => {
+    const meta = buildVideoMeta(
+      { title: { ...movie, poster: null }, imdbId: "tt9" },
+      { bingeGroup: null },
+    );
+    expect(meta).toMatchObject({
+      imdbId: "tt9",
+      season: null,
+      episode: null,
+      episodeTitle: null,
+      poster: null,
+      bingeGroup: null,
+    });
+  });
+});
+
+describe("contextFromVideoMeta edge cases", () => {
+  it("treats an episode without a season as season 1", () => {
+    const ctx = contextFromVideoMeta({
+      source: "aiostreams",
+      type: "anime",
+      id: "kitsu:11:4",
+      imdbId: null,
+      season: null,
+      episode: 4,
+      title: "Anime",
+      episodeTitle: null,
+      poster: null,
+      bingeGroup: null,
+    });
+    expect(ctx.title).toMatchObject({ id: "kitsu:11", type: "series" });
+    expect(ctx.episode).toMatchObject({ season: 1, episode: 4 });
+  });
+});
+
+describe("air dates", () => {
+  it("formats valid dates and ignores missing or broken ones", () => {
+    expect(formatAirDate(null)).toBeNull();
+    expect(formatAirDate("not a date")).toBeNull();
+    expect(formatAirDate("2024-03-05T00:00:00Z")).toMatch(/2024/);
+  });
+
+  it("knows which episodes haven't aired yet", () => {
+    const now = Date.parse("2024-06-01T00:00:00Z");
+    expect(isFuture(null, now)).toBe(false);
+    expect(isFuture("garbage", now)).toBe(false);
+    expect(isFuture("2024-07-01T00:00:00Z", now)).toBe(true);
+    expect(isFuture("2024-05-01T00:00:00Z", now)).toBe(false);
+  });
+});
+
+describe("recent sources storage", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("ignores non-array data and unknown entries", () => {
+    window.localStorage.setItem("wp-recent-sources", JSON.stringify({ a: 1 }));
+    expect(loadRecents()).toEqual([]);
+    window.localStorage.setItem(
+      "wp-recent-sources",
+      JSON.stringify([
+        null,
+        { kind: "other" },
+        { kind: "url", url: "u", name: "n", at: 1 },
+      ]),
+    );
+    expect(loadRecents()).toEqual([
+      { kind: "url", url: "u", name: "n", at: 1 },
+    ]);
+  });
+
+  it("de-duplicates titles by episode and survives a full storage", () => {
+    const ep = {
+      id: "tt0000002:1:2",
+      season: 1,
+      episode: 2,
+      title: null,
+      released: null,
+      thumbnail: null,
+    };
+    saveRecent({ kind: "title", context: { title: show, episode: ep }, at: 1 });
+    saveRecent({ kind: "title", context: { title: show, episode: ep }, at: 2 });
+    saveRecent({ kind: "title", context: { title: show }, at: 3 });
+    expect(loadRecents().map((r) => r.at)).toEqual([3, 2]);
+
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    expect(() =>
+      saveRecent({
+        kind: "url",
+        url: "https://v.example.com/a.mp4",
+        name: "a",
+        at: 4,
+      }),
+    ).not.toThrow();
+    setItem.mockRestore();
   });
 });
