@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { onUnauthorized, serverPath } from "./api";
 import {
   authReducer,
+  authView,
+  fetchRoomInfo,
+  joinRoom,
+  takePasswordFromHash,
   fetchSession,
   initialAuthState,
   login,
@@ -30,10 +34,17 @@ describe("fetchSession", () => {
     expect(await fetchSession()).toEqual({
       authenticated: false,
       authRequired: true,
+      guestRooms: [],
     });
     expect(fetch).toHaveBeenCalledWith(serverPath + "/session", {
       credentials: "include",
     });
+    mockFetch(200, {
+      authenticated: false,
+      authRequired: true,
+      guestRooms: ["brave-otter-sings", 5],
+    });
+    expect((await fetchSession()).guestRooms).toEqual(["brave-otter-sings"]);
   });
 
   it("treats 404 (server without auth) as auth not required", async () => {
@@ -141,32 +152,46 @@ describe("logout", () => {
 });
 
 describe("authReducer", () => {
-  const ready: AuthState = { status: "ready", authRequired: true };
-  const open: AuthState = { status: "ready", authRequired: false };
+  const owner: AuthState = {
+    status: "ready",
+    authRequired: true,
+    owner: true,
+    guestRooms: [],
+    forceLogin: false,
+    lost: null,
+  };
+  const open: AuthState = { ...owner, authRequired: false };
+  const stranger: AuthState = { ...owner, owner: false };
+  const guest: AuthState = { ...stranger, guestRooms: ["brave-otter-sings"] };
 
   it("starts loading", () => {
     expect(initialAuthState).toEqual({ status: "loading" });
   });
 
-  it("shows the login form when auth is required and we're not logged in", () => {
-    expect(
-      authReducer(initialAuthState, {
-        type: "session",
-        session: { authRequired: true, authenticated: false },
-      }),
-    ).toEqual({ status: "login", authRequired: true });
-  });
-
-  it("shows the app when already logged in", () => {
+  it("reads the session: owner, nobody, or a guest of some rooms", () => {
     expect(
       authReducer(initialAuthState, {
         type: "session",
         session: { authRequired: true, authenticated: true },
       }),
-    ).toEqual(ready);
-  });
-
-  it("shows the app when auth isn't required", () => {
+    ).toEqual(owner);
+    expect(
+      authReducer(initialAuthState, {
+        type: "session",
+        session: { authRequired: true, authenticated: false },
+      }),
+    ).toEqual(stranger);
+    expect(
+      authReducer(initialAuthState, {
+        type: "session",
+        session: {
+          authRequired: true,
+          authenticated: false,
+          guestRooms: ["brave-otter-sings"],
+        },
+      }),
+    ).toEqual(guest);
+    // Auth off: everyone is an owner
     expect(
       authReducer(initialAuthState, {
         type: "session",
@@ -175,34 +200,72 @@ describe("authReducer", () => {
     ).toEqual(open);
   });
 
-  it("goes to the app after logging in", () => {
+  it("becomes an owner after logging in", () => {
     expect(
-      authReducer(
-        { status: "login", authRequired: true },
-        { type: "loginSuccess" },
-      ),
-    ).toEqual(ready);
+      authReducer({ ...stranger, forceLogin: true }, { type: "loginSuccess" }),
+    ).toEqual(owner);
   });
 
-  it("returns to the login form on 401 or logout", () => {
-    expect(authReducer(ready, { type: "unauthorized" })).toEqual({
-      status: "login",
-      authRequired: true,
-    });
-    expect(authReducer(ready, { type: "logout" })).toEqual({
-      status: "login",
-      authRequired: true,
-    });
+  it("sends owners back to the instance login on 401 or logout, even on a room page", () => {
+    const loggedOut = { ...owner, owner: false, forceLogin: true };
+    expect(
+      authReducer(owner, { type: "unauthorized", roomId: "brave-otter-sings" }),
+    ).toEqual(loggedOut);
+    expect(authReducer(owner, { type: "logout" })).toEqual(loggedOut);
     // e.g. the server restarted with a password set
-    expect(authReducer(open, { type: "unauthorized" })).toEqual({
-      status: "login",
-      authRequired: true,
-    });
+    expect(authReducer(open, { type: "unauthorized", roomId: null })).toEqual(
+      loggedOut,
+    );
   });
 
-  it("keeps the same state object when already on the login form", () => {
-    const login: AuthState = { status: "login", authRequired: true };
-    expect(authReducer(login, { type: "unauthorized" })).toBe(login);
+  it("sends guests back to the room password screen on 401", () => {
+    expect(
+      authReducer(guest, { type: "unauthorized", roomId: "brave-otter-sings" }),
+    ).toEqual({
+      ...stranger,
+      lost: { roomId: "brave-otter-sings", reason: "expired" },
+    });
+    // Not a guest of this room (e.g. already on the join screen): nothing changes
+    expect(
+      authReducer(stranger, { type: "unauthorized", roomId: "other-room" }),
+    ).toBe(stranger);
+  });
+
+  it("records joined rooms and lost access", () => {
+    const joined = authReducer(stranger, {
+      type: "roomJoined",
+      roomId: "brave-otter-sings",
+    });
+    expect(joined).toEqual(guest);
+    const kicked = authReducer(joined, {
+      type: "roomAccessLost",
+      roomId: "brave-otter-sings",
+      reason: "kicked",
+    });
+    expect(kicked).toEqual({
+      ...stranger,
+      lost: { roomId: "brave-otter-sings", reason: "kicked" },
+    });
+    expect(
+      authReducer(kicked, { type: "roomJoined", roomId: "brave-otter-sings" }),
+    ).toEqual(guest);
+    // Owners never lose access to a room
+    expect(
+      authReducer(owner, {
+        type: "roomAccessLost",
+        roomId: "x",
+        reason: "kicked",
+      }),
+    ).toBe(owner);
+  });
+
+  it("switches between the instance login and the room password screen", () => {
+    const login = authReducer(stranger, { type: "showLogin", show: true });
+    expect(login).toEqual({ ...stranger, forceLogin: true });
+    expect(authReducer(login, { type: "showLogin", show: true })).toBe(login);
+    expect(authReducer(login, { type: "showLogin", show: false })).toEqual(
+      stranger,
+    );
   });
 
   it("shows an error when the session check fails, and retries", () => {
@@ -211,5 +274,155 @@ describe("authReducer", () => {
     expect(authReducer(error, { type: "retry" })).toEqual({
       status: "loading",
     });
+  });
+});
+
+describe("authView", () => {
+  const base: AuthState = {
+    status: "ready",
+    authRequired: true,
+    owner: false,
+    guestRooms: ["brave-otter-sings"],
+    forceLogin: false,
+    lost: null,
+  };
+
+  it("owners see everything", () => {
+    const owner = { ...base, owner: true };
+    expect(authView(owner, null)).toEqual({ kind: "app", role: "owner" });
+    expect(authView(owner, "any-room")).toEqual({ kind: "app", role: "owner" });
+  });
+
+  it("guests see only their rooms; other rooms ask for the room password", () => {
+    expect(authView(base, "brave-otter-sings")).toEqual({
+      kind: "app",
+      role: "guest",
+    });
+    expect(authView(base, "other-room")).toEqual({
+      kind: "roomJoin",
+      roomId: "other-room",
+      lost: null,
+    });
+    expect(
+      authView(
+        { ...base, lost: { roomId: "other-room", reason: "kicked" } },
+        "other-room",
+      ),
+    ).toEqual({ kind: "roomJoin", roomId: "other-room", lost: "kicked" });
+  });
+
+  it("guests get the instance login on Home and every other page", () => {
+    expect(authView(base, null)).toEqual({ kind: "login", roomId: null });
+  });
+
+  it("forceLogin shows the instance login on a room page", () => {
+    expect(
+      authView({ ...base, forceLogin: true }, "brave-otter-sings"),
+    ).toEqual({ kind: "login", roomId: "brave-otter-sings" });
+  });
+
+  it("passes loading and error through", () => {
+    expect(authView({ status: "loading" }, null)).toEqual({ kind: "loading" });
+    expect(authView({ status: "error" }, "x")).toEqual({ kind: "error" });
+  });
+});
+
+describe("room guests API", () => {
+  it("fetchRoomInfo returns the title and whether a password is needed, null for unknown rooms", async () => {
+    const fetch = mockFetch(200, {
+      title: "Movie night",
+      passwordRequired: true,
+    });
+    expect(await fetchRoomInfo("brave-otter-sings")).toEqual({
+      title: "Movie night",
+      passwordRequired: true,
+    });
+    expect(fetch.mock.calls[0][0]).toBe(
+      serverPath + "/rooms/brave-otter-sings/info",
+    );
+    mockFetch(404, { error: "not_found" });
+    expect(await fetchRoomInfo("nope")).toBeNull();
+    mockFetch(500);
+    await expect(fetchRoomInfo("x")).rejects.toThrow();
+  });
+
+  it("joinRoom posts the password and maps the answers", async () => {
+    const fetch = mockFetch(200, { ok: true });
+    expect(await joinRoom("brave-otter-sings", "otter-maple-42")).toEqual({
+      result: "ok",
+    });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe(serverPath + "/rooms/brave-otter-sings/join");
+    expect(init).toMatchObject({ method: "POST", credentials: "include" });
+    expect(JSON.parse(init!.body as string)).toEqual({
+      password: "otter-maple-42",
+    });
+    mockFetch(200, { ok: true });
+    await joinRoom("open-room");
+    for (const [status, result] of [
+      [401, "invalid_password"],
+      [403, "kicked"],
+      [404, "not_found"],
+      [500, "error"],
+    ] as const) {
+      mockFetch(status, { error: "x" });
+      expect((await joinRoom("r", "p")).result).toBe(result);
+    }
+    mockFetch(429, { error: "rate_limited", retryAfter: 30 });
+    expect(await joinRoom("r", "p")).toEqual({
+      result: "rate_limited",
+      retryAfterSec: 30,
+    });
+  });
+
+  it("joinRoom with a wrong password doesn't trigger the unauthorized handler", async () => {
+    mockFetch(401, { error: "invalid_password" });
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+    await joinRoom("r", "wrong");
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("takePasswordFromHash reads #pw= and strips it from the URL", () => {
+    const replaceState = vi.fn();
+    const history = { replaceState, state: null };
+    expect(
+      takePasswordFromHash(
+        { hash: "#pw=otter-maple-42", pathname: "/watch/r", search: "" },
+        history,
+      ),
+    ).toBe("otter-maple-42");
+    expect(replaceState).toHaveBeenCalledWith(null, "", "/watch/r");
+    // Encoded characters, and other fragment params are kept
+    expect(
+      takePasswordFromHash(
+        {
+          hash: "#x=1&pw=a%20b%26c",
+          pathname: "/watch/r",
+          search: "?tab=chat",
+        },
+        history,
+      ),
+    ).toBe("a b&c");
+    expect(replaceState).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/watch/r?tab=chat#x=1",
+    );
+    replaceState.mockClear();
+    expect(
+      takePasswordFromHash(
+        { hash: "", pathname: "/watch/r", search: "" },
+        history,
+      ),
+    ).toBeUndefined();
+    expect(
+      takePasswordFromHash(
+        { hash: "#other", pathname: "/watch/r", search: "" },
+        history,
+      ),
+    ).toBeUndefined();
+    expect(replaceState).not.toHaveBeenCalled();
   });
 });

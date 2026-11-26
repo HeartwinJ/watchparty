@@ -24,6 +24,27 @@
   color: var(--wp-warning);
 }
 
+.switchRow {
+  display: flex;
+  justify-content: center;
+}
+
+.linkButton {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--wp-r-sm);
+  background: none;
+  color: var(--wp-text-2);
+  font: inherit;
+  font-size: var(--wp-fs-sm);
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  color: var(--wp-accent-text);
+  text-decoration: underline;
+}
+
 .mono {
   font-family: var(--wp-font-mono);
   font-variant-numeric: tabular-nums;

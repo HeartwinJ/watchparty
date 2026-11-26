@@ -85,4 +85,15 @@ describe("createRateLimiter", () => {
     expect(limiter.retryAfterSec("k", 60_000)).toBe(0);
     expect(limiter.retryAfterSec("other", 1000)).toBe(0);
   });
+
+  it("blockedSec only reports a wait once all attempts are used up", () => {
+    const limiter = createRateLimiter({ max: 2, windowMs: 60_000 });
+    expect(limiter.blockedSec("k", 0)).toBe(0);
+    limiter.hit("k", 0);
+    expect(limiter.blockedSec("k", 0)).toBe(0);
+    limiter.hit("k", 0);
+    expect(limiter.blockedSec("k", 1000)).toBe(59);
+    expect(limiter.blockedSec("k", 59_999)).toBe(1);
+    expect(limiter.blockedSec("k", 60_000)).toBe(0);
+  });
 });

@@ -23,8 +23,18 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 - **Socket** (`socketEvents.ts`): `ServerToClientEvents`/`ClientToServerEvents` type every event. Names and payloads
   match `server/room.ts` exactly. Use `room.cmd.*` (e.g. `cmd.play()`, `cmd.setMedia(url)`, `cmd.sendChat(msg)`) and
   never emit raw strings. Child components get `cmd` (or one function from it), not the socket.
-- **Auth**: `useRoomSocket` handles `connect_error: "unauthorized"` by calling `notifyUnauthorized()`, which sends the
-  app back to the login form (`AuthGate`).
+- **Auth**: `useRoomSocket` handles `connect_error: "unauthorized"` by calling `notifyUnauthorized()`; `AuthGate`
+  sends owners to the instance login and guests to the room password screen. `useAuth().role` is `"owner"` or
+  `"guest"` (a guest has access to this room only). Guests can do everything in the room except manage it: no
+  room-wide settings, room password or "Remove from room" (the server refuses those commands too), no Home link,
+  "Leave room" or "Log out". `kicked` and `REC:accessRevoked` call `useAuth().roomAccessLost(roomId, reason)` for
+  guests (owners who are kicked go to `/`).
+- **Room password**: `state.roomAccess` is the latest `REC:roomAccess` (`{enabled, password?}`; only owners ever get
+  `password`, null until it arrives). Owners change it with `room.cmd.setRoomPassword({action: "regenerate"} |
+{action: "set", password} | {action: "enable", enabled})` and remove people with `room.cmd.kickUser(clientId)`.
+  The invite UI (`shell/invite.ts`: `inviteLink()`, `inviteLinkWithPassword(pw)` → `/watch/<room>#pw=<pw>`,
+  `roomPassword(access)`) offers "Copy invite link" and, for owners while a password is required, "Copy link with
+  password" (top bar Invite menu and the People panel).
 - **Player**: `player.current()` is the active `Player` (YouTube iframe or `<video id="leftVideo">`). `local*` actions
   only affect this device, `room*` actions also tell the room. Hls.js and dash.js are imported lazily in `onHost`.
 - **Share state** (`useShare.ts`, `ShareSession`): peer connections and the local stream are mutable, not React
@@ -48,13 +58,13 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `shell/RoomTopBar.tsx`                    | Logo, room name, picker trigger, sync slot, avatars, invite, sidebar toggle, ⋯ menu          |
 | `shell/SidePanels.tsx`                    | Chat / Queue / People tabs (shared by the sidebar and the bottom sheet), unread badge        |
 | `shell/QueuePanel.tsx`                    | Now playing + playlist: drag to reorder, play now/next, move, remove, empty state            |
-| `shell/PeoplePanel.tsx`                   | Invite box, roster (avatar colour, sharing, playback drift), rename popover                  |
+| `shell/PeoplePanel.tsx`                   | Invite box (link / link with password), roster, rename popover, owners: "Remove from room"   |
 | `shell/SidebarResize.tsx`                 | Drag/keyboard resize of the desktop sidebar (`sidebarWidth.ts`: clamp + localStorage)        |
 | `shell/BottomSheet.tsx`                   | Phone sheet snap points min/docked/full (`sheet.ts`: pure snap logic)                        |
 | `shell/NowPlayingStrip.tsx`               | Phone: title + "Change" under the video                                                      |
-| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (title, ready check, next-episode card)                      |
+| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, next-episode, room password)    |
 | `shell/shortcuts.ts`                      | `/` opens the picker; `wp:show-shortcuts` event for the shortcuts overlay                    |
-| `shell/invite.ts`, `roomInfo.ts`          | Copy invite link + toast; short media titles, per-person playback state                      |
+| `shell/invite.ts`, `roomInfo.ts`          | Invite links (+ `#pw=`), copy + toast; short media titles, per-person playback state         |
 | `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                        |
 | `socketEvents.ts`                         | Typed socket events and `createRoomCommands`                                                 |
 | `Player.ts`, `HTML.ts`, `YouTube.ts`      | Player implementations (HTML.ts: subtitle track selection + cue re-timing)                   |
@@ -71,6 +81,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic               |
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                           |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits     |
+| `roomRoles.test.tsx`                      | Owner vs guest room page: settings, room password, remove person, invite links               |
 
 ## Room shell
 
@@ -92,6 +103,8 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   `roomSettings` chat line. The settings modal sends the title on blur/Enter, the ready check switch immediately and the
   next-episode seconds 500 ms after the last change. `roomDisplayName(roomId, title)` names the room in the top bar,
   the tab title and recent rooms. Ready check and the next-episode card read `state.roomSettings` directly.
+  The "Everyone in this room" section (and its `RoomPasswordSettings`: masked password with show/copy, Regenerate,
+  Set your own, "Require a password" switch) is only rendered for owners; guests see a note.
 
 ## Source picker (`picker/`)
 

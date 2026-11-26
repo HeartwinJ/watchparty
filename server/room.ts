@@ -32,6 +32,7 @@ import {
 } from "./readyCheck.ts";
 import type { NextEpisodeResolver } from "./addons/nextEpisode.ts";
 import { NextEpisodeController } from "./nextEpisodeController.ts";
+import { parseRoomPasswordCommand, RoomAccess } from "./roomAccess.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -94,6 +95,8 @@ export class Room {
   public videoMeta: VideoMeta | null = null;
   /** Room-wide settings (see CMD:roomSettings) */
   public roomSettings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
+  /** Guest access: room password, on/off, epoch, revoked guests (roomAccess.ts). Never sent to guests. */
+  public access: RoomAccess = RoomAccess.create();
 
   // Non-serialized state
   public roomId: string;
@@ -152,7 +155,10 @@ export class Room {
     });
 
     if (roomData) {
-      this.deserialize(roomData);
+      if (!this.deserialize(roomData)) {
+        // A room from before room passwords just got one generated: persist it right away
+        this.saveRoom();
+      }
     }
 
     this.tsInterval = setInterval(async () => {
@@ -237,6 +243,7 @@ export class Room {
       socket.emit("playlist", this.playlist);
       socket.emit("REC:videoMeta", this.videoMeta);
       socket.emit("REC:roomSettings", this.roomSettings);
+      this.emitRoomAccess(socket);
       socket.emit("REC:readyCheck", this.readyCheck.getState());
       socket.emit("REC:nextEpisode", this.nextEpisode.snapshot());
       io.of(roomId).emit("roster", this.getRosterForApp());
@@ -316,18 +323,36 @@ export class Room {
       on("CMD:playlistDelete", (data: unknown) => {
         this.playlistDelete(data);
       });
-      // Everyone on the instance is trusted (they know the instance password)
-      on("CMD:kickUser", (data: unknown) => this.kickUser(data));
-      on("CMD:deleteChatMessages", (data: unknown) =>
-        this.deleteChatMessages(data),
+      // Managing the room and its people is for owners only (socket.data.owner is set by the
+      // namespace auth middleware, admitRoomSockets in utils/roomAuth.ts; guests and unknown sockets are refused)
+      const ownerOnly =
+        (handler: (data: unknown) => unknown) => (data: unknown) => {
+          if (!this.isOwner(socket)) {
+            socket.emit("errorMessage", "Only the room's owner can do that.");
+            return;
+          }
+          return handler(data);
+        };
+      on(
+        "CMD:kickUser",
+        ownerOnly((data) => this.kickUser(data)),
+      );
+      on(
+        "CMD:deleteChatMessages",
+        ownerOnly((data) => this.deleteChatMessages(data)),
+      );
+      on(
+        "CMD:roomPassword",
+        ownerOnly((data) => this.setRoomPassword(socket, data)),
       );
 
       on("CMD:videoMeta", (data: unknown) => this.setVideoMeta(data));
       on("CMD:playbackIssue", (data: unknown) =>
         this.reportPlaybackIssue(socket, data),
       );
-      on("CMD:roomSettings", (data: unknown) =>
-        this.setRoomSettings(socket, data),
+      on(
+        "CMD:roomSettings",
+        ownerOnly((data) => this.setRoomSettings(socket, data)),
       );
       on("CMD:nextEpisode", (data: unknown) => {
         const d = data as { action?: unknown; url?: unknown } | null;
@@ -379,10 +404,12 @@ export class Room {
       subtitleOffset: this.subtitleOffset,
       videoMeta: this.videoMeta,
       roomSettings: this.roomSettings,
+      access: this.access.serialize(),
     });
   };
 
-  private deserialize = (roomData: string) => {
+  /** Returns whether the stored data had room access data (rooms from before room passwords don't) */
+  private deserialize = (roomData: string): boolean => {
     const roomObj = JSON.parse(roomData);
     this.video = roomObj.video;
     this.videoTS = roomObj.videoTS;
@@ -415,6 +442,8 @@ export class Room {
       this.videoMeta = roomObj.videoMeta;
     }
     this.roomSettings = normalizeRoomSettings(roomObj.roomSettings);
+    this.access = RoomAccess.from(roomObj.access);
+    return Boolean(roomObj.access);
   };
 
   public saveRoom = () => {
@@ -1157,18 +1186,82 @@ export class Room {
     // This will keep growing in memory until the room is unloaded
   };
 
-  private kickUser = async (raw: unknown) => {
-    const data = raw as { userToBeKicked: string };
-    if (!data) {
+  /** Owners only. Kicking a guest also revokes their grant, so they can't reconnect or rejoin from that browser. */
+  private kickUser = (raw: unknown) => {
+    const data = raw as { userToBeKicked?: unknown } | null;
+    if (!data || typeof data.userToBeKicked !== "string") {
       return;
     }
-    const userToBeKickedSocket = this.io
+    const target = this.io
       .of(this.roomId)
       .sockets.get(this.socketIdMap[data.userToBeKicked]);
-    if (userToBeKickedSocket) {
-      userToBeKickedSocket.emit("kicked");
-      userToBeKickedSocket.disconnect();
+    if (!target) {
+      return;
     }
+    const guestId: unknown = target.data?.guestId;
+    const sockets = [target];
+    if (!this.isOwner(target) && typeof guestId === "string") {
+      this.access.revoke(guestId);
+      this.saveRoom();
+      // The same guest in other tabs/devices with this browser's grant
+      for (const s of this.io.of(this.roomId).sockets.values()) {
+        if (s !== target && s.data?.guestId === guestId) {
+          sockets.push(s);
+        }
+      }
+    }
+    for (const s of sockets) {
+      s.emit("kicked");
+      s.disconnect();
+    }
+  };
+
+  // --- Room password (guest access, see roomAccess.ts) ---
+
+  private isOwner = (socket: Socket) => socket.data?.owner === true;
+
+  /** REC:roomAccess: owners get the password, guests only whether one is required */
+  private emitRoomAccess = (socket: Socket) => {
+    const info: RoomAccessInfo = this.isOwner(socket)
+      ? { enabled: this.access.enabled, password: this.access.password }
+      : { enabled: this.access.enabled };
+    socket.emit("REC:roomAccess", info);
+  };
+
+  /**
+   * CMD:roomPassword (owners only): regenerate, set or turn the password on/off. A new password or turning it on
+   * revokes every guest grant (the epoch changes), so connected guests are disconnected with REC:accessRevoked and
+   * see the room password screen. The chat line never contains the password.
+   */
+  private setRoomPassword = (socket: Socket, raw: unknown) => {
+    const cmd = parseRoomPasswordCommand(raw);
+    if (!cmd) {
+      socket.emit("errorMessage", "Room passwords need 4–64 characters.");
+      return;
+    }
+    if (!this.settingsLimiter.allow()) {
+      return;
+    }
+    const epoch = this.access.epoch;
+    const change = this.access.apply(cmd);
+    if (!change) {
+      return;
+    }
+    this.saveRoom();
+    const ns = this.io.of(this.roomId);
+    for (const s of ns.sockets.values()) {
+      if (this.access.epoch !== epoch && !this.isOwner(s)) {
+        s.emit("REC:accessRevoked");
+        s.disconnect();
+      } else {
+        this.emitRoomAccess(s);
+      }
+    }
+    this.addChatMessage(null, {
+      id: socket.clientId,
+      cmd: "roomPassword",
+      msg: change,
+    });
   };
 
   private deleteChatMessages = async (raw: unknown) => {

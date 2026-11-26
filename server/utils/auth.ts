@@ -15,6 +15,7 @@ import {
   signSession,
   verifySession,
 } from "./session.ts";
+import { deriveGuestKey } from "./guestToken.ts";
 
 /**
  * Instance password auth. With no password configured, everything is open.
@@ -27,6 +28,8 @@ export function createAuth(opts: {
 }) {
   const authRequired = Boolean(opts.password);
   const secret = opts.sessionSecret || crypto.randomBytes(32).toString("hex");
+  // Room guest grants are signed with a separate key derived from the same secret (utils/guestToken.ts)
+  const guestKey = deriveGuestKey(secret);
   const limiter = createRateLimiter({
     max: opts.loginMax ?? 10,
     windowMs: opts.loginWindowMs ?? 10 * 60 * 1000,
@@ -48,12 +51,24 @@ export function createAuth(opts: {
     res.status(401).json({ error: "unauthorized" });
   };
 
-  const register = (app: Express) => {
+  /**
+   * `guestRooms` (from roomAuth.ts) lists the rooms the request is a guest of, so GET /session can say
+   * "owner" (`authenticated`), "guest of these rooms", or neither.
+   */
+  const register = (
+    app: Express,
+    extra: { guestRooms?: (cookieHeader: string | undefined) => string[] } = {},
+  ) => {
     app.get("/session", (req, res) => {
       res.setHeader("Cache-Control", "no-store");
+      const authenticated = isAuthenticated(req.headers.cookie);
       res.json({
-        authenticated: isAuthenticated(req.headers.cookie),
+        authenticated,
         authRequired,
+        guestRooms:
+          authenticated || !extra.guestRooms
+            ? []
+            : extra.guestRooms(req.headers.cookie),
       });
     });
 
@@ -92,5 +107,5 @@ export function createAuth(opts: {
     });
   };
 
-  return { authRequired, isAuthenticated, requireAuth, register };
+  return { authRequired, isAuthenticated, requireAuth, register, guestKey };
 }

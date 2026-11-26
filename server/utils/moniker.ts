@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomInt } from "node:crypto";
 
 const adjectives = fs
   .readFileSync(process.cwd() + "/words/adjectives.txt")
@@ -30,4 +31,17 @@ export function makeUserName() {
 
 function capFirst(string: string) {
   return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+/**
+ * A readable room password like "otter-maple-42": adjective-noun-two digits, picked with crypto.randomInt
+ * (about 27 bits; the join endpoint is rate limited).
+ */
+export function makeRoomPassword() {
+  const pick = (list: string[]) => {
+    const words = list.filter(Boolean);
+    return words[randomInt(words.length)];
+  };
+  const digits = String(randomInt(100)).padStart(2, "0");
+  return `${pick(adjectives)}-${pick(nouns)}-${digits}`;
 }

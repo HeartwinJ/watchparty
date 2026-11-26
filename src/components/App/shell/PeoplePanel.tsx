@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Button,
   Group,
+  Menu,
   Popover,
   TextInput,
   Tooltip,
@@ -10,23 +11,37 @@ import {
 import {
   IconArrowsShuffle,
   IconCopy,
+  IconDots,
   IconFile,
+  IconKey,
   IconPencil,
   IconScreenShare,
+  IconUserX,
 } from "@tabler/icons-react";
+import { useAuth } from "../../AuthGate/AuthGate";
 import { generateName } from "../../../utils/generateName";
 import { isFileShare } from "../../../utils/utils";
 import { UserAvatar } from "../../Avatar/Avatar";
 import type { Room } from "../hooks/useRoom";
-import { copyInviteLink, inviteLink } from "./invite";
+import {
+  copyInviteLink,
+  inviteLink,
+  inviteLinkWithPassword,
+  roomPassword,
+} from "./invite";
 import { describePlayback } from "./roomInfo";
 import styles from "./Shell.module.css";
 
 const NAME_MAX = 50;
 
-/** Invite box, then everyone in the room with their sharing and playback state. You can rename yourself here. */
+/**
+ * Invite box, then everyone in the room with their sharing and playback state. You can rename yourself here, and
+ * owners can remove people (a removed guest loses access to the room).
+ */
 export const PeoplePanel = ({ room }: { room: Room }) => {
   const { state, clientId, player } = room;
+  const isOwner = useAuth().role === "owner";
+  const password = isOwner ? roomPassword(state.roomAccess) : undefined;
   const hasMedia = Boolean(state.roomMedia);
   const hasDuration = player.hasDuration();
   const referenceTs = hasDuration ? player.getLeaderTime() : undefined;
@@ -45,16 +60,46 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
             <code className={styles.inviteLink} title={link}>
               {link.replace(/^https?:\/\//, "")}
             </code>
-            <Button
-              size="compact-sm"
-              leftSection={<IconCopy size={14} />}
-              onClick={() => copyInviteLink(link)}
-            >
-              Copy
-            </Button>
+            {!password && (
+              <Button
+                size="compact-sm"
+                leftSection={<IconCopy size={14} />}
+                onClick={() => copyInviteLink(link)}
+              >
+                Copy
+              </Button>
+            )}
           </div>
+          {password && (
+            <div className={styles.inviteActions}>
+              <Button
+                size="compact-sm"
+                leftSection={<IconCopy size={14} />}
+                onClick={() => copyInviteLink(link)}
+              >
+                Copy link
+              </Button>
+              <Button
+                size="compact-sm"
+                variant="default"
+                leftSection={<IconKey size={14} />}
+                onClick={() =>
+                  copyInviteLink(
+                    inviteLinkWithPassword(password),
+                    "Link with password copied",
+                  )
+                }
+              >
+                Copy with password
+              </Button>
+            </div>
+          )}
           <div className={styles.inviteHint}>
-            They'll need the instance password once.
+            {state.roomAccess && !state.roomAccess.enabled
+              ? "Anyone with the link can join."
+              : password
+                ? "With the plain link, they type the room password once."
+                : "They'll need the room password once."}
           </div>
         </div>
         <div className={styles.sectionLabel}>
@@ -112,6 +157,12 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
                   </Tooltip>
                 )}
                 {isMe && <EditName room={room} />}
+                {!isMe && isOwner && (
+                  <PersonMenu
+                    name={name}
+                    onKick={() => room.cmd.kickUser(p.id)}
+                  />
+                )}
               </li>
             );
           })}
@@ -120,6 +171,34 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
     </div>
   );
 };
+
+/** Owners: actions on someone else (remove them from the room) */
+const PersonMenu = ({ name, onKick }: { name: string; onKick: () => void }) => (
+  <Menu position="bottom-end" width={220} zIndex={400} withinPortal>
+    <Menu.Target>
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        size={30}
+        aria-label={`Options for ${name}`}
+      >
+        <IconDots size={16} />
+      </ActionIcon>
+    </Menu.Target>
+    <Menu.Dropdown>
+      <Menu.Item
+        color="var(--wp-danger)"
+        leftSection={<IconUserX size={16} />}
+        onClick={onKick}
+      >
+        Remove from room
+        <div className={styles.menuHint}>
+          Guests can't come back until you change the password
+        </div>
+      </Menu.Item>
+    </Menu.Dropdown>
+  </Menu>
+);
 
 /** "You" popover: change your display name or pick a random one. */
 const EditName = ({ room }: { room: Room }) => {

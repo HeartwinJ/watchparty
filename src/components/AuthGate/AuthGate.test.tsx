@@ -15,11 +15,28 @@ vi.mock("../../utils/auth", async (importOriginal) => {
     fetchSession: vi.fn(),
     loginWithDetails: vi.fn(),
     logout: vi.fn(async () => {}),
+    fetchRoomInfo: vi.fn(),
+    joinRoom: vi.fn(),
   };
 });
 
-import { fetchSession, loginWithDetails } from "../../utils/auth";
-import { AuthGate, formatCountdown, LoginScreen, useAuth } from "./AuthGate";
+import {
+  fetchRoomInfo,
+  fetchSession,
+  joinRoom,
+  loginWithDetails,
+} from "../../utils/auth";
+import { notifyUnauthorized } from "../../utils/api";
+import {
+  AuthGate,
+  formatCountdown,
+  LoginScreen,
+  resetLinkPassword,
+  useAuth,
+} from "./AuthGate";
+
+const mockedInfo = vi.mocked(fetchRoomInfo);
+const mockedJoin = vi.mocked(joinRoom);
 
 const mockedLogin = vi.mocked(loginWithDetails);
 const mockedSession = vi.mocked(fetchSession);
@@ -44,6 +61,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  window.history.replaceState(null, "", "/");
+  resetLinkPassword();
 });
 
 describe("LoginScreen", () => {
@@ -168,5 +187,189 @@ describe("AuthGate", () => {
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     });
     expect(await screen.findByText("app content true")).toBeTruthy();
+  });
+});
+
+describe("AuthGate on a room page (guests)", () => {
+  const Child = () => {
+    const { role, roomAccessLost } = useAuth();
+    return (
+      <div>
+        <span>room as {role}</span>
+        <button onClick={() => roomAccessLost("brave-otter-sings", "kicked")}>
+          kick me
+        </button>
+      </div>
+    );
+  };
+  const renderRoom = (path = "/watch/brave-otter-sings") => {
+    window.history.replaceState(null, "", path);
+    resetLinkPassword();
+    return wrap(
+      <AuthGate>
+        <Child />
+      </AuthGate>,
+    );
+  };
+  const stranger = { authenticated: false, authRequired: true, guestRooms: [] };
+
+  it("shows the room password screen, then the room as a guest", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({
+      title: "Movie night",
+      passwordRequired: true,
+    });
+    mockedJoin.mockResolvedValueOnce({ result: "invalid_password" });
+    mockedJoin.mockResolvedValueOnce({ result: "ok" });
+    renderRoom();
+    expect(await screen.findByText("Join Movie night")).toBeTruthy();
+    const input = () =>
+      screen.getByLabelText("Room password", { selector: "input" });
+    fireEvent.change(input(), { target: { value: "nope" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Join room" }));
+    });
+    expect(await screen.findByText("Wrong password. Try again.")).toBeTruthy();
+    fireEvent.change(input(), { target: { value: "otter-maple-42" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Join room" }));
+    });
+    expect(mockedJoin).toHaveBeenLastCalledWith(
+      "brave-otter-sings",
+      "otter-maple-42",
+    );
+    expect(await screen.findByText("room as guest")).toBeTruthy();
+  });
+
+  it("falls back to the generated name when the room has no title", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    renderRoom();
+    expect(await screen.findByText("Join Brave otter sings")).toBeTruthy();
+  });
+
+  it("joins an open room without asking", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: false });
+    mockedJoin.mockResolvedValue({ result: "ok" });
+    renderRoom();
+    expect(await screen.findByText("room as guest")).toBeTruthy();
+    expect(mockedJoin).toHaveBeenCalledWith("brave-otter-sings", undefined);
+  });
+
+  it("uses a #pw= link password and strips it from the address bar", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    mockedJoin.mockResolvedValue({ result: "ok" });
+    renderRoom("/watch/brave-otter-sings#pw=otter-maple-42");
+    expect(window.location.hash).toBe("");
+    expect(window.location.pathname).toBe("/watch/brave-otter-sings");
+    expect(await screen.findByText("room as guest")).toBeTruthy();
+    expect(mockedJoin).toHaveBeenCalledWith(
+      "brave-otter-sings",
+      "otter-maple-42",
+    );
+  });
+
+  it("says so when the link's password is wrong", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    mockedJoin.mockResolvedValue({ result: "invalid_password" });
+    renderRoom("/watch/brave-otter-sings#pw=old-password");
+    expect(
+      await screen.findByText(/The password in your link didn't work/),
+    ).toBeTruthy();
+  });
+
+  it("counts down after too many attempts", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    mockedJoin.mockResolvedValue({ result: "rate_limited", retryAfterSec: 90 });
+    renderRoom();
+    fireEvent.change(
+      await screen.findByLabelText("Room password", { selector: "input" }),
+      { target: { value: "x" } },
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Join room" }));
+    });
+    expect(await screen.findByText("Too many attempts")).toBeTruthy();
+    expect(screen.getByText("1:30")).toBeTruthy();
+  });
+
+  it("a guest of the room goes straight in; kicked shows the removed screen", async () => {
+    mockedSession.mockResolvedValue({
+      ...stranger,
+      guestRooms: ["brave-otter-sings"],
+    });
+    renderRoom();
+    expect(await screen.findByText("room as guest")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "kick me" }));
+    });
+    expect(
+      await screen.findByText("You were removed from this room"),
+    ).toBeTruthy();
+    expect(mockedInfo).not.toHaveBeenCalled();
+  });
+
+  it("a guest whose access expires (401) is asked for the room password again", async () => {
+    mockedSession.mockResolvedValue({
+      ...stranger,
+      guestRooms: ["brave-otter-sings"],
+    });
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    renderRoom();
+    expect(await screen.findByText("room as guest")).toBeTruthy();
+    await act(async () => notifyUnauthorized());
+    expect(
+      await screen.findByText(/Your access to this room ended/),
+    ).toBeTruthy();
+  });
+
+  it("guests get the instance login on Home", async () => {
+    mockedSession.mockResolvedValue({
+      ...stranger,
+      guestRooms: ["brave-otter-sings"],
+    });
+    renderRoom("/");
+    expect(await screen.findByText("Welcome back")).toBeTruthy();
+  });
+
+  it("an owner whose session ends on a room page gets the instance login", async () => {
+    mockedSession.mockResolvedValue({
+      authenticated: true,
+      authRequired: true,
+    });
+    renderRoom();
+    expect(await screen.findByText("room as owner")).toBeTruthy();
+    await act(async () => notifyUnauthorized());
+    expect(await screen.findByText("Welcome back")).toBeTruthy();
+    // ...with a way back to the room password screen
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Have a room password? Join the room",
+        }),
+      );
+    });
+    expect(await screen.findByText("Join Brave otter sings")).toBeTruthy();
+  });
+
+  it("'Owner? Log in' switches to the instance login", async () => {
+    mockedSession.mockResolvedValue(stranger);
+    mockedInfo.mockResolvedValue({ title: "", passwordRequired: true });
+    mockedLogin.mockResolvedValue({ result: "ok" });
+    renderRoom();
+    const ownerLogin = await screen.findByRole("button", {
+      name: "Owner? Log in",
+    });
+    await act(async () => {
+      fireEvent.click(ownerLogin);
+    });
+    typePassword("pw");
+    await submit();
+    expect(await screen.findByText("room as owner")).toBeTruthy();
   });
 });

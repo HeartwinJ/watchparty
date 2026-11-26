@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { offsetToSend, titleToSend } from "./roomSettingsForm";
+import {
+  offsetToSend,
+  roomPasswordToSend,
+  titleToSend,
+} from "./roomSettingsForm";
 
 describe("titleToSend", () => {
   it("normalizes the draft and skips unchanged titles", () => {
@@ -20,5 +24,16 @@ describe("offsetToSend", () => {
     expect(offsetToSend(25.4, 25)).toBeUndefined();
     expect(offsetToSend("", 25)).toBeUndefined();
     expect(offsetToSend("abc", 25)).toBeUndefined();
+  });
+});
+
+describe("roomPasswordToSend", () => {
+  it("trims and enforces 4–64 characters", () => {
+    expect(roomPasswordToSend("  popcorn ")).toBe("popcorn");
+    expect(roomPasswordToSend("abc")).toBeUndefined();
+    expect(roomPasswordToSend("    ")).toBeUndefined();
+    expect(roomPasswordToSend("x".repeat(64))).toBe("x".repeat(64));
+    expect(roomPasswordToSend("x".repeat(65))).toBeUndefined();
+    expect(roomPasswordToSend("ab\tcd")).toBeUndefined();
   });
 });

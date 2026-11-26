@@ -24,3 +24,20 @@ describe("describeChatCommand roomSettings", () => {
     expect(settings({ somethingNew: 1 })).toBeUndefined();
   });
 });
+
+describe("describeChatCommand roomPassword", () => {
+  it("never shows the password, only what changed", () => {
+    expect(describeChatCommand("roomPassword", "changed")).toBe(
+      "changed the room password",
+    );
+    expect(describeChatCommand("roomPassword", "on")).toBe(
+      "turned on the room password",
+    );
+    expect(describeChatCommand("roomPassword", "off")).toBe(
+      "turned off the room password",
+    );
+    expect(
+      describeChatCommand("roomPassword", "otter-maple-42"),
+    ).toBeUndefined();
+  });
+});

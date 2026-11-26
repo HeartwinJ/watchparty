@@ -22,6 +22,7 @@ import {
 import { makeRoomName, makeUserName } from "./utils/moniker.ts";
 import { assertPublicUrl, safeFetch } from "./utils/ssrf.ts";
 import { createAuth } from "./utils/auth.ts";
+import { admitRoomSockets, createRoomAuth } from "./utils/roomAuth.ts";
 import { createIceServerProvider } from "./utils/iceServers.ts";
 import { createAddonRouter, createAddonServices } from "./addons/routes.ts";
 import { createHistoryRouter } from "./utils/historyRoutes.ts";
@@ -56,7 +57,6 @@ const auth = createAuth({
   password: config.APP_PASSWORD,
   sessionSecret: config.SESSION_SECRET,
 });
-const requireAuth = auth.requireAuth;
 const iceServers = createIceServerProvider({
   keyId: config.CF_TURN_KEY_ID,
   apiToken: config.CF_TURN_API_TOKEN,
@@ -76,49 +76,61 @@ if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
 
 const rooms = new Map<string, Room>();
 
+/** The room with namespace id `key` ("/name"), loaded from SQLite if it isn't in memory. Undefined if unknown. */
+function loadRoom(key: string): Room | undefined {
+  let room = rooms.get(key);
+  if (room) {
+    return room;
+  }
+  try {
+    const row = getRoom(db, key);
+    if (row) {
+      room = new Room(io, db, key, row.data);
+      rooms.set(key, room);
+      console.log("loading room %s into memory", key);
+    }
+  } catch (e) {
+    console.warn("failed to load room %s:", key, e);
+  }
+  return room;
+}
+
+// Owners (instance session) vs room guests (per-room password grants), see utils/roomAuth.ts
+const roomAuth = createRoomAuth({
+  auth,
+  guestKey: auth.guestKey,
+  getRoom: (roomId) => {
+    const room = loadRoom(roomId);
+    return room
+      ? { access: room.access, title: room.roomSettings.title }
+      : undefined;
+  },
+});
+// Owners only: creating rooms and the watch history (which lists and creates rooms)
+const requireOwner = roomAuth.requireOwner;
+// Owners, or guests with a valid grant for a room: everything the room page itself uses
+const requireMember = roomAuth.requireMember;
+
 const io = new Server(server, {
   // Production is same-origin. The Vite dev server runs on another port, so reflect it in dev.
   cors: isDev ? { origin: true, credentials: true } : undefined,
   transports: ["websocket"],
 });
 
-// Engine-level: check the session cookie once per connection (enforced on every namespace
-// below) and make sure the requested room is loaded from SQLite. Existing rooms are loaded
+// Engine-level: make sure the requested room is loaded from SQLite. Existing rooms are loaded
 // even for unauthenticated requests so the namespace exists and the client gets a clear
 // "unauthorized" connect_error instead of "Invalid namespace".
 io.engine.use((req: any, _res: unknown, next: () => void) => {
-  req.wpAuthenticated = auth.isAuthenticated(req.headers.cookie);
   const roomId = req._query?.roomId;
-  if (typeof roomId !== "string" || !roomId || roomId.length > 200) {
-    return next();
-  }
-  try {
-    const key = "/" + roomId;
-    if (!rooms.has(key)) {
-      // If it doesn't exist, the connection fails later with "invalid namespace"
-      const row = getRoom(db, key);
-      if (row) {
-        rooms.set(key, new Room(io, db, key, row.data));
-        console.log("loading room %s into memory", key);
-      }
-    }
-  } catch (e) {
-    console.warn("failed to load room %s:", roomId, e);
+  if (typeof roomId === "string" && roomId && roomId.length <= 200) {
+    // If it doesn't exist, the connection fails later with "invalid namespace"
+    loadRoom("/" + roomId);
   }
   next();
 });
-// Reject unauthenticated sockets in every namespace (the main one, and each room's,
-// which are created later). Registered before any room so it runs first.
-// The client sees a connect_error with message "unauthorized".
-const socketAuth = (socket: any, next: (err?: Error) => void) => {
-  if (socket.request?.wpAuthenticated) {
-    next();
-  } else {
-    next(new Error("unauthorized"));
-  }
-};
-io.use(socketAuth);
-io.on("new_namespace", (nsp) => nsp.use(socketAuth));
+// Admission, checked on every connection (see admitRoomSockets in utils/roomAuth.ts).
+// Registered before any room exists, so it runs before each room's own middleware.
+admitRoomSockets(io, roomAuth);
 
 if (isDev) {
   app.use(cors({ origin: true, credentials: true }));
@@ -130,15 +142,17 @@ app.get("/ping", (_req, res) => {
   res.json("pong");
 });
 
-auth.register(app);
+auth.register(app, { guestRooms: roomAuth.guestRooms });
+// GET /rooms/:roomId/info and POST /rooms/:roomId/join (public, rate limited)
+roomAuth.register(app);
 
-app.get("/iceServers", requireAuth, async (_req, res) => {
+app.get("/iceServers", requireMember, async (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json(await iceServers.get());
 });
 
 // Data's already compressed so go before the compression middleware
-app.get("/subtitle/:hash", requireAuth, (req, res) => {
+app.get("/subtitle/:hash", requireMember, (req, res) => {
   if (!/^[0-9a-f]{64}$/.test(req.params.hash)) {
     res.status(404).end("not found");
     return;
@@ -164,7 +178,7 @@ function storeSubtitle(data: Buffer) {
   return hash;
 }
 
-app.post("/subtitle", requireAuth, (req, res) => {
+app.post("/subtitle", requireMember, (req, res) => {
   const data = req.body;
   // body-parser only produces a Buffer for text/plain bodies
   if (!Buffer.isBuffer(data) || data.length === 0) {
@@ -174,7 +188,7 @@ app.post("/subtitle", requireAuth, (req, res) => {
   res.json({ hash: storeSubtitle(data) });
 });
 
-app.get("/downloadSubtitles", requireAuth, async (req, res) => {
+app.get("/downloadSubtitles", requireMember, async (req, res) => {
   if (!config.OPENSUBTITLES_KEY) {
     res.status(503).json({ error: "opensubtitles_not_configured" });
     return;
@@ -223,11 +237,11 @@ app.get("/downloadSubtitles", requireAuth, async (req, res) => {
 });
 
 // Whether OpenSubtitles search is available (the player's subtitle menu hides it otherwise)
-app.get("/searchSubtitles/status", requireAuth, (_req, res) => {
+app.get("/searchSubtitles/status", requireMember, (_req, res) => {
   res.json({ configured: Boolean(config.OPENSUBTITLES_KEY) });
 });
 
-app.get("/searchSubtitles", requireAuth, async (req, res) => {
+app.get("/searchSubtitles", requireMember, async (req, res) => {
   if (!config.OPENSUBTITLES_KEY) {
     res.status(503).json({ error: "opensubtitles_not_configured" });
     return;
@@ -266,7 +280,7 @@ app.get("/searchSubtitles", requireAuth, async (req, res) => {
   res.json(result ?? []);
 });
 
-app.get("/youtube", requireAuth, async (req, res) => {
+app.get("/youtube", requireMember, async (req, res) => {
   if (typeof req.query.q === "string") {
     try {
       const items = await searchYoutube(req.query.q);
@@ -280,7 +294,7 @@ app.get("/youtube", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/youtubePlaylist/:playlistId", requireAuth, async (req, res) => {
+app.get("/youtubePlaylist/:playlistId", requireMember, async (req, res) => {
   try {
     const items = await youtubePlaylist(req.params.playlistId);
     res.json(items);
@@ -301,7 +315,7 @@ app.use(
     {
       manifestUrl: config.AIOSTREAMS_MANIFEST_URL,
       subtitleLangs: config.SUBTITLE_LANGS,
-      requireAuth,
+      requireAuth: requireMember,
       fetchFn: safeFetch,
     },
     addonServices,
@@ -334,7 +348,7 @@ function createNewRoom(): Room | undefined {
 app.use(
   createHistoryRouter({
     db,
-    requireAuth,
+    requireAuth: requireOwner,
     createRoom: ({ video, meta, position }) => {
       const room = createNewRoom();
       if (!room) {
@@ -347,7 +361,7 @@ app.use(
   }),
 );
 
-app.post("/createRoom", requireAuth, async (req, res) => {
+app.post("/createRoom", requireOwner, async (req, res) => {
   const newRoom = createNewRoom();
   if (!newRoom) {
     res.status(503).json({ error: "could not allocate a room name" });
@@ -384,7 +398,7 @@ app.post("/createRoom", requireAuth, async (req, res) => {
   res.json({ name });
 });
 
-app.get("/generateName", requireAuth, (_req, res) => {
+app.get("/generateName", requireMember, (_req, res) => {
   res.send(makeUserName());
 });
 
@@ -392,7 +406,7 @@ app.get("/generateName", requireAuth, (_req, res) => {
 // Hostname only: no scheme, port, userinfo or path, so it can't be used to redirect the request elsewhere
 const PROXY_HOST_RE =
   /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i;
-app.get("/proxy/*splat", requireAuth, async (req, res) => {
+app.get("/proxy/*splat", requireMember, async (req, res) => {
   try {
     const parsed = new URL("http://localhost" + req.url);
     const pathname = parsed.pathname.slice("/proxy".length);

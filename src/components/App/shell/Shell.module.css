@@ -523,6 +523,17 @@
   color: var(--wp-text-3);
 }
 
+.inviteActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wp-sp-2);
+}
+
+.menuHint {
+  font-size: var(--wp-fs-xs);
+  color: var(--wp-text-3);
+}
+
 .people {
   list-style: none;
   margin: 0;
@@ -632,6 +643,50 @@
 
 .switchRow {
   width: 100%;
+}
+
+/* Room password row: the (masked) password with reveal/copy, then regenerate / set your own */
+.passwordBox {
+  display: grid;
+  gap: var(--wp-sp-2);
+  padding: var(--wp-sp-3);
+  border-radius: var(--wp-r-md);
+  background: var(--wp-surface-2);
+  border: 1px solid var(--wp-border);
+}
+
+.passwordLabel {
+  font-weight: 600;
+  font-size: var(--wp-fs-sm);
+}
+
+.passwordValueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--wp-sp-1);
+}
+
+.passwordValue {
+  flex: 1;
+  min-width: 0;
+  font: 14px var(--wp-font-mono);
+  color: var(--wp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+}
+
+.passwordActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--wp-sp-2);
+}
+
+.settingsNote {
+  margin: 0;
+  font-size: var(--wp-fs-sm);
+  color: var(--wp-text-2);
 }
 
 .switchBody {

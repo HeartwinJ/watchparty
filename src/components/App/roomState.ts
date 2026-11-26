@@ -93,6 +93,8 @@ export interface RoomState {
   playerNotice: { text: string; at: number } | null;
   /** Room-wide settings (REC:roomSettings), the default until the server sends them */
   roomSettings: RoomSettings;
+  /** REC:roomAccess: whether the room password is on, and (owners only) the password. Null until it arrives. */
+  roomAccess: RoomAccessInfo | null;
 }
 
 /** Mirrors DEFAULT_ROOM_SETTINGS in server/roomSettings.ts */
@@ -170,5 +172,6 @@ export function createInitialRoomState(): RoomState {
     subtitleScope: "everyone",
     playerNotice: null,
     roomSettings: { ...DEFAULT_ROOM_SETTINGS },
+    roomAccess: null,
   };
 }

@@ -14,14 +14,24 @@ export const Logo = ({ size = 28 }: { size?: number }) => (
   </span>
 );
 
-/** Logo + "WatchParty", linking home (client-side navigation). */
+/** Logo + "WatchParty", linking home (client-side navigation). `link={false}` (room guests) is just the logo. */
 export const Brand = ({
   showWord = true,
   className,
+  link = true,
 }: {
   showWord?: boolean;
   className?: string;
+  link?: boolean;
 }) => {
+  if (!link) {
+    return (
+      <span className={`${styles.brand} ${className ?? ""}`}>
+        <Logo />
+        {showWord && <span className={styles.word}>WatchParty</span>}
+      </span>
+    );
+  }
   const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return;

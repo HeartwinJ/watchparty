@@ -107,6 +107,17 @@ export function createRateLimiter(opts: { max: number; windowMs: number }) {
     reset(key: string) {
       hits.delete(key);
     },
+    /**
+     * For limiters that only count failures: whole seconds until the key may try again once it has used up all
+     * `max` attempts in the window (0 while it still has attempts left). Doesn't record anything.
+     */
+    blockedSec(key: string, now = Date.now()): number {
+      const entry = hits.get(key);
+      if (!entry || entry.resetAt <= now || entry.count < opts.max) {
+        return 0;
+      }
+      return Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+    },
     /** Whole seconds until the key's window resets (0 if it isn't limited). */
     retryAfterSec(key: string, now = Date.now()): number {
       const entry = hits.get(key);
