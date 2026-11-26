@@ -15,7 +15,13 @@ describe("parseCallCommand", () => {
   it("accepts join/leave/state and rejects the rest", () => {
     expect(
       parseCallCommand({ action: "join", session: SESSION, muted: true }),
-    ).toEqual({ action: "join", session: SESSION, muted: true, camera: false });
+    ).toEqual({
+      action: "join",
+      session: SESSION,
+      muted: true,
+      camera: false,
+      wantsVideo: true,
+    });
     expect(
       parseCallCommand({
         action: "join",
@@ -23,7 +29,38 @@ describe("parseCallCommand", () => {
         muted: false,
         camera: true,
       }),
-    ).toEqual({ action: "join", session: SESSION, muted: false, camera: true });
+    ).toEqual({
+      action: "join",
+      session: SESSION,
+      muted: false,
+      camera: true,
+      wantsVideo: true,
+    });
+    expect(
+      parseCallCommand({
+        action: "join",
+        session: SESSION,
+        muted: false,
+        wantsVideo: false,
+      }),
+    ).toMatchObject({ camera: false, wantsVideo: false });
+    expect(parseCallCommand({ action: "state", wantsVideo: false })).toEqual({
+      action: "state",
+      wantsVideo: false,
+    });
+    expect(
+      parseCallCommand({
+        action: "state",
+        muted: false,
+        camera: true,
+        wantsVideo: true,
+      }),
+    ).toEqual({
+      action: "state",
+      muted: false,
+      camera: true,
+      wantsVideo: true,
+    });
     expect(parseCallCommand({ action: "leave", extra: 1 })).toEqual({
       action: "leave",
     });
@@ -50,6 +87,9 @@ describe("parseCallCommand", () => {
       { action: "state" },
       { action: "state", camera: 1 },
       { action: "state", muted: true, camera: null },
+      { action: "state", wantsVideo: "no" },
+      { action: "state", wantsVideo: null },
+      { action: "join", session: SESSION, muted: false, wantsVideo: 0 },
       { action: "camera", on: true },
     ]) {
       expect(parseCallCommand(bad)).toBeNull();
@@ -143,6 +183,7 @@ describe("CallMembership", () => {
         session: SESSION,
         muted: true,
         camera: false,
+        wantsVideo: true,
         joinedAt: 1000,
         reconnecting: false,
       },
@@ -180,6 +221,27 @@ describe("CallMembership", () => {
     expect(c.snapshot().members[0].camera).toBe(false);
     c.join(B, "sb", { session: SESSION, muted: false, camera: true }, 7);
     expect(c.snapshot().members[1].camera).toBe(true);
+  });
+
+  it("tracks wantsVideo: on unless sent, changed by the member's own socket, carried by a rejoin", () => {
+    const c = new CallMembership();
+    c.join(A, "s1", { session: SESSION, muted: false }, 1);
+    expect(c.snapshot().members[0].wantsVideo).toBe(true);
+    expect(c.setState(A, "other", { wantsVideo: false })).toBe(false);
+    expect(c.setState(A, "s1", { wantsVideo: false })).toBe(true);
+    expect(c.setState(A, "s1", { wantsVideo: false })).toBe(false);
+    expect(c.snapshot().members[0]).toMatchObject({
+      wantsVideo: false,
+      camera: false,
+      muted: false,
+    });
+    // A socket reconnect re-sends it; a client that doesn't say (older) gets video again
+    c.join(A, "s2", { session: SESSION, muted: false, wantsVideo: false }, 2);
+    expect(c.snapshot().members[0].wantsVideo).toBe(false);
+    c.join(A, "s3", { session: SESSION, muted: false }, 3);
+    expect(c.snapshot().members[0].wantsVideo).toBe(true);
+    c.join(B, "sb", { session: SESSION, muted: false, wantsVideo: false }, 4);
+    expect(c.snapshot().members[1].wantsVideo).toBe(false);
   });
 
   it("keeps a disconnected member for the grace period and lets them rejoin", () => {

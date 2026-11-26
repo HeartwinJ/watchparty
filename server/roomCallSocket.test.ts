@@ -94,6 +94,7 @@ describe("Room voice call", () => {
         session: sa,
         muted: true,
         camera: false,
+        wantsVideo: true,
         joinedAt: expect.any(Number),
         reconnecting: false,
       },
@@ -118,6 +119,22 @@ describe("Room voice call", () => {
     a.socket.emit("CMD:call", { action: "state", camera: false });
     await settle();
     expect(last(b.states).members[0].camera).toBe(false);
+
+    // Hiding the tiles (wantsVideo) is broadcast too, so the others stop sending their camera; bad values are dropped
+    a.socket.emit("CMD:call", { action: "state", wantsVideo: false });
+    await settle();
+    expect(last(b.states).members[0]).toMatchObject({
+      camera: false,
+      wantsVideo: false,
+    });
+    const count2 = b.states.length;
+    a.socket.emit("CMD:call", { action: "state", wantsVideo: "yes" });
+    a.socket.emit("CMD:call", { action: "state", wantsVideo: false });
+    await settle();
+    expect(b.states.length).toBe(count2);
+    a.socket.emit("CMD:call", { action: "state", wantsVideo: true });
+    await settle();
+    expect(last(b.states).members[0].wantsVideo).toBe(true);
 
     // Someone else's leave/state doesn't touch a's membership
     b.socket.emit("CMD:call", { action: "state", muted: true });
@@ -172,6 +189,7 @@ describe("Room voice call", () => {
         session: s2,
         muted: true,
         camera: false,
+        wantsVideo: true,
         joinedAt,
         reconnecting: false,
       },

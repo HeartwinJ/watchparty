@@ -1538,8 +1538,8 @@ export class Room {
   };
 
   /**
-   * CMD:call {action: join|leave|state}. The client decides join-muted (video playing) and the camera, and keeps both
-   * on a rejoin.
+   * CMD:call {action: join|leave|state}. The client decides join-muted (video playing), the camera and `wantsVideo`
+   * (it shows the video tiles), and keeps them on a rejoin.
    */
   private callCommand = (socket: Socket, raw: unknown) => {
     const cmd = parseCallCommand(raw);
