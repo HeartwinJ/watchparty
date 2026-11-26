@@ -103,3 +103,12 @@ interface PlaybackIssue {
   name: string;
   reason: string;
 }
+
+/** Room-wide settings (CMD:roomSettings patch / REC:roomSettings full object). Defaults in server/roomSettings.ts. */
+interface RoomSettings {
+  /** "" = use the generated room name */
+  title: string;
+  readyCheck: boolean;
+  /** seconds before the end to show the next-episode card, 5–120 */
+  nextEpisodeOffset: number;
+}

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
-import { Button, Modal, Switch, TextInput } from "@mantine/core";
+import { Button, Modal, NumberInput, Switch, TextInput } from "@mantine/core";
 import { isClientTranscodeSupported } from "../../../utils/clientTranscode";
 import {
   getCurrentSettings,
@@ -8,13 +8,28 @@ import {
 } from "../../Settings/LocalSettings";
 import type { Room } from "../hooks/useRoom";
 import { useRoomUi } from "../ui/RoomUi";
+import { toast } from "../ui/toast";
+import { prettyRoomName } from "../../../utils/rooms";
+import {
+  NEXT_EPISODE_OFFSET_MAX,
+  NEXT_EPISODE_OFFSET_MIN,
+  offsetToSend,
+  ROOM_TITLE_MAX,
+  titleToSend,
+} from "./roomSettingsForm";
 import styles from "./Shell.module.css";
 
 /**
- * Room settings. "On this device" settings apply immediately and are stored per device.
- * The room-wide section (title, ready check, next-episode offset) waits for server support (wave 2).
+ * Room settings. "On this device" settings apply immediately and are stored per device. "Everyone in this room"
+ * (title, ready check, next-episode offset) is sent with CMD:roomSettings and applies for everyone right away.
  */
-export const RoomSettingsModal = ({ room }: { room: Room }) => {
+export const RoomSettingsModal = ({
+  room,
+  roomId,
+}: {
+  room: Room;
+  roomId: string;
+}) => {
   const ui = useRoomUi();
   const { state } = room;
   // On phones the modal is a bottom sheet
@@ -80,33 +95,120 @@ export const RoomSettingsModal = ({ room }: { room: Room }) => {
         )}
       </div>
 
-      {/* TODO(wave 2): room-wide settings need server support (stored in room state, a system message on save). */}
-      {false && (
-        <div className={styles.settingsSection}>
-          <div className={styles.sectionLabelFlat}>Everyone in this room</div>
-          <TextInput
-            label="Room title"
-            description="Shown in the top bar and in everyone's recent rooms."
-            maxLength={60}
-          />
-          <Switch
-            labelPosition="left"
-            classNames={{ root: styles.switchRow, body: styles.switchBody }}
-            label="Ready check"
-            description="When someone is buffering or joins mid-play, pause for everyone and resume once all viewers have enough buffered."
-          />
-          <TextInput
-            label="Next-episode card"
-            description="Seconds before the end to offer the next episode."
-            type="number"
-            defaultValue={25}
-          />
-        </div>
-      )}
+      <RoomWideSettings room={room} roomId={roomId} />
 
       <div className={styles.modalFoot}>
         <Button onClick={ui.closeSettings}>Done</Button>
       </div>
     </Modal>
+  );
+};
+
+/** How long the next-episode input waits after the last keystroke/step before telling the room */
+const OFFSET_SEND_DELAY_MS = 500;
+
+/**
+ * Room-wide settings (CMD:roomSettings). The title is sent on blur/Enter, the switch immediately and the offset
+ * shortly after it stops changing. The inputs follow REC:roomSettings whenever they aren't being edited, so changes
+ * from other people show up live.
+ */
+const RoomWideSettings = ({ room, roomId }: { room: Room; roomId: string }) => {
+  const { roomSettings, socketConnected } = room.state;
+  const { setRoomSettings } = room.cmd;
+
+  const send = (patch: Partial<RoomSettings>) => {
+    if (!socketConnected) {
+      toast("Not connected to the room right now. Try again in a moment.", {
+        id: "wp-room-settings",
+        tone: "warning",
+      });
+      return false;
+    }
+    setRoomSettings(patch);
+    return true;
+  };
+
+  // Title: a local draft while editing
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const saveTitle = () => {
+    if (titleDraft === null) {
+      return;
+    }
+    const title = titleToSend(titleDraft, roomSettings.title);
+    if (title !== undefined) {
+      send({ title });
+    }
+    setTitleDraft(null);
+  };
+
+  // Next-episode offset: a local draft while editing, sent after a short pause
+  const [offsetDraft, setOffsetDraft] = useState<string | number | null>(null);
+  const offsetTimer = useRef<number | undefined>(undefined);
+  const sendOffset = (value: string | number) => {
+    window.clearTimeout(offsetTimer.current);
+    const offset = offsetToSend(value, roomSettings.nextEpisodeOffset);
+    if (offset !== undefined) {
+      send({ nextEpisodeOffset: offset });
+    }
+  };
+  useEffect(() => () => window.clearTimeout(offsetTimer.current), []);
+
+  return (
+    <div className={styles.settingsSection}>
+      <div className={styles.sectionLabelFlat}>Everyone in this room</div>
+      <TextInput
+        label="Room title"
+        description="Shown in the top bar and in everyone's recent rooms. Leave empty to use the generated name."
+        placeholder={prettyRoomName(roomId)}
+        maxLength={ROOM_TITLE_MAX}
+        value={titleDraft ?? roomSettings.title}
+        onChange={(e) => setTitleDraft(e.currentTarget.value)}
+        onBlur={saveTitle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            saveTitle();
+          } else if (e.key === "Escape" && titleDraft !== null) {
+            // Discard the draft instead of closing the modal
+            e.stopPropagation();
+            setTitleDraft(null);
+          }
+        }}
+      />
+      <Switch
+        labelPosition="left"
+        classNames={{ root: styles.switchRow, body: styles.switchBody }}
+        label="Ready check"
+        description="When someone is buffering or joins mid-play, pause for everyone and resume once all viewers have enough buffered."
+        checked={roomSettings.readyCheck}
+        onChange={(e) => send({ readyCheck: e.currentTarget.checked })}
+      />
+      <NumberInput
+        label="Next-episode card"
+        description={`Seconds before the end of an episode to offer the next one (${NEXT_EPISODE_OFFSET_MIN}–${NEXT_EPISODE_OFFSET_MAX}).`}
+        min={NEXT_EPISODE_OFFSET_MIN}
+        max={NEXT_EPISODE_OFFSET_MAX}
+        step={5}
+        allowDecimal={false}
+        allowNegative={false}
+        clampBehavior="blur"
+        suffix=" s"
+        value={offsetDraft ?? roomSettings.nextEpisodeOffset}
+        onChange={(value) => {
+          setOffsetDraft(value);
+          window.clearTimeout(offsetTimer.current);
+          offsetTimer.current = window.setTimeout(
+            () => sendOffset(value),
+            OFFSET_SEND_DELAY_MS,
+          );
+        }}
+        onBlur={() => {
+          if (offsetDraft !== null) {
+            sendOffset(offsetDraft);
+            setOffsetDraft(null);
+          }
+        }}
+      />
+    </div>
   );
 };

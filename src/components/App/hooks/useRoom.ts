@@ -339,6 +339,7 @@ export function useRoom(roomId: string) {
       "REC:videoMeta": (videoMeta) => store.set({ videoMeta }),
       "REC:playbackIssue": (issue) =>
         store.set({ playbackIssue: { ...issue, at: Date.now() } }),
+      "REC:roomSettings": (roomSettings) => store.set({ roomSettings }),
       signalSS: share.handleSignal,
     };
 

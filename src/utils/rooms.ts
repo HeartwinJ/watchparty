@@ -26,10 +26,12 @@ export async function createRoom(
   return name.replace(/^\//, "");
 }
 
-/**
- * A readable name for a room id ("brave-otter-sings" -> "Brave otter sings").
- * TODO(wave 2): rooms get a title in room settings; prefer it over the id when it exists.
- */
+/** What to call a room: its title from room settings when set, otherwise the readable generated name. */
+export function roomDisplayName(roomId: string, title?: string): string {
+  return title?.trim() || prettyRoomName(roomId);
+}
+
+/** A readable name for a room id ("brave-otter-sings" -> "Brave otter sings"). */
 export function prettyRoomName(roomId: string): string {
   const words = roomId
     .replace(/^\/+/, "")

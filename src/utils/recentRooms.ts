@@ -6,9 +6,17 @@ export interface RecentRoom {
   roomId: string;
   /** Display name of the last video seen in the room ("" if nothing was playing) */
   lastTitle: string;
+  /** The room's title from room settings ("" = none, show the generated room name) */
+  roomTitle: string;
   /** ms since epoch */
   visitedAt: number;
 }
+
+export type RecentRoomUpdate = {
+  roomId: string;
+  lastTitle?: string;
+  roomTitle?: string;
+};
 
 export const RECENT_ROOMS_KEY = "wp-recent-rooms";
 export const RECENT_ROOMS_MAX = 8;
@@ -31,6 +39,7 @@ function isRecentRoom(v: unknown): v is RecentRoom {
     typeof r.roomId === "string" &&
     r.roomId.length > 0 &&
     typeof r.lastTitle === "string" &&
+    (r.roomTitle === undefined || typeof r.roomTitle === "string") &&
     typeof r.visitedAt === "number" &&
     Number.isFinite(r.visitedAt)
   );
@@ -47,10 +56,14 @@ export function readRecentRooms(
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed
-      .filter(isRecentRoom)
-      .sort((a, b) => b.visitedAt - a.visitedAt)
-      .slice(0, RECENT_ROOMS_MAX);
+    return (
+      parsed
+        .filter(isRecentRoom)
+        // Entries saved before room titles existed have none
+        .map((r) => ({ ...r, roomTitle: r.roomTitle ?? "" }))
+        .sort((a, b) => b.visitedAt - a.visitedAt)
+        .slice(0, RECENT_ROOMS_MAX)
+    );
   } catch {
     return [];
   }
@@ -58,16 +71,17 @@ export function readRecentRooms(
 
 /**
  * Pure update: moves the room to the front (or adds it) and keeps at most RECENT_ROOMS_MAX.
- * A `lastTitle` of undefined keeps the stored one, so a visit without media doesn't erase the last title.
+ * A `lastTitle`/`roomTitle` of undefined keeps the stored one, so a visit without media doesn't erase the last title.
  */
 export function upsertRecentRoom(
   list: RecentRoom[],
-  entry: { roomId: string; lastTitle?: string; visitedAt: number },
+  entry: RecentRoomUpdate & { visitedAt: number },
 ): RecentRoom[] {
   const previous = list.find((r) => r.roomId === entry.roomId);
   const next: RecentRoom = {
     roomId: entry.roomId,
     lastTitle: entry.lastTitle ?? previous?.lastTitle ?? "",
+    roomTitle: entry.roomTitle ?? previous?.roomTitle ?? "",
     visitedAt: entry.visitedAt,
   };
   return [next, ...list.filter((r) => r.roomId !== entry.roomId)].slice(
@@ -78,7 +92,7 @@ export function upsertRecentRoom(
 
 /** Records a visit (and optionally the current title). Storage errors are ignored. */
 export function recordRecentRoom(
-  entry: { roomId: string; lastTitle?: string; visitedAt?: number },
+  entry: RecentRoomUpdate & { visitedAt?: number },
   storage: StorageLike | null = defaultStorage(),
 ): RecentRoom[] {
   const list = upsertRecentRoom(readRecentRooms(storage), {

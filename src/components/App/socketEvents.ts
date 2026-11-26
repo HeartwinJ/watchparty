@@ -38,6 +38,8 @@ export interface ServerToClientEvents {
   "REC:videoMeta": (meta: VideoMeta | null) => void;
   /** Someone's browser can't play the current video */
   "REC:playbackIssue": (issue: PlaybackIssue) => void;
+  /** The full room-wide settings: sent on connect and after every change (to everyone, including the sender) */
+  "REC:roomSettings": (settings: RoomSettings) => void;
   signalSS: (data: {
     msg: SignalMessage;
     from: string;
@@ -82,6 +84,8 @@ export interface ClientToServerEvents {
   "CMD:videoMeta": (data: { url: string; meta: VideoMeta | null }) => void;
   /** Rate limited server-side; broadcast as REC:playbackIssue */
   "CMD:playbackIssue": (data: { reason: string }) => void;
+  /** Partial update; the server validates/normalizes it and answers everyone with REC:roomSettings */
+  "CMD:roomSettings": (patch: Partial<RoomSettings>) => void;
   signalSS: (data: {
     to: string;
     msg: SignalMessage;
@@ -129,6 +133,8 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
       emit("CMD:videoMeta", { url, meta }),
     reportPlaybackIssue: (reason: string) =>
       emit("CMD:playbackIssue", { reason }),
+    setRoomSettings: (patch: Partial<RoomSettings>) =>
+      emit("CMD:roomSettings", patch),
     signal: (to: string, msg: SignalMessage, sharer?: boolean) =>
       emit("signalSS", { to, msg, sharer }),
   };

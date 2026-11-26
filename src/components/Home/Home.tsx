@@ -3,7 +3,7 @@ import { Button, TextInput } from "@mantine/core";
 import { IconChevronRight, IconLink, IconPlus } from "@tabler/icons-react";
 import { navigate } from "../../router";
 import { examples } from "../../utils/examples";
-import { createRoom, prettyRoomName } from "../../utils/rooms";
+import { createRoom, roomDisplayName } from "../../utils/rooms";
 import {
   formatVisitedAgo,
   readRecentRooms,
@@ -168,7 +168,7 @@ export const Home = () => {
 
 const RecentRoomRow = ({ room }: { room: RecentRoom }) => {
   const href = `/watch/${encodeURIComponent(room.roomId)}`;
-  const name = prettyRoomName(room.roomId);
+  const name = roomDisplayName(room.roomId, room.roomTitle);
   const open = (e: React.MouseEvent) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return;

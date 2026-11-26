@@ -16,6 +16,14 @@ import {
   parsePlaylistAdd,
   parseVideoMetaCommand,
 } from "./videoMeta.ts";
+import {
+  applyRoomSettingsPatch,
+  createSettingsLimiter,
+  DEFAULT_ROOM_SETTINGS,
+  diffRoomSettings,
+  normalizeRoomSettings,
+  parseRoomSettingsPatch,
+} from "./roomSettings.ts";
 
 // Extend the interface
 declare module "socket.io" {
@@ -76,6 +84,8 @@ export class Room {
   public subtitleOffset = 0;
   /** AIOStreams metadata for the current video (see CMD:videoMeta) */
   public videoMeta: VideoMeta | null = null;
+  /** Room-wide settings (see CMD:roomSettings) */
+  public roomSettings: RoomSettings = { ...DEFAULT_ROOM_SETTINGS };
 
   // Non-serialized state
   public roomId: string;
@@ -92,6 +102,13 @@ export class Room {
   /** How long the subtitle offset has to stay unchanged before it's announced in chat */
   public static SUBTITLE_OFFSET_CHAT_DELAY_MS = 1500;
   private issueLimiter = createIssueLimiter();
+  private settingsLimiter = createSettingsLimiter();
+  /** Pending chat announcement of settings changes: who changed them and what they were before */
+  private settingsChat:
+    | { actorId: string; before: RoomSettings; timer: NodeJS.Timeout }
+    | undefined = undefined;
+  /** How long the settings have to stay unchanged before the change is announced in chat */
+  public static ROOM_SETTINGS_CHAT_DELAY_MS = 1500;
 
   constructor(
     io: Server,
@@ -180,6 +197,7 @@ export class Room {
       socket.emit("chatinit", this.chat);
       socket.emit("playlist", this.playlist);
       socket.emit("REC:videoMeta", this.videoMeta);
+      socket.emit("REC:roomSettings", this.roomSettings);
       io.of(roomId).emit("roster", this.getRosterForApp());
 
       socket.clientId = clientId;
@@ -263,6 +281,9 @@ export class Room {
       on("CMD:playbackIssue", (data: unknown) =>
         this.reportPlaybackIssue(socket, data),
       );
+      on("CMD:roomSettings", (data: unknown) =>
+        this.setRoomSettings(socket, data),
+      );
 
       on("signalSS", (data: unknown) => this.sendSignal(socket, data));
 
@@ -299,6 +320,7 @@ export class Room {
       loop: this.loop,
       subtitleOffset: this.subtitleOffset,
       videoMeta: this.videoMeta,
+      roomSettings: this.roomSettings,
     });
   };
 
@@ -334,6 +356,7 @@ export class Room {
     if (roomObj.videoMeta) {
       this.videoMeta = roomObj.videoMeta;
     }
+    this.roomSettings = normalizeRoomSettings(roomObj.roomSettings);
   };
 
   public saveRoom = () => {
@@ -354,6 +377,7 @@ export class Room {
       clearInterval(this.tsInterval);
     }
     clearTimeout(this.subtitleOffsetChatTimer);
+    clearTimeout(this.settingsChat?.timer);
     // Unregister the namespace so it doesn't linger (or get duplicated on reload)
     this.io._nsps.delete(this.roomId);
   };
@@ -796,6 +820,67 @@ export class Room {
       reason,
     };
     this.io.of(this.roomId).emit("REC:playbackIssue", issue);
+  };
+
+  // --- Room settings ---
+
+  /**
+   * CMD:roomSettings (patch): validates and merges a partial update, broadcasts the full settings to everyone
+   * (REC:roomSettings), and announces the change in chat once the settings stop changing. No-op patches are ignored
+   * (and don't count against the rate limit).
+   */
+  private setRoomSettings = (socket: Socket, raw: unknown) => {
+    const patch = parseRoomSettingsPatch(raw);
+    if (!patch) {
+      return;
+    }
+    const { settings, changed } = applyRoomSettingsPatch(
+      this.roomSettings,
+      patch,
+    );
+    if (!changed.length || !this.settingsLimiter.allow()) {
+      return;
+    }
+    // Announce someone else's pending edits before applying this one, so they aren't attributed to them
+    if (this.settingsChat && this.settingsChat.actorId !== socket.clientId) {
+      this.flushSettingsChat();
+    }
+    const before = this.roomSettings;
+    this.roomSettings = settings;
+    this.io.of(this.roomId).emit("REC:roomSettings", this.roomSettings);
+    this.queueSettingsChat(socket.clientId, before);
+  };
+
+  /**
+   * Debounces the chat line: edits by the same person within ROOM_SETTINGS_CHAT_DELAY_MS are announced once, as one
+   * `cmd: "roomSettings"` line per setting that ended up different. Another person's edit flushes the pending ones.
+   */
+  private queueSettingsChat = (actorId: string, before: RoomSettings) => {
+    clearTimeout(this.settingsChat?.timer);
+    this.settingsChat = {
+      actorId,
+      before: this.settingsChat?.before ?? before,
+      timer: setTimeout(
+        () => this.flushSettingsChat(),
+        Room.ROOM_SETTINGS_CHAT_DELAY_MS,
+      ),
+    };
+  };
+
+  private flushSettingsChat = () => {
+    const pending = this.settingsChat;
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.settingsChat = undefined;
+    for (const key of diffRoomSettings(pending.before, this.roomSettings)) {
+      this.addChatMessage(null, {
+        id: pending.actorId,
+        cmd: "roomSettings",
+        msg: JSON.stringify({ [key]: this.roomSettings[key] }),
+      });
+    }
   };
 
   private joinScreenSharing = (socket: Socket, raw: unknown) => {
