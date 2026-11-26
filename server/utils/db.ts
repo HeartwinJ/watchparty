@@ -21,13 +21,13 @@ const MIGRATIONS: string[] = [
     expiresAt INTEGER NOT NULL
   );
   CREATE INDEX subtitles_expiresAt ON subtitles (expiresAt);`,
-  // 2: room-wide subtitle offset per video (PLAN 6b), keyed by subtitleOffsetKey()
+  // 2: room-wide subtitle offset per video, keyed by subtitleOffsetKey()
   `CREATE TABLE subtitle_offsets (
     videoKey TEXT PRIMARY KEY,
     offset REAL NOT NULL,
     updatedAt INTEGER NOT NULL
   );`,
-  // 3: watch history / continue watching (PLAN 6d), see utils/history.ts. One row per room + item
+  // 3: watch history / continue watching, see utils/history.ts. One row per room + item
   // (itemKey = subtitleOffsetKey()); url is server-only (resume), never sent to clients.
   `CREATE TABLE history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,4 +1,4 @@
-// Subtitle offset (PLAN 6b): pure helpers for stepping/formatting offsets and re-timing TextTrack cues.
+// Subtitle offset: pure helpers for stepping/formatting offsets and re-timing TextTrack cues.
 
 /**
  * Converts SRT text to WebVTT (WebVTT input is returned as-is). Strips a BOM, normalizes line endings and turns SRT's

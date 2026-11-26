@@ -1,4 +1,4 @@
-// Pure helpers for the next-episode card (PLAN 6d). The server decides everything room-wide
+// Pure helpers for the next-episode card. The server decides everything room-wide
 // (server/nextEpisodeController.ts); clients only report when they're near the end and render the card.
 import type { RoomState } from "../roomState";
 

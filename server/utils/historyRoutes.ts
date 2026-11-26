@@ -1,5 +1,5 @@
 /**
- * /history routes (PLAN 6d "Continue watching"), all behind requireAuth:
+ * /history routes, all behind requireAuth:
  * - GET /history?limit= → HistoryItem[] (newest first, never any URL)
  * - DELETE /history/:id → 204 (404 when unknown)
  * - POST /history/:id/resume → {roomId}: a new room hosting the stored video (+ metadata), paused at the saved

@@ -1,7 +1,7 @@
 # Room page (`/watch/:roomId`)
 
 `App.tsx` is a thin layout. State and behavior live in hooks, pure logic lives in `logic/` with unit tests. The room
-shell (top bar, sidebar, bottom sheet, settings) is the Phase 4 redesign and lives in `shell/`; the player is in
+shell (top bar, sidebar, bottom sheet, settings) lives in `shell/`; the player is in
 `player/` (re-exported from `PlayerArea.tsx`), the source picker in `picker/` (picker work).
 
 ## Data flow
@@ -72,7 +72,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                           |
 | `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits     |
 
-## Room shell (Phase 4)
+## Room shell
 
 - **Desktop:** `App.module.css` grid: top bar (`--wp-topbar-h`, 52px) over the black stage, plus the sidebar column
   (`--room-sidebar-w`). The width is clamped to 280–560px, remembered in `localStorage` (`wp-sidebar-width`), and
@@ -86,14 +86,14 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   the right-hand group) and `{/* SLOT(C): <SourcePicker room={room} /> */}` at the end of `RoomLayout` in `App.tsx`.
   The picker opens via `useRoomUi().openPicker()` (top bar trigger, `/`, phone "Change"); the Queue tab's "Add to
   queue" uses `openPicker({ mode: "queue" })`.
-- **Room settings (wave 2):** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`) comes
+- **Room settings:** `state.roomSettings` (`RoomSettings`: `title`, `readyCheck`, `nextEpisodeOffset`) comes
   from `REC:roomSettings` (on connect and after every change) and starts as `DEFAULT_ROOM_SETTINGS` (`roomState.ts`).
   Change it with `room.cmd.setRoomSettings(patch)`; the server normalizes, broadcasts to everyone and posts a debounced
   `roomSettings` chat line. The settings modal sends the title on blur/Enter, the ready check switch immediately and the
   next-episode seconds 500 ms after the last change. `roomDisplayName(roomId, title)` names the room in the top bar,
   the tab title and recent rooms. Ready check and the next-episode card read `state.roomSettings` directly.
 
-## Source picker (`picker/`, Phase 4 + PLAN 6c)
+## Source picker (`picker/`)
 
 - Mount once inside `RoomUiProvider`: `<SourcePicker room={room} />`. It renders the palette when
   `useRoomUi().pickerOpen` is true, shows the room-wide playback-issue toasts and fills `state.subtitleTracks`
@@ -117,7 +117,7 @@ videoMeta})` ("Pick another"), `pickerTarget`, `pickerMode`.
   `cmd.setVideoMeta(url, meta)`. Queue items carry `{name, img, meta}` and restore the meta when played. Recent
   sources (`wp-recent-sources`) store AIOStreams picks as title/episode, never the playback URL.
 
-## Auto-convert (PLAN 6c)
+## Auto-convert
 
 - `useConvert.playUrl(src, time)` handles every direct link (`REC:host`): with the per-device **"Auto-convert when
   needed"** setting on (`state.convertEnabled`, `localStorage` `wp-auto-convert`, default on), it calls
@@ -134,7 +134,7 @@ buffered", progress, heavy, reason}` or null; `picker/ConvertStatus.tsx` renders
   it, "Share converted stream" (`share.startUrlShare`: converts once and publishes it over the file-share pipeline,
   then re-attaches the `videoMeta` to the `fileshare://` media).
 
-## Next episode (PLAN 6d)
+## Next episode
 
 - Server-authoritative (`server/nextEpisodeController.ts`). `useNextEpisode` sends `cmd.nextEpisode({action: "offer",
 url, time, duration})` every 5 s while this player is within `state.roomSettings.nextEpisodeOffset` seconds of the end
@@ -146,7 +146,7 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   (on the next episode's streams when it's known). No Esc shortcut: Esc already exits fullscreen/menus.
 - The card never gets a URL: the server keeps the stream and hosts it with `withDisplayName` + `videoMeta`.
 
-## Player (Phase 4 + PLAN 6a/6b/6d)
+## Player
 
 - `PlayerArea` is `position: absolute; inset: 0; container-type: size` inside the stage and is the **fullscreen
   target** (`player.toggleFullscreen()`; iOS without element fullscreen falls back to `webkitEnterFullscreen` on the
@@ -171,7 +171,7 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   YouTube only uses rates from `getAvailablePlaybackRates()` and otherwise seeks from 1 s. `state.syncStatus` is
   `in-sync` / `catching-up` (seconds behind) / `buffering` / `reconnecting`; `SyncIndicator({ room })` shows it.
 
-## Ready check (PLAN 6d)
+## Ready check
 
 - Only while `state.roomSettings.readyCheck` is on, `hooks/useReadyCheck.ts` polls this device every 500 ms and sends `cmd.reportReadyState({ready, buffering, time})`
   only when `ready`/`buffering` change (and again on a new video, reconnect or when a check starts). Ready = no media

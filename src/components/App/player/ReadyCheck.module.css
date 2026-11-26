@@ -1,4 +1,4 @@
-/* Ready check pill (PLAN 6d): top-centre of the player while the room waits for someone to buffer */
+/* Ready check pill: top-centre of the player while the room waits for someone to buffer */
 .pill {
   position: absolute;
   top: var(--wp-sp-4);

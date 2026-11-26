@@ -1,14 +1,3 @@
-// Extremely simple function to convert a string to a number for bucketing
-// Will return the same value for the same letters, regardless of order (collisions very likely)
-export function hashString(input: string) {
-  var hash = 0;
-  for (var i = 0; i < input.length; i++) {
-    var charCode = input.charCodeAt(i);
-    hash += charCode;
-  }
-  return hash;
-}
-
 // An improved alternative:
 // cyrb53 (c) 2018 bryc (github.com/bryc). License: Public domain. Attribution appreciated.
 // A fast and simple 64-bit (or 53-bit) string hash function with decent collision resistance.
@@ -30,11 +19,3 @@ export const cyrb53 = (str: string, seed = 0) => {
 
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 };
-// If we want all 64 bits of the output:
-/*
-return [h2>>>0, h1>>>0];
-// or
-return (h2>>>0).toString(16).padStart(8,0)+(h1>>>0).toString(16).padStart(8,0);
-// or 
-return 4294967296n * BigInt(h2) + BigInt(h1);
-*/

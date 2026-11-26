@@ -1,5 +1,5 @@
 /**
- * Watch history / "Continue watching" (PLAN 6d).
+ * Watch history / "Continue watching".
  *
  * One row per room + item in the `history` table. Items are keyed like subtitle offsets (subtitleOffsetKey):
  * AIOStreams picks by their title/episode id (`meta:tt0903747:2:4`), other videos by a hash of the URL without its

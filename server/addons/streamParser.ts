@@ -92,7 +92,7 @@ export type StreamList = {
   total: number;
 };
 
-// Thresholds from PLAN 6c
+// Tier thresholds (see classifyStream)
 export const MAX_BITRATE_MBPS = 40;
 export const MAX_SIZE_BYTES = 40 * 1000 ** 3;
 export const DEFAULT_LIMIT = 60;
@@ -481,7 +481,7 @@ const AUDIO_LABEL: Record<AudioCodec, string> = {
 };
 
 /**
- * Buckets a stream by how likely it is to play in a browser (PLAN 6c).
+ * Buckets a stream by how likely it is to play in a browser.
  * The client still probes the real tracks before playing; this is only a guess
  * for sorting and badges.
  */

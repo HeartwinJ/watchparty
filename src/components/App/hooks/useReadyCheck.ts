@@ -15,7 +15,7 @@ const POLL_MS = 500;
 const TOAST_ID = "wp-ready-check";
 
 /**
- * Ready check (PLAN 6d), client side: reports this device's readiness (CMD:readyState) whenever it changes, and
+ * Ready check, client side: reports this device's readiness (CMD:readyState) whenever it changes, and
  * handles REC:readyCheck (state for the pill/People tab, toasts). The server pauses and resumes the room.
  */
 export function useReadyCheck(opts: {

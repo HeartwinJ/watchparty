@@ -13,7 +13,7 @@ export function getLeaderTime(participantCount: number, tsMap: NumberDict) {
   return Math.max(...times);
 }
 
-/** Tuning for the drift controller (PLAN 6d "smoother sync"). Drift is in seconds, positive = behind the leader. */
+/** Tuning for the drift controller. Drift is in seconds, positive = behind the leader. */
 export const DRIFT = {
   /** Start nudging the playback rate once we're this far off */
   enter: 0.3,
