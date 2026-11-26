@@ -400,12 +400,24 @@ Voice, plus an optional camera (see **Camera** below).
   panel and as a toast and never block joining with audio. `devicechange`/`ended` turn the camera off with a toast. A
   socket reconnect keeps the camera; a reload rejoins with it off. An owner's "Turn off camera"
   (`REC:callModerated {action: "camera"}`) turns it off with a toast.
-- **Video bandwidth** (`transport.ts` `applyParams`, `videoCapsFor`): each video sender is capped by how many peers we
-  send to (1 → 720p / 1.2 Mbps / 30 fps, 2 → 540p / 700 kbps, 3–4 → 360p / 400 kbps / 24 fps, more → 240p / 200 kbps /
+- **Video only to viewers showing the tiles** (`wantsVideo`): a viewer wants video while the tiles show: not hidden
+  (`tilesHidden`), the strip not collapsed (`tilesCollapsed`, in `state.call` so the call knows; saved with the strip
+  position in `wp-call-tiles`) and the tab visible (`document.visibilityState`); an enlarged tile counts. `wantsVideo()`
+  (`logic.ts`, pure) decides it; `useCall` sends it with `join` and as `CMD:call {action: "state", wantsVideo}` through
+  `createDebouncedFlag` (150 ms to show, 500 ms to hide, a change back in between sends nothing). The server keeps it
+  per member in `REC:callState`; `useCall` passes it to `transport.setPeers`, and the mesh sends our camera only to
+  peers with `sendsVideoTo()` (`video.ts`: `wantsVideo !== false`, so older clients get video): the others get
+  `replaceTrack(null)` on their video sender, the camera again when they show the tiles (no renegotiation, voice
+  untouched, frames within about a second; the tile shows the avatar until then). `MeshPeer.sending` remembers what
+  each sender was asked to send, so a quick off/on isn't skipped while `replaceTrack` is still pending. A reconnect
+  re-sends it with `join`, a reload or a late joiner builds peers from the current state, and a camera switch only
+  goes to peers that want it.
+- **Video bandwidth** (`transport.ts` `applyParams`, `videoCapsForPeers`): each video sender is capped by how many peers
+  actually receive our camera (those showing the tiles; 1 → 720p / 1.2 Mbps / 30 fps, 2 → 540p / 700 kbps, 3–4 → 360p / 400 kbps / 24 fps, more → 240p / 200 kbps /
   15 fps) via `maxBitrate`, `maxFramerate`, `scaleResolutionDownBy` and `degradationPreference: "maintain-framerate"`
   (camera tracks get `contentHint = "motion"`). Video encodings get `priority`/`networkPriority: "low"`, audio
   `"high"`, so a congested uplink drops video first. Re-applied (serialized per peer, only when it changes) when the
-  call size changes, the camera changes, a connection connects or negotiation settles.
+  call size or who wants video changes, the camera changes, a connection connects or negotiation settles.
 - **Tiles** (`VideoTiles.tsx`, `tileLayout.ts`, pure and tested): incoming video tracks go to `CallVideo` (mutable;
   `useCallVideo` re-renders on changes, with `live` = frames arriving). `VideoTiles` is rendered inside PlayerArea
   (the fullscreen target) and shows only while we're in the call and someone has `camera` on (`videoMembers`; our own
@@ -417,7 +429,8 @@ Voice, plus an optional camera (see **Camera** below).
   bar and the control bar. Tiles: speaking ring, muted icon, name, "Reconnecting…", mirrored self view, avatar until
   frames arrive; click to enlarge (`object-fit: contain`). Video elements are `muted playsInline autoPlay` (audio plays
   through `CallAudio`, so autoplay never blocks them). "Hide video tiles" (strip header or the call panel's "Show
-  video tiles" switch) is per device (`wp-call-tiles-hidden`); hidden tiles still receive video. The People panel keeps
+  video tiles" switch) is per device (`wp-call-tiles-hidden`); hidden or collapsed tiles don't receive video (see
+  **Video only to viewers showing the tiles**). The People panel keeps
   avatars.
 
 ## Ready check
