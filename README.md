@@ -28,7 +28,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 
 - Fullscreen with auto-hiding controls and cursor, keyboard shortcuts (`?` lists them) and phone gestures.
 - Subtitles: upload, search OpenSubtitles, or get them automatically for movies and shows. Adjust the **subtitle offset** for everyone or just yourself; it's remembered per title and episode. Size and style are adjustable.
-- Chat with reactions and emoji. Messages show as bubbles over the video in fullscreen or with the sidebar hidden.
+- Chat with reactions and emoji. Messages show as bubbles over the video in fullscreen or with the sidebar hidden. Videos that start on their own (queue, next episode) get a "Now playing" line.
 
 **Rooms and hosting**
 
@@ -36,6 +36,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 - Resizable sidebar on desktop, and a bottom sheet on phones.
 - No user accounts: the owner logs in with the instance password; guests get a room link plus that room's auto-generated password (or a link with the password built in), can only use that one room, and can't change its settings or remove people. The owner can regenerate, set or turn off each room's password, and removing a guest revokes their access.
 - Everything is stored in one SQLite file, so rooms survive restarts. A sidecar container takes a nightly backup.
+- Owners can delete a room (room menu or Home's recent rooms), and rooms nobody has used for 60 days are deleted automatically (`ROOM_MAX_IDLE_DAYS`, `0` keeps them forever).
 - One `docker compose up -d` with a Cloudflare Tunnel, so the host doesn't need to open any ports.
 
 ## Development
@@ -71,6 +72,7 @@ All settings are environment variables. See [`.env.example`](.env.example) and `
 | `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` | Cloudflare Realtime TURN relay for screen/file share behind strict networks                       |
 | `AIOSTREAMS_MANIFEST_URL`              | Your AIOStreams manifest URL. Turns on movies & shows search. **Secret**: it contains your config |
 | `SUBTITLE_LANGS`                       | Preferred languages for automatic subtitles, e.g. `en,es` (default `en`)                          |
+| `ROOM_MAX_IDLE_DAYS`                   | Delete rooms nobody has used for this many days (default `60`, `0` = never)                       |
 | `YOUTUBE_API_KEY`                      | Turns on YouTube search and titles                                                                |
 | `OPENSUBTITLES_KEY`                    | Turns on subtitle search (an OpenSubtitles.com API consumer key)                                  |
 

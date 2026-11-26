@@ -27,6 +27,11 @@ import { createIceServerProvider } from "./utils/iceServers.ts";
 import { createAddonRouter, createAddonServices } from "./addons/routes.ts";
 import { createHistoryRouter } from "./utils/historyRoutes.ts";
 import {
+  parseMaxIdleDays,
+  persistRooms,
+  sweepInactiveRooms,
+} from "./roomLifecycle.ts";
+import {
   openSubtitlesError,
   openSubtitlesHeaders,
 } from "./utils/opensubtitles.ts";
@@ -39,7 +44,8 @@ process.on("unhandledRejection", (reason) => {
 
 const isDev = config.NODE_ENV === "development";
 const SUBTITLE_TTL_MS = 24 * 60 * 60 * 1000;
-const ROOM_IDLE_UNLOAD_MS = 8 * 60 * 60 * 1000;
+const ROOM_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const ROOM_MAX_IDLE_DAYS = parseMaxIdleDays(config.ROOM_MAX_IDLE_DAYS);
 
 const db = openDatabase(path.resolve(config.DATA_DIR, "watchparty.db"));
 
@@ -75,6 +81,8 @@ if (config.SSL_KEY_FILE && config.SSL_CRT_FILE) {
 }
 
 const rooms = new Map<string, Room>();
+// A room that deleted itself (CMD:deleteRoom, DELETE /rooms/:roomId, the inactivity sweep) is forgotten
+Room.onDeleted = (roomId) => rooms.delete(roomId);
 
 /** The room with namespace id `key` ("/name"), loaded from SQLite if it isn't in memory. Undefined if unknown. */
 function loadRoom(key: string): Room | undefined {
@@ -85,7 +93,8 @@ function loadRoom(key: string): Room | undefined {
   try {
     const row = getRoom(db, key);
     if (row) {
-      room = new Room(io, db, key, row.data);
+      // Keep the stored lastUpdateTime: loading a room (join screen, info lookup) isn't activity
+      room = new Room(io, db, key, row.data, row.lastUpdateTime);
       rooms.set(key, room);
       console.log("loading room %s into memory", key);
     }
@@ -398,6 +407,25 @@ app.post("/createRoom", requireOwner, async (req, res) => {
   res.json({ name });
 });
 
+// Owners: delete a room for good (Home's recent rooms). The room page uses the CMD:deleteRoom socket command.
+app.delete("/rooms/:roomId", requireOwner, (req, res) => {
+  const raw = req.params.roomId;
+  if (typeof raw !== "string" || !/^[\w.~-]{1,200}$/.test(raw)) {
+    res.status(400).json({ error: "invalid_params" });
+    return;
+  }
+  const room = loadRoom("/" + raw);
+  if (!room) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (!room.deleteRoom(null)) {
+    res.status(500).json({ error: "delete_failed" });
+    return;
+  }
+  res.status(204).end();
+});
+
 app.get("/generateName", requireMember, (_req, res) => {
   res.send(makeUserName());
 });
@@ -472,28 +500,11 @@ app.use("/*splat", (_req, res) => {
   });
 });
 
-// Persist active rooms every second, and unload rooms that are empty and idle.
+// Persist active rooms every second, and unload rooms that are empty and idle (roomLifecycle.ts).
 // Unloaded rooms are reloaded from SQLite when someone connects (see io.engine.use above).
-function saveRooms(now = Date.now()) {
-  for (const [key, room] of rooms) {
-    if (
-      room.roster.length === 0 &&
-      Number(room.lastUpdateTime) < now - ROOM_IDLE_UNLOAD_MS
-    ) {
-      console.log("freeing room %s from memory", key);
-      room.saveRoom();
-      room.destroy();
-      rooms.delete(key);
-    } else if (room.roster.length) {
-      room.lastUpdateTime = new Date(now);
-      room.saveRoom();
-    }
-  }
-}
-
 const saveInterval = setInterval(() => {
   try {
-    saveRooms();
+    persistRooms(rooms);
   } catch (e) {
     console.warn("[saveRooms] failed:", e);
   }
@@ -509,6 +520,28 @@ const pruneInterval = setInterval(
   60 * 60 * 1000,
 );
 
+// Delete rooms nobody has been in for ROOM_MAX_IDLE_DAYS: at startup, then daily
+function sweepRooms() {
+  try {
+    const deleted = sweepInactiveRooms({
+      db,
+      rooms,
+      maxIdleDays: ROOM_MAX_IDLE_DAYS,
+    });
+    if (deleted) {
+      console.log("deleted %d inactive rooms", deleted);
+    }
+  } catch (e) {
+    console.warn("[sweepInactiveRooms] failed:", e);
+  }
+}
+let sweepInterval: NodeJS.Timeout | undefined;
+if (ROOM_MAX_IDLE_DAYS > 0) {
+  sweepRooms();
+  sweepInterval = setInterval(sweepRooms, ROOM_SWEEP_INTERVAL_MS);
+  sweepInterval.unref();
+}
+
 let shuttingDown = false;
 function shutdown(signal: string) {
   if (shuttingDown) {
@@ -518,6 +551,7 @@ function shutdown(signal: string) {
   console.log("[shutdown] %s received, saving %s rooms", signal, rooms.size);
   clearInterval(saveInterval);
   clearInterval(pruneInterval);
+  clearInterval(sweepInterval);
   for (const room of rooms.values()) {
     room.saveRoom();
   }

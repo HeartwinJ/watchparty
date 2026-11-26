@@ -117,6 +117,23 @@ describe("room page", () => {
           msg: withDisplayName(RAW, "Example Show · S02E05"),
           timestamp: "2026-01-01T00:00:01Z",
         },
+        // Automatic changes (queue, next episode) are named by the server from the metadata
+        {
+          id: "",
+          cmd: "nowPlaying",
+          msg: JSON.stringify({ via: "nextEpisode", title: NAME }),
+          timestamp: "2026-01-01T00:00:02Z",
+        },
+        // ... or carry a URL with an attached display name when there's no title
+        {
+          id: "",
+          cmd: "nowPlaying",
+          msg: JSON.stringify({
+            via: "queue",
+            url: withDisplayName(RAW, "Example Show · S02E06"),
+          }),
+          timestamp: "2026-01-01T00:00:03Z",
+        },
       ]);
       socket.receive("playlist", [
         {
@@ -150,6 +167,12 @@ describe("room page", () => {
     });
     await waitFor(() => expect(document.body.textContent).toContain(NAME));
     expect(document.body.textContent).toContain("Up next · S02E05 · Five");
+    expect(document.body.textContent).toContain(
+      `Now playing ${NAME} (next episode)`,
+    );
+    expect(document.body.textContent).toContain(
+      "Now playing Example Show · S02E06 (from the queue)",
+    );
     const seen = visibleStrings(document.body);
     expect(seen).not.toContain(SECRET_HOST);
     expect(seen).not.toContain("eyFAKEBLOB");

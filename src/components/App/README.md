@@ -29,6 +29,14 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
   room-wide settings, room password or "Remove from room" (the server refuses those commands too), no Home link,
   "Leave room" or "Log out". `kicked` and `REC:accessRevoked` call `useAuth().roomAccessLost(roomId, reason)` for
   guests (owners who are kicked go to `/`).
+- **Deleting the room** (owners): ⋯ menu → "Delete room" → `DeleteRoomModal` (`components/DeleteRoomModal/`) →
+  `room.cmd.deleteRoom()`. `REC:roomDeleted {by}` removes the room from this device's recent rooms; the owner who
+  deleted it goes Home, everyone else gets `state.roomDeleted` and `App` renders `StatusPage/RoomDeleted` instead of
+  the room. Home's recent rooms have the same delete (× → modal → `deleteRoom()` in `utils/rooms.ts`,
+  `DELETE /rooms/:roomId`).
+- **Chat lines without a person** (`id: ""`, `isPersonlessLine`): the server's `nowPlaying` lines for automatic video
+  changes ("Now playing Spring (from the queue)", "… (next episode)"). `Chat` and `ChatOverlay` show them without a
+  name, avatar or reaction button.
 - **Room password**: `state.roomAccess` is the latest `REC:roomAccess` (`{enabled, password?}`; only owners ever get
   `password`, null until it arrives). Owners change it with `room.cmd.setRoomPassword({action: "regenerate"} |
 {action: "set", password} | {action: "enable", enabled})` and remove people with `room.cmd.kickUser(clientId)`.
@@ -42,46 +50,46 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 
 ## Files
 
-| File                                      | What                                                                                         |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `App.tsx`                                 | Layout: CSS grid (top bar / stage / sidebar), phone layout with the bottom sheet             |
-| `RoomMessages.tsx`                        | Share/subtitle modals, loading + error overlays, reconnecting banner, error/success toasts   |
-| `PlayerArea.tsx`                          | Re-exports `PlayerArea` and `SyncIndicator` from `player/`                                   |
-| `player/PlayerArea.tsx`                   | The player: media, cues, gestures, auto-hide, keyboard, OSD, chat overlay, quick chat        |
-| `player/ControlBar.tsx`                   | Overlay controls + speed menu; `SeekBar.tsx`, `SubtitlesMenu.tsx`, `PlayerMenu.tsx` (portal) |
-| `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar     |
-| `player/SubtitleCues.tsx`                 | Renders the active cues of the selected (hidden-mode) TextTrack with the device's style      |
-| `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input                     |
-| `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: system line text incl. `subtitleOffset`, `roomSettings`     |
-| `ui/RoomUi.tsx`                           | `useRoomUi()`: picker open, sidebar collapsed, chat overlay, settings modal                  |
-| `ui/toast.tsx`                            | `toast(message, {tone, action})`                                                             |
-| `shell/RoomTopBar.tsx`                    | Logo, room name, picker trigger, sync slot, avatars, invite, sidebar toggle, ⋯ menu          |
-| `shell/SidePanels.tsx`                    | Chat / Queue / People tabs (shared by the sidebar and the bottom sheet), unread badge        |
-| `shell/QueuePanel.tsx`                    | Now playing + playlist: drag to reorder, play now/next, move, remove, empty state            |
-| `shell/PeoplePanel.tsx`                   | Invite box (link / link with password), roster, rename popover, owners: "Remove from room"   |
-| `shell/SidebarResize.tsx`                 | Drag/keyboard resize of the desktop sidebar (`sidebarWidth.ts`: clamp + localStorage)        |
-| `shell/BottomSheet.tsx`                   | Phone sheet snap points min/docked/full (`sheet.ts`: pure snap logic)                        |
-| `shell/NowPlayingStrip.tsx`               | Phone: title + "Change" under the video                                                      |
-| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, next-episode, room password)    |
-| `shell/shortcuts.ts`                      | `/` opens the picker; `wp:show-shortcuts` event for the shortcuts overlay                    |
-| `shell/invite.ts`, `roomInfo.ts`          | Invite links (+ `#pw=`), copy + toast; short media titles, per-person playback state         |
-| `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                        |
-| `socketEvents.ts`                         | Typed socket events and `createRoomCommands`                                                 |
-| `Player.ts`, `HTML.ts`, `YouTube.ts`      | Player implementations (HTML.ts: subtitle track selection + cue re-timing)                   |
-| `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks     |
-| `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes               |
-| `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat)                    |
-| `logic/gestures.ts`                       | Tap zones (40/20/40) and `TapDetector` (single vs double tap/click)                          |
-| `logic/shortcuts.ts`                      | `resolveShortcut(event)` (ignored while typing / in modals) and the overlay's rows           |
-| `logic/media.ts`                          | `classifyMedia(url)`, display names, sharer lookup                                           |
-| `logic/chat.ts`                           | Immutable chat updates (append with 100 cap, reactions), chat sound rule                     |
-| `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                       |
-| `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s      |
-| `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)     |
-| `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic               |
-| `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                           |
-| `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits     |
-| `roomRoles.test.tsx`                      | Owner vs guest room page: settings, room password, remove person, invite links               |
+| File                                      | What                                                                                                   |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `App.tsx`                                 | Layout: CSS grid (top bar / stage / sidebar), phone layout with the bottom sheet                       |
+| `RoomMessages.tsx`                        | Share/subtitle modals, loading + error overlays, reconnecting banner, error/success toasts             |
+| `PlayerArea.tsx`                          | Re-exports `PlayerArea` and `SyncIndicator` from `player/`                                             |
+| `player/PlayerArea.tsx`                   | The player: media, cues, gestures, auto-hide, keyboard, OSD, chat overlay, quick chat                  |
+| `player/ControlBar.tsx`                   | Overlay controls + speed menu; `SeekBar.tsx`, `SubtitlesMenu.tsx`, `PlayerMenu.tsx` (portal)           |
+| `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar               |
+| `player/SubtitleCues.tsx`                 | Renders the active cues of the selected (hidden-mode) TextTrack with the device's style                |
+| `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input                               |
+| `player/formatChat.ts`                    | `describeChatCommand(cmd, msg)`: system line text incl. `subtitleOffset`, `roomSettings`, `nowPlaying` |
+| `ui/RoomUi.tsx`                           | `useRoomUi()`: picker open, sidebar collapsed, chat overlay, settings modal                            |
+| `ui/toast.tsx`                            | `toast(message, {tone, action})`                                                                       |
+| `shell/RoomTopBar.tsx`                    | Logo, room name, picker trigger, sync slot, avatars, invite, sidebar toggle, ⋯ menu                    |
+| `shell/SidePanels.tsx`                    | Chat / Queue / People tabs (shared by the sidebar and the bottom sheet), unread badge                  |
+| `shell/QueuePanel.tsx`                    | Now playing + playlist: drag to reorder, play now/next, move, remove, empty state                      |
+| `shell/PeoplePanel.tsx`                   | Invite box (link / link with password), roster, rename popover, owners: "Remove from room"             |
+| `shell/SidebarResize.tsx`                 | Drag/keyboard resize of the desktop sidebar (`sidebarWidth.ts`: clamp + localStorage)                  |
+| `shell/BottomSheet.tsx`                   | Phone sheet snap points min/docked/full (`sheet.ts`: pure snap logic)                                  |
+| `shell/NowPlayingStrip.tsx`               | Phone: title + "Change" under the video                                                                |
+| `shell/RoomSettingsModal.tsx`             | Per-device + room-wide settings (owners: title, ready check, next-episode, room password)              |
+| `shell/shortcuts.ts`                      | `/` opens the picker; `wp:show-shortcuts` event for the shortcuts overlay                              |
+| `shell/invite.ts`, `roomInfo.ts`          | Invite links (+ `#pw=`), copy + toast; short media titles, per-person playback state                   |
+| `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                                  |
+| `socketEvents.ts`                         | Typed socket events and `createRoomCommands`                                                           |
+| `Player.ts`, `HTML.ts`, `YouTube.ts`      | Player implementations (HTML.ts: subtitle track selection + cue re-timing)                             |
+| `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks               |
+| `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes                         |
+| `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat)                              |
+| `logic/gestures.ts`                       | Tap zones (40/20/40) and `TapDetector` (single vs double tap/click)                                    |
+| `logic/shortcuts.ts`                      | `resolveShortcut(event)` (ignored while typing / in modals) and the overlay's rows                     |
+| `logic/media.ts`                          | `classifyMedia(url)`, display names, sharer lookup                                                     |
+| `logic/chat.ts`                           | Immutable chat updates (append with 100 cap, reactions), chat sound rule                               |
+| `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                                 |
+| `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s                |
+| `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)               |
+| `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic                         |
+| `logic/sdp.ts`                            | SDP tweaks for WebRTC (Safari offer fix, stereo/multichannel Opus)                                     |
+| `hooks/useRoom.test.ts`                   | Integration test with a fake socket: connect, auth, REC:* events, sync rate, CMD:* emits               |
+| `roomRoles.test.tsx`                      | Owner vs guest room page: settings, room password, remove person, invite links                         |
 
 ## Room shell
 

@@ -124,6 +124,36 @@ export function saveRoomData(
   ).run(roomId, data, lastUpdateTime, lastUpdateTime);
 }
 
+/**
+ * Deletes a room for good: its row and its watch history rows (subtitle_offsets are per video, shared by every
+ * room, so they stay). Returns whether the room existed.
+ */
+export function deleteRoomData(db: DatabaseSync, roomId: string): boolean {
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM history WHERE roomId = ?").run(roomId);
+    const changes = Number(
+      db.prepare("DELETE FROM rooms WHERE roomId = ?").run(roomId).changes,
+    );
+    db.exec("COMMIT");
+    return changes > 0;
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+/** Ids of rooms whose lastUpdateTime is older than `cutoff` (ms since epoch), oldest first */
+export function listRoomsIdleSince(db: DatabaseSync, cutoff: number): string[] {
+  return (
+    db
+      .prepare(
+        "SELECT roomId FROM rooms WHERE lastUpdateTime < ? ORDER BY lastUpdateTime",
+      )
+      .all(cutoff) as { roomId: string }[]
+  ).map((r) => r.roomId);
+}
+
 export function saveSubtitle(
   db: DatabaseSync,
   hash: string,

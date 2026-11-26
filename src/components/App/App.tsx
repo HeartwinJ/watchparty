@@ -14,6 +14,8 @@ import { useSlashShortcut } from "./shell/shortcuts";
 import { shortMediaTitle } from "./shell/roomInfo";
 import { recordRecentRoom } from "../../utils/recentRooms";
 import { roomDisplayName } from "../../utils/rooms";
+import { useAuth } from "../AuthGate/AuthGate";
+import { RoomDeleted } from "../StatusPage/RoomDeleted";
 import styles from "./App.module.css";
 import { SourcePicker } from "./picker/SourcePicker";
 
@@ -23,6 +25,15 @@ export const PHONE_QUERY = "(max-width: 768px)";
 /** The room page (/watch/:roomId). State and behavior live in hooks/useRoom.ts; see README.md. */
 export const App = ({ urlRoomId }: { urlRoomId: string }) => {
   const room = useRoom(urlRoomId);
+  const { role } = useAuth();
+  if (room.state.roomDeleted) {
+    return (
+      <RoomDeleted
+        by={room.state.roomDeleted.by}
+        canGoHome={role === "owner"}
+      />
+    );
+  }
   return (
     <RoomUiProvider>
       <RoomLayout room={room} roomId={urlRoomId} />

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { describeChatCommand } from "./formatChat";
+import { describeChatCommand, isPersonlessLine } from "./formatChat";
 import styles from "./Player.module.css";
 
 export const BUBBLE_MS = 8000;
@@ -46,8 +46,12 @@ export function ChatOverlay(props: {
     const added: Bubble[] = [];
     for (const m of fresh) {
       seen.current.add(keyOf(m));
-      const name =
-        m.id === props.clientId ? "You" : props.nameMap[m.id] || "Someone";
+      // Lines nobody caused (the queue advanced, the next episode started) have no name
+      const name = isPersonlessLine(m)
+        ? ""
+        : m.id === props.clientId
+          ? "You"
+          : props.nameMap[m.id] || "Someone";
       const text = m.cmd
         ? describeChatCommand(m.cmd, m.msg, props.mediaName)
         : m.msg;
@@ -100,7 +104,7 @@ export function ChatOverlay(props: {
           data-leaving={b.leaving}
           data-system={b.system}
         >
-          <b>{b.name}</b>
+          {b.name && <b>{b.name}</b>}
           {b.text}
         </div>
       ))}

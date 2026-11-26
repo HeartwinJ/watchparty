@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeChatCommand } from "./formatChat";
+import { describeChatCommand, isPersonlessLine } from "./formatChat";
 
 const settings = (change: object) =>
   describeChatCommand("roomSettings", JSON.stringify(change));
@@ -39,5 +39,37 @@ describe("describeChatCommand roomPassword", () => {
     expect(
       describeChatCommand("roomPassword", "otter-maple-42"),
     ).toBeUndefined();
+  });
+});
+
+describe("describeChatCommand nowPlaying", () => {
+  const line = (data: object, mediaName?: (url?: string) => string) =>
+    describeChatCommand("nowPlaying", JSON.stringify(data), mediaName);
+
+  it("says what started and why", () => {
+    expect(line({ via: "queue", title: "Spring" })).toBe(
+      "Now playing Spring (from the queue)",
+    );
+    expect(line({ via: "nextEpisode", title: "Example Show · S01E03" })).toBe(
+      "Now playing Example Show · S01E03 (next episode)",
+    );
+  });
+
+  it("names a bare URL like a host line", () => {
+    expect(
+      line({ via: "queue", url: "https://example.com/a.mp4" }, () => "a.mp4"),
+    ).toBe("Now playing a.mp4 (from the queue)");
+  });
+
+  it("copes with broken payloads", () => {
+    expect(describeChatCommand("nowPlaying", "nope")).toBeUndefined();
+    expect(line({ via: "queue" })).toBe(
+      "Now playing the next video (from the queue)",
+    );
+  });
+
+  it("has no person", () => {
+    expect(isPersonlessLine({ id: "" })).toBe(true);
+    expect(isPersonlessLine({ id: "a" })).toBe(false);
   });
 });

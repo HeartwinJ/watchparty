@@ -5,6 +5,7 @@ import {
   RECENT_ROOMS_KEY,
   RECENT_ROOMS_MAX,
   recordRecentRoom,
+  removeRecentRoom,
   upsertRecentRoom,
 } from "./recentRooms";
 
@@ -88,6 +89,15 @@ describe("readRecentRooms / recordRecentRoom", () => {
       { roomId: "b", lastTitle: "", roomTitle: "", visitedAt: 6 },
       { roomId: "a", lastTitle: "A", roomTitle: "", visitedAt: 5 },
     ]);
+  });
+
+  it("forgets a deleted room", () => {
+    const storage = memoryStorage();
+    recordRecentRoom({ roomId: "a", visitedAt: 5 }, storage);
+    recordRecentRoom({ roomId: "b", visitedAt: 6 }, storage);
+    expect(removeRecentRoom("a", storage).map((r) => r.roomId)).toEqual(["b"]);
+    expect(readRecentRooms(storage).map((r) => r.roomId)).toEqual(["b"]);
+    expect(removeRecentRoom("missing", storage)).toHaveLength(1);
   });
 
   it("ignores corrupt or foreign data", () => {

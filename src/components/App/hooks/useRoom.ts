@@ -33,6 +33,8 @@ import { useSubtitles } from "./useSubtitles";
 import { useReadyCheck } from "./useReadyCheck";
 import { toast } from "../ui/toast";
 import { useAuth } from "../../AuthGate/AuthGate";
+import { navigate } from "../../../router";
+import { removeRecentRoom } from "../../../utils/recentRooms";
 
 declare global {
   interface Window {
@@ -318,6 +320,19 @@ export function useRoom(roomId: string) {
       "REC:roomAccess": (roomAccess) => store.set({ roomAccess }),
       "REC:accessRevoked": () =>
         authRef.current.roomAccessLost(roomId, "passwordChanged"),
+      "REC:roomDeleted": (info) => {
+        removeRecentRoom(roomId);
+        if (info?.by?.id === clientId) {
+          // We deleted it: back to Home
+          toast("Room deleted.");
+          navigate("/");
+          return;
+        }
+        const by = info?.by
+          ? store.get().nameMap[info.by.id] || info.by.name || null
+          : null;
+        store.set({ roomDeleted: { by } });
+      },
       "REC:play": (_video, actor) => {
         player.localPlay();
         announce(actor, "played");
