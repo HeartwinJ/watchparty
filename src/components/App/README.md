@@ -99,7 +99,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/playlist.ts`                       | What happens when a video ends (loop / playlist next / next fileIndex)                                              |
 | `logic/playback.ts`                       | `decidePlayback()`: direct / convert / fail per device, `chooseAudioTrack` (auto-convert)                           |
 | `logic/durationReport.ts`                 | When to send `CMD:duration` (watch history's finished flag): media change or every 30 s                             |
-| `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall debounce, pill/toast text (`useReadyCheck`)                            |
+| `logic/readyCheck.ts`                     | Ready check: buffered-ahead readiness, stall tracking (`StallTracker`), pill/toast text                             |
 | `nextEpisode/`                            | "Up next" card over the player, `useNextEpisode` (offers + toasts), pure logic                                      |
 | `introSkip/`, `logic/introSkip.ts`        | "Skipped intro (1:30) · Watch from start" notice over the player; m:ss format, presets, when the notice shows       |
 | `subsync/`                                | Subtitle auto-sync: signal processing, worker, `useSubtitleSync`, the wand (`AutoSyncButton`)                       |
@@ -426,7 +426,11 @@ Voice, plus an optional camera (see **Camera** below).
   only when `ready`/`buffering` change (and again on a new video, reconnect or when a check starts). Ready = no media
   / share / live / can't play, or ≥ 6 s buffered ahead (stays ready down to 2 s), buffered to the end, or
   `readyState >= HAVE_ENOUGH_DATA` (not while converting: the converter's MediaSource buffer is measured instead).
-  YouTube uses its BUFFERING state and loaded fraction. `buffering` = stalled > 1.5 s while the room plays.
+  YouTube uses its BUFFERING state and loaded fraction. `buffering` = stalled > 1.5 s while the room plays (stalled =
+  `waiting`/YouTube BUFFERING, or a playing `<video>` with `readyState < HAVE_FUTURE_DATA`; `StallTracker`). Such a
+  stall also makes this device not ready, whatever `buffered` says (Chromium estimates it from bytes for plain `src=`
+  playback, so it can claim 30 s ahead of a player stuck in `waiting`), until the player has data at the playhead
+  again (`readyState >= HAVE_FUTURE_DATA`, or YouTube stops buffering), also while the check has paused the room.
 - The server (`server/readyCheck.ts`) decides when to pause/resume; `REC:readyCheck` lands in `state.readyCheck`.
   `player/ReadyCheckPill.tsx` ("Waiting for Sam…", avatars, Resume now → `room.readyCheck.skip()`) sits on the
   player, the People tab shows "Buffering…" for whoever is waited for, and toasts come from

@@ -15,17 +15,26 @@ function setup() {
     time: 30,
     ranges: [{ start: 0, end: 40 }],
     readyState: 3,
+    paused: false,
     share: false,
+    youtube: false,
+    noElement: false,
   };
   const player = {
     current: () => ({
       getCurrentTime: () => media.time,
       getDuration: () => 600,
       getTimeRanges: () => media.ranges,
-      getVideoEl: () => ({ readyState: media.readyState }),
+      getVideoEl: () =>
+        media.noElement
+          ? undefined
+          : {
+              readyState: media.readyState,
+              paused: media.paused,
+            },
     }),
     isWebRTCShare: () => media.share,
-    usingYoutube: () => false,
+    usingYoutube: () => media.youtube,
     toRoomTime: (t: number) => t,
   } as unknown as PlayerApi;
   const cmd = {
@@ -96,6 +105,95 @@ describe("useReadyCheck", () => {
       buffering: true,
       time: 30,
     });
+  });
+
+  it("counts a long stall as not ready even when `buffered` claims plenty ahead", () => {
+    const { result, media, cmd } = setup();
+    act(() => vi.advanceTimersByTime(500));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: true, buffering: false }),
+    );
+    // Chromium's byte-based estimate: 30 s "buffered" ahead, but no data to play (waiting)
+    media.ranges = [{ start: 0, end: 60 }];
+    media.readyState = 2;
+    act(() => result.current.store.set({ buffering: true }));
+    // A short hiccup doesn't change anything
+    act(() => vi.advanceTimersByTime(1000));
+    expect(cmd.reportReadyState).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith({
+      ready: false,
+      buffering: true,
+      time: 30,
+    });
+    // The ready check pauses the room: still not ready while there's no data at the playhead
+    media.readyState = 1;
+    act(() => result.current.store.set({ roomPaused: true, buffering: false }));
+    act(() => vi.advanceTimersByTime(2000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith({
+      ready: false,
+      buffering: false,
+      time: 30,
+    });
+    // The data arrives
+    media.readyState = 4;
+    act(() => vi.advanceTimersByTime(500));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith({
+      ready: true,
+      buffering: false,
+      time: 30,
+    });
+  });
+
+  it("notices a playing <video> without data even if `waiting` never fired", () => {
+    const { media, cmd } = setup();
+    act(() => vi.advanceTimersByTime(500));
+    media.readyState = 1;
+    act(() => vi.advanceTimersByTime(2000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: false, buffering: true }),
+    );
+  });
+
+  it("YouTube: a long BUFFERING stall stays not ready until it stops buffering", () => {
+    const { result, media, cmd } = setup();
+    media.youtube = true;
+    media.ranges = [{ start: 0, end: 60 }];
+    act(() => result.current.store.set({ buffering: true }));
+    act(() => vi.advanceTimersByTime(2000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: false, buffering: true }),
+    );
+    act(() => result.current.store.set({ roomPaused: true }));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: false, buffering: false }),
+    );
+    act(() => result.current.store.set({ buffering: false }));
+    act(() => vi.advanceTimersByTime(500));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: true, buffering: false }),
+    );
+  });
+
+  it("without a <video> element, a waiting stall stays until there's one with data", () => {
+    const { result, media, cmd } = setup();
+    media.noElement = true;
+    act(() => result.current.store.set({ buffering: true }));
+    act(() => vi.advanceTimersByTime(2000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: false, buffering: true }),
+    );
+    act(() => result.current.store.set({ buffering: false }));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: false, buffering: false }),
+    );
+    media.noElement = false;
+    act(() => vi.advanceTimersByTime(500));
+    expect(cmd.reportReadyState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ready: true }),
+    );
   });
 
   it("doesn't count a stall while the room is paused", () => {
