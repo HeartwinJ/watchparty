@@ -187,6 +187,8 @@ export function useRoom(roomId: string) {
         loading: Boolean(data.video),
         nonPlayableMedia: false,
         isLiveStream: false,
+        // A skipped intro is announced right after this (REC:introSkip)
+        introSkip: null,
       });
       const video = player.html().getVideoEl();
 
@@ -410,6 +412,13 @@ export function useRoom(roomId: string) {
       chatinit: chat.onInit,
       playlist: (items) => store.set({ playlist: items }),
       "REC:videoMeta": (videoMeta) => store.set({ videoMeta }),
+      "REC:introSkip": (info) =>
+        store.set({
+          introSkip:
+            info && typeof info.seconds === "number" && info.seconds > 0
+              ? { seconds: info.seconds, at: Date.now() }
+              : null,
+        }),
       "REC:playbackIssue": (issue) =>
         store.set({ playbackIssue: { ...issue, at: Date.now() } }),
       "REC:roomSettings": (roomSettings) => {

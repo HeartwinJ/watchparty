@@ -3,7 +3,9 @@ import { useMediaQuery } from "@mantine/hooks";
 import {
   ActionIcon,
   Button,
+  Chip,
   Group,
+  Input,
   Modal,
   NumberInput,
   Switch,
@@ -36,8 +38,17 @@ import {
   ROOM_PASSWORD_MIN,
   ROOM_TITLE_MAX,
   roomPasswordToSend,
+  SKIP_INTRO_CUSTOM_MAX,
+  SKIP_INTRO_CUSTOM_MIN,
+  skipIntroChip,
+  skipIntroToSend,
   titleToSend,
 } from "./roomSettingsForm";
+import {
+  formatSkipIntro,
+  SKIP_INTRO_PRESETS,
+  skipIntroPresetLabel,
+} from "../logic/introSkip";
 import styles from "./Shell.module.css";
 
 /**
@@ -125,7 +136,13 @@ export const RoomSettingsModal = ({
           <div className={styles.sectionLabelFlat}>Everyone in this room</div>
           <p className={styles.settingsNote}>
             Only the room's owner can change the title, the ready check, the
-            next-episode card and the room password.
+            next-episode card, skip intro and the room password.
+          </p>
+          <p className={styles.settingsNote}>
+            Skip intro:{" "}
+            {state.roomSettings.skipIntro
+              ? `videos start at ${formatSkipIntro(state.roomSettings.skipIntro)}`
+              : "off"}
           </p>
         </div>
       )}
@@ -250,8 +267,108 @@ const RoomWideSettings = ({ room, roomId }: { room: Room; roomId: string }) => {
           }
         }}
       />
+      <SkipIntroSetting
+        value={roomSettings.skipIntro}
+        onChange={(skipIntro) => send({ skipIntro })}
+      />
       <RoomPasswordSettings room={room} />
     </div>
+  );
+};
+
+/**
+ * Skip intro: preset chips (Off, 15s … 2:00) plus Custom with a seconds input (1–600). A chip is sent right away;
+ * the custom value after it stops changing (or on blur).
+ */
+export const SkipIntroSetting = ({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (seconds: number) => void;
+}) => {
+  const [customOpen, setCustomOpen] = useState(false);
+  const [draft, setDraft] = useState<string | number | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const sendCustom = (v: string | number) => {
+    window.clearTimeout(timer.current);
+    const seconds = skipIntroToSend(v, value);
+    if (seconds !== undefined) {
+      onChange(seconds);
+    }
+  };
+  const chip = skipIntroChip(value, customOpen);
+  const shown = draft ?? (value || "");
+  const preview = Number(shown);
+  return (
+    <Input.Wrapper
+      label="Skip intro"
+      description="Every video the room switches to from the beginning (a pick, the queue, the next episode) starts this far in. Not for resumed videos, screen/file shares, live streams or short videos (under 5 minutes or twice the skip)."
+    >
+      <Chip.Group
+        multiple={false}
+        value={chip}
+        onChange={(v) => {
+          if (v === "custom") {
+            setCustomOpen(true);
+            return;
+          }
+          setCustomOpen(false);
+          setDraft(null);
+          const seconds = Number(v);
+          if (seconds !== value) {
+            onChange(seconds);
+          }
+        }}
+      >
+        <Group gap={6} mt={8}>
+          {SKIP_INTRO_PRESETS.map((s) => (
+            <Chip key={s} value={String(s)} size="xs">
+              {skipIntroPresetLabel(s)}
+            </Chip>
+          ))}
+          <Chip value="custom" size="xs">
+            Custom
+          </Chip>
+        </Group>
+      </Chip.Group>
+      {chip === "custom" && (
+        <NumberInput
+          mt={8}
+          aria-label="Custom skip intro in seconds"
+          description={
+            Number.isFinite(preview) && preview > 0
+              ? `Starts at ${formatSkipIntro(Math.min(SKIP_INTRO_CUSTOM_MAX, preview))}`
+              : `${SKIP_INTRO_CUSTOM_MIN}–${SKIP_INTRO_CUSTOM_MAX} seconds`
+          }
+          inputWrapperOrder={["input", "description"]}
+          min={SKIP_INTRO_CUSTOM_MIN}
+          max={SKIP_INTRO_CUSTOM_MAX}
+          step={5}
+          allowDecimal={false}
+          allowNegative={false}
+          clampBehavior="blur"
+          suffix=" s"
+          placeholder="Seconds"
+          value={shown}
+          onChange={(v) => {
+            setDraft(v);
+            window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(
+              () => sendCustom(v),
+              OFFSET_SEND_DELAY_MS,
+            );
+          }}
+          onBlur={() => {
+            if (draft !== null) {
+              sendCustom(draft);
+              setDraft(null);
+            }
+          }}
+        />
+      )}
+    </Input.Wrapper>
   );
 };
 

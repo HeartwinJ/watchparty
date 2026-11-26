@@ -2,6 +2,7 @@
 import { formatTimestamp } from "../../../utils/utils";
 import { parseShareUrl } from "../logic/media";
 import { formatTiming, normalizeScale } from "../logic/subtitles";
+import { formatSkipIntro } from "../logic/introSkip";
 
 /** A subtitle timing chat msg: the offset ("2.35"), or JSON {offset, scale} with a time scale */
 function parseTimingMsg(
@@ -158,6 +159,11 @@ function describeRoomSettingsChange(msg: string | undefined) {
   }
   if (typeof change.nextEpisodeOffset === "number") {
     return `set the next-episode card to ${change.nextEpisodeOffset}s before the end`;
+  }
+  if (typeof change.skipIntro === "number") {
+    return change.skipIntro > 0
+      ? `set skip intro to ${formatSkipIntro(change.skipIntro)}`
+      : "turned off skip intro";
   }
   return undefined;
 }

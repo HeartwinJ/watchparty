@@ -37,6 +37,7 @@ import {
 } from "./readyCheck.ts";
 import type { NextEpisodeResolver } from "./addons/nextEpisode.ts";
 import { NextEpisodeController } from "./nextEpisodeController.ts";
+import { IntroSkipTracker, introSkipStart } from "./introSkip.ts";
 import { parseRoomPasswordCommand, RoomAccess } from "./roomAccess.ts";
 import { nowPlayingChatLine, type NowPlayingVia } from "./nowPlaying.ts";
 import {
@@ -135,6 +136,8 @@ export class Room {
   /** Called after the room deleted itself (server.ts removes it from its `rooms` Map) */
   public static onDeleted: ((roomId: string) => void) | null = null;
   private preventTSUpdate = false;
+  /** Positions reported before this time (ms) are ignored: they were sent before a seek reached the player */
+  private ignoreTsUntil = 0;
   private db: DatabaseSync;
   private subtitleOffsetChatTimer: NodeJS.Timeout | undefined = undefined;
   /** How long the subtitle offset has to stay unchanged before it's announced in chat */
@@ -150,6 +153,8 @@ export class Room {
   /** Watch history / continue watching (utils/history.ts) */
   private history: HistoryRecorder;
   private readyCheck = new ReadyCheck();
+  /** Skip intro for the current video (introSkip.ts) */
+  private introSkip = new IntroSkipTracker();
   /** Room auto-sync of subtitles: who computes it, whether the result may be applied (subtitleAutoSync.ts) */
   private subtitleSync = new SubtitleAutoSync();
   /** How long a voice call member whose socket dropped stays in the call (tests shorten it) */
@@ -339,9 +344,14 @@ export class Room {
       });
       on("CMD:ts", (data: unknown) => this.setTimestamp(socket, data));
       // The current video's duration in seconds (for the history's finished flag)
-      on("CMD:duration", (data: unknown) =>
-        this.history.setDuration(this.video, data),
-      );
+      on("CMD:duration", (data: unknown) => {
+        this.history.setDuration(this.video, data);
+        if (
+          this.introSkip.duration(this.video, data, this.videoTS) === "undo"
+        ) {
+          this.undoIntroSkip();
+        }
+      });
       on("CMD:chat", (data: unknown) =>
         this.sendChatMessage(socket, String(data)),
       );
@@ -635,7 +645,12 @@ export class Room {
     socket: Socket | null,
     data: string,
     meta: VideoMeta | null = null,
-    auto?: { via: NowPlayingVia; name?: string | null },
+    auto?: {
+      via: NowPlayingVia;
+      name?: string | null;
+      /** Seconds, when the queue item knows it (YouTube); a too-short video isn't skipped into */
+      duration?: number;
+    },
   ) => {
     if ((data && data.length > 50000) || this.destroyed) {
       return;
@@ -643,7 +658,15 @@ export class Room {
     this.history.beforeHostChange(this.historySnapshot());
     this.video = data;
     this.videoMeta = meta;
-    this.videoTS = 0;
+    // From the beginning, or past the intro when the room skips intros (the room's start time is authoritative:
+    // every client seeks to REC:host's videoTS)
+    this.videoTS = introSkipStart({
+      skipIntro: this.roomSettings.skipIntro,
+      video: data,
+      knownDuration: auto?.duration,
+    });
+    this.introSkip.start(data, this.videoTS);
+    this.history.setIntroSkip(data, this.videoTS);
     this.paused = false;
     this.subtitle = "";
     this.loop = false;
@@ -658,6 +681,10 @@ export class Room {
     this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
     this.io.of(this.roomId).emit("REC:host", this.getHostState());
     this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
+    if (this.videoTS > 0) {
+      const info: IntroSkipInfo = { seconds: this.videoTS };
+      this.io.of(this.roomId).emit("REC:introSkip", info);
+    }
     if (socket && data) {
       const chatMsg = { id: socket.clientId, cmd: "host", msg: data };
       this.addChatMessage(socket, chatMsg);
@@ -736,6 +763,7 @@ export class Room {
       this.cmdHost(null, next.url, next.meta ?? null, {
         via: "queue",
         name: next.name,
+        duration: next.duration,
       });
       this.history.setHint(next.url, next);
     }
@@ -836,6 +864,7 @@ export class Room {
 
   private playVideo = (socket: Socket) => {
     this.applyReadyCheck(this.readyCheck.cancel(Date.now()));
+    this.introSkip.interact();
     socket.broadcast.emit("REC:play", this.video, this.getActor(socket));
     const chatMsg = {
       id: socket.clientId,
@@ -848,6 +877,7 @@ export class Room {
 
   private pauseVideo = (socket: Socket) => {
     this.applyReadyCheck(this.readyCheck.cancel(Date.now()));
+    this.introSkip.interact();
     socket.broadcast.emit("REC:pause", this.getActor(socket));
     const chatMsg = {
       id: socket.clientId,
@@ -867,6 +897,13 @@ export class Room {
     }
     this.videoTS = data;
     this.nextEpisode.seek(data);
+    // Someone picked a position (e.g. "Watch from start"): the skip is over, and positions count as watched again
+    this.history.setIntroSkip(this.video, 0);
+    this.endIntroSkip();
+    // Forget everyone's old positions: otherwise drift correction pulls the room back to where it was
+    this.tsMap = {};
+    this.ignoreTsUntil = Date.now() + 1000;
+    this.io.of(this.roomId).emit("REC:tsMap", this.tsMap);
     socket.broadcast.emit("REC:seek", data);
     const chatMsg = { id: socket.clientId, cmd: "seek", msg: data?.toString() };
     this.addChatMessage(socket, chatMsg);
@@ -905,14 +942,18 @@ export class Room {
     if (typeof data !== "number" || !Number.isFinite(data)) {
       return;
     }
-    // Prevent lagging TS updates from the old video from messing up our timestamps
-    if (this.preventTSUpdate) {
+    // Prevent lagging TS updates from the old video (or from before a seek) from messing up our timestamps
+    if (this.preventTSUpdate || Date.now() < this.ignoreTsUntil) {
       return;
     }
     // This is negative for live streams, so allow overwriting
     // Otherwise, only increment this value to prevent a lagging viewer from holding up the room state
     if (data < 0 || data > this.videoTS) {
       this.videoTS = data;
+    }
+    if (data < 0) {
+      // A live stream: room time is relative to the live edge, so a skip had no effect; hide the notice
+      this.endIntroSkip();
     }
     // Normalize the received TS based on how long since the last tsMap emit
     // Later sends will have higher values so subtract the difference
@@ -921,6 +962,34 @@ export class Room {
     // console.log(socket.clientId, 'offset', offset, 'ms');
     this.tsMap[socket.clientId] = data - timeSinceTsMap / 1000 + 1;
     this.nextEpisode.tick(this.videoTS);
+  };
+
+  /** Forgets the current video's skip and hides everyone's "Skipped intro" notice */
+  private endIntroSkip = () => {
+    if (this.introSkip.clear()) {
+      this.io.of(this.roomId).emit("REC:introSkip", null);
+    }
+  };
+
+  /**
+   * The skipped video turned out too short (CMD:duration) before anyone touched playback: everyone back to 0, like
+   * a host change (reports from the skip point are ignored for a second), without a chat line.
+   */
+  private undoIntroSkip = () => {
+    this.endIntroSkip();
+    this.history.setIntroSkip(this.video, 0);
+    this.videoTS = 0;
+    this.nextEpisode.seek(0);
+    this.tsMap = {};
+    this.preventTSUpdate = true;
+    setTimeout(() => (this.preventTSUpdate = false), 1000);
+    const ns = this.io.of(this.roomId);
+    ns.emit("REC:tsMap", this.tsMap);
+    ns.emit("REC:seek", 0);
+    if (!this.paused) {
+      // A start past the end of the video left players paused at its end ("ended"): resume them
+      ns.emit("REC:play", this.video);
+    }
   };
 
   private isValidChatMessage = (msg: string | undefined) => {

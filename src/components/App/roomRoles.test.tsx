@@ -231,6 +231,7 @@ describe("room page roles", () => {
         readyCheck: false,
         nextEpisodeOffset: 25,
         autoSyncSubtitles: false,
+        skipIntro: 0,
       });
     });
     expect(

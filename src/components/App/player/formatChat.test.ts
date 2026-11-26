@@ -21,6 +21,9 @@ describe("describeChatCommand roomSettings", () => {
     expect(settings({ autoSyncSubtitles: false })).toBe(
       "turned subtitle auto-sync off",
     );
+    expect(settings({ skipIntro: 90 })).toBe("set skip intro to 1:30");
+    expect(settings({ skipIntro: 15 })).toBe("set skip intro to 0:15");
+    expect(settings({ skipIntro: 0 })).toBe("turned off skip intro");
   });
 
   it("describes subtitle timings with a time scale", () => {

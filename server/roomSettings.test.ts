@@ -68,6 +68,24 @@ describe("parseRoomSettingsPatch", () => {
     expect(parseRoomSettingsPatch({ autoSyncSubtitles: "on" })).toBeUndefined();
   });
 
+  it("normalizes skip intro to whole seconds in 0–600", () => {
+    expect(parseRoomSettingsPatch({ skipIntro: 90 })).toEqual({
+      skipIntro: 90,
+    });
+    expect(parseRoomSettingsPatch({ skipIntro: 0 })).toEqual({ skipIntro: 0 });
+    expect(parseRoomSettingsPatch({ skipIntro: 89.6 })).toEqual({
+      skipIntro: 90,
+    });
+    expect(parseRoomSettingsPatch({ skipIntro: 5000 })).toEqual({
+      skipIntro: 600,
+    });
+    expect(parseRoomSettingsPatch({ skipIntro: -3 })).toEqual({
+      skipIntro: 0,
+    });
+    expect(parseRoomSettingsPatch({ skipIntro: "90" })).toBeUndefined();
+    expect(parseRoomSettingsPatch({ skipIntro: NaN })).toBeUndefined();
+  });
+
   it("returns undefined when nothing valid is left", () => {
     expect(parseRoomSettingsPatch(null)).toBeUndefined();
     expect(parseRoomSettingsPatch("title")).toBeUndefined();
@@ -84,12 +102,14 @@ describe("normalizeRoomSettings", () => {
       readyCheck: true,
       nextEpisodeOffset: 25,
       autoSyncSubtitles: false,
+      skipIntro: 0,
     });
     expect(normalizeRoomSettings({ title: "Friday", junk: true })).toEqual({
       title: "Friday",
       readyCheck: true,
       nextEpisodeOffset: 25,
       autoSyncSubtitles: false,
+      skipIntro: 0,
     });
   });
 });
