@@ -24,7 +24,11 @@ const json = (body: unknown, status = 200) =>
 let notConfigured = false;
 const routes = (url: string): Response => {
   const path = new URL(url).pathname + new URL(url).search;
-  if (path.startsWith("/addon/") && notConfigured) {
+  // Like the server: search/meta/subtitles are keyless, only streams need AIOStreams
+  if (path === "/addon/status") {
+    return json({ streams: !notConfigured });
+  }
+  if (path.startsWith("/addon/streams/") && notConfigured) {
     return json({ error: "aiostreams_not_configured" }, 503);
   }
   if (path.startsWith("/addon/search")) {
@@ -254,6 +258,8 @@ describe("PickerPalette: search and drill-down", () => {
     const { input } = renderPalette();
     type(input, "example");
     await screen.findByText("Clip One");
+    // /addon/status said no streams, so titles (which the keyless search still finds) aren't offered
+    await waitFor(() => expect(screen.queryByText("Example Movie")).toBeNull());
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: "Movies & Shows" }),

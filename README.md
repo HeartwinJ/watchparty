@@ -27,7 +27,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 **Player**
 
 - Fullscreen with auto-hiding controls and cursor, keyboard shortcuts (`?` lists them) and phone gestures.
-- Subtitles: upload, search OpenSubtitles, or get them automatically for movies and shows. Adjust the **subtitle offset** for everyone or just yourself; it's remembered per title and episode. Size and style are adjustable.
+- Subtitles: upload, load from a URL, **search by title** (movies, shows and anime, no API key needed; it guesses the title and episode from what's playing), or get them automatically for movies and shows. Whatever you pick loads for everyone. Adjust the **subtitle offset** for everyone or just yourself; it's remembered per title and episode. Size and style are adjustable.
 - Chat with reactions and emoji. Messages show as bubbles over the video in fullscreen or with the sidebar hidden. Videos that start on their own (queue, next episode) get a "Now playing" line.
 
 **Rooms and hosting**
@@ -74,7 +74,7 @@ All settings are environment variables. See [`.env.example`](.env.example) and `
 | `SUBTITLE_LANGS`                       | Preferred languages for automatic subtitles, e.g. `en,es` (default `en`)                          |
 | `ROOM_MAX_IDLE_DAYS`                   | Delete rooms nobody has used for this many days (default `60`, `0` = never)                       |
 | `YOUTUBE_API_KEY`                      | Turns on YouTube search and titles                                                                |
-| `OPENSUBTITLES_KEY`                    | Turns on subtitle search (an OpenSubtitles.com API consumer key)                                  |
+| `OPENSUBTITLES_KEY`                    | Adds subtitle search by file name (an OpenSubtitles.com API key); title search needs no key       |
 
 ## License
 

@@ -9,6 +9,7 @@ import {
   getSubtitles,
   isAddonsConfigured,
   onAddonsConfiguredChange,
+  probeAddonsStatus,
   resetAddonsConfigured,
   searchTitles,
   searchYouTube,
@@ -160,6 +161,27 @@ describe("addon endpoints", () => {
     expect(isAddonsConfigured()).toBe(false);
     expect(seen).toEqual([false]);
     off();
+  });
+
+  it("asks /addon/status once whether streams are available", async () => {
+    const fetch = mockFetch(() => json({ streams: false }));
+    const seen: boolean[] = [];
+    const off = onAddonsConfiguredChange((c) => seen.push(c));
+    expect(await probeAddonsStatus()).toBe(false);
+    expect(await probeAddonsStatus()).toBe(false);
+    expect(isAddonsConfigured()).toBe(false);
+    expect(seen).toEqual([false]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toBe(`${serverPath}/addon/status`);
+    off();
+  });
+
+  it("keeps the optimistic value when /addon/status fails, and retries later", async () => {
+    const fetch = mockFetch(() => json({ error: "x" }, 500));
+    expect(await probeAddonsStatus()).toBe(true);
+    expect(isAddonsConfigured()).toBe(true);
+    await probeAddonsStatus();
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("maps upstream and unknown errors without leaking response bodies", async () => {

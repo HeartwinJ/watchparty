@@ -265,19 +265,57 @@ describe("addon routes: guards", () => {
     expect((await get("/addon/search?q=x", false)).status).toBe(401);
   });
 
-  it("returns 503 on every route when AIOStreams isn't configured", async () => {
-    const { get, fetchFn } = await start({ manifestUrl: "" });
+  it("requires auth on every route, including /addon/status", async () => {
+    const { get, fetchFn, aioFetchFn } = await start();
     for (const path of [
+      "/addon/status",
       "/addon/search?q=x",
       "/addon/meta/movie/tt0111161",
       "/addon/streams/movie/tt0111161",
       "/addon/subtitles/movie/tt0111161",
       "/addon/next/series/tt0903747:1:1",
     ]) {
-      const r = await get(path);
-      expect(r.status).toBe(503);
-      expect(r.body).toEqual({ error: "aiostreams_not_configured" });
+      expect((await get(path, false)).status).toBe(401);
     }
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(aioFetchFn).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 for streams only when AIOStreams isn't configured", async () => {
+    const { get, aioFetchFn } = await start({ manifestUrl: "" });
+    const r = await get("/addon/streams/movie/tt0111161");
+    expect(r.status).toBe(503);
+    expect(r.body).toEqual({ error: "aiostreams_not_configured" });
+    expect(aioFetchFn).not.toHaveBeenCalled();
+  });
+
+  it("serves search, meta, subtitles and next episode without AIOStreams", async () => {
+    const { get, aioFetchFn } = await start({ manifestUrl: "" });
+    const search = await get("/addon/search?q=Breaking");
+    expect(search.status).toBe(200);
+    expect(search.body.series[0].id).toBe("tt0903747");
+    const meta = await get("/addon/meta/series/tt0903747");
+    expect(meta.status).toBe(200);
+    expect(meta.body.name).toBe("Breaking Bad");
+    const subs = await get("/addon/subtitles/series/tt0903747:1:1");
+    expect(subs.status).toBe(200);
+    expect(subs.body[0].lang).toBe("en");
+    const next = await get("/addon/next/series/tt0903747:1:1");
+    expect(next.status).toBe(200);
+    expect(next.body.next.id).toBe("tt0903747:1:2");
+    expect(aioFetchFn).not.toHaveBeenCalled();
+  });
+
+  it("reports whether streams are available", async () => {
+    expect((await (await start()).get("/addon/status")).body).toEqual({
+      streams: true,
+    });
+    server?.close();
+    const { get, fetchFn } = await start({ manifestUrl: "" });
+    const r = await get("/addon/status");
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ streams: false });
+    expectNoSecret(r.text);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 

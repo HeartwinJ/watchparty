@@ -75,6 +75,8 @@ export interface RoomState {
   isScreenShareModalOpen: boolean;
   isFileShareModalOpen: boolean;
   isSubtitleModalOpen: boolean;
+  /** "Search subtitles…" (subtitleSearch/SubtitleSearch.tsx) */
+  isSubtitleSearchOpen: boolean;
   // Player redesign (player/)
   /** Socket connected (false while reconnecting) */
   socketConnected: boolean;
@@ -166,6 +168,7 @@ export function createInitialRoomState(): RoomState {
     isScreenShareModalOpen: false,
     isFileShareModalOpen: false,
     isSubtitleModalOpen: false,
+    isSubtitleSearchOpen: false,
     socketConnected: false,
     buffering: false,
     syncStatus: { kind: "in-sync" },
