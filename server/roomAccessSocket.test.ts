@@ -310,6 +310,25 @@ describe("changing the room password", () => {
     owner.emit("CMD:roomPassword", { action: "set", password: "ab" });
     expect(await err).toMatch(/4–64/);
   });
+
+  it("says so when changes are over the rate limit", async () => {
+    const t = await setup();
+    cleanups.push(t.close);
+    const owner = await t.join(t.ownerCookie);
+    const errors: string[] = [];
+    owner.on("errorMessage", (m: string) => errors.push(m));
+    // 20 changes per 10 s per room (shared with the room settings)
+    for (let i = 0; i < 20; i++) {
+      owner.emit("CMD:roomPassword", { action: "regenerate" });
+    }
+    await settle(150);
+    expect(errors).toEqual([]);
+    const epoch = t.room.access.epoch;
+    owner.emit("CMD:roomPassword", { action: "regenerate" });
+    await settle();
+    expect(errors).toEqual([expect.stringMatching(/Too many changes/)]);
+    expect(t.room.access.epoch).toBe(epoch);
+  });
 });
 
 describe("kicking", () => {

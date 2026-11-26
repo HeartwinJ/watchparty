@@ -1703,6 +1703,10 @@ export class Room {
       return;
     }
     if (!this.settingsLimiter.allow()) {
+      socket.emit(
+        "errorMessage",
+        "Too many changes at once. Wait a few seconds and try again.",
+      );
       return;
     }
     const epoch = this.access.epoch;
