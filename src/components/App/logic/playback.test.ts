@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  audioCodecName,
+  audioCodecRank,
   chooseAudioTrack,
   decidePlayback,
+  originalLanguage,
+  videoCodecName,
   type ProbeResult,
   type ProbedAudioTrack,
   type ProbedVideoTrack,
@@ -239,6 +243,80 @@ describe("decidePlayback", () => {
     ).toEqual({
       mode: "fail",
       reason: "HEVC video isn't supported in this browser",
+    });
+  });
+});
+
+describe("codec names and ranks", () => {
+  it("names codecs for messages", () => {
+    expect(videoCodecName(null)).toBe("this video codec");
+    expect(videoCodecName("mpeg2")).toBe("MPEG2");
+    expect(audioCodecName(null)).toBe("this audio codec");
+    expect(audioCodecName("pcm-s24le")).toBe("PCM");
+    expect(audioCodecName("alac")).toBe("ALAC");
+    expect(audioCodecName("eac3")).toBe("E-AC-3");
+  });
+
+  it("ranks web codecs over Dolby over lossless over PCM over DTS/TrueHD", () => {
+    expect(
+      ["truehd", "pcm-s16", "flac", "mp3", "opus", "vorbis", "dts", null].map(
+        audioCodecRank,
+      ),
+    ).toEqual([4, 3, 2, 1, 0, 2, 4, 3]);
+  });
+});
+
+describe("originalLanguage", () => {
+  it("prefers original, then default, then any non-commentary track", () => {
+    expect(originalLanguage([])).toBe("und");
+    expect(
+      originalLanguage([
+        aac({ language: "fre", commentary: true, default: true }),
+        aac({ language: "ita", default: true }),
+      ]),
+    ).toBe("ita");
+    expect(
+      originalLanguage([
+        aac({ language: "fre", commentary: true }),
+        aac({ language: "spa" }),
+      ]),
+    ).toBe("spa");
+    // Only commentary: the first one
+    expect(originalLanguage([aac({ language: "fre", commentary: true })])).toBe(
+      "fre",
+    );
+  });
+});
+
+describe("decidePlayback without video", () => {
+  it("plays audio-only files directly and converts unsupported audio", () => {
+    expect(
+      decidePlayback(probe({ video: null, audio: [aac()] }), {
+        autoConvert: true,
+      }),
+    ).toMatchObject({ mode: "direct" });
+    const flacOnly = decidePlayback(
+      probe({
+        video: null,
+        audio: [audio("flac", { native: false, copy: false })],
+      }),
+      { autoConvert: true },
+    );
+    expect(flacOnly).toMatchObject({ mode: "convert", heavy: false });
+  });
+
+  it("fails with the original track's codec when audio can't be converted", () => {
+    expect(
+      decidePlayback(
+        probe({
+          video: null,
+          audio: [dts({ language: "jpn", original: true }), truehd()],
+        }),
+        { autoConvert: true },
+      ),
+    ).toEqual({
+      mode: "fail",
+      reason: "DTS audio isn't supported in this browser",
     });
   });
 });

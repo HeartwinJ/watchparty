@@ -471,3 +471,101 @@ describe("PickerPalette: stream list", () => {
     expect(await screen.findByText("Direct.One.mp4")).toBeTruthy();
   });
 });
+
+describe("PickerPalette: more empty-state and result rows", () => {
+  it("offers Stop sharing while we share", async () => {
+    const actions = makeActions({ sharing: "me" });
+    const { input, onClose } = renderPalette(actions);
+    await screen.findByText("Stop sharing");
+    await waitFor(() => expect(activeOption(input)).toBeTruthy());
+    key(input, "Enter");
+    expect(actions.stopSharing).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("recent titles open their streams; recent links queue first in queue mode", async () => {
+    window.localStorage.setItem(
+      "wp-recent-sources",
+      JSON.stringify([
+        {
+          kind: "title",
+          context: {
+            title: show,
+            episode: {
+              id: "tt0000002:1:3",
+              season: 1,
+              episode: 3,
+              title: "Three",
+              released: null,
+              thumbnail: null,
+            },
+          },
+          at: 2,
+        },
+        { kind: "title", context: { title: movie }, at: 3 },
+        {
+          kind: "url",
+          url: "https://v.example.com/b.mp4",
+          name: "Link B",
+          img: "https://img.example.com/b.jpg",
+          at: 1,
+        },
+      ]),
+    );
+    const actions = makeActions();
+    const { input } = renderPalette(actions, vi.fn(), null, "queue");
+    expect(
+      await screen.findByText("S01E03 · Three · pick a stream"),
+    ).toBeTruthy();
+    expect(screen.getByText("Movie · pick a stream")).toBeTruthy();
+    // Link rows: Enter queues in queue mode, Shift+Enter plays
+    const linkRow = screen.getByText("Link B").closest('[role="option"]')!;
+    await waitFor(() => expect(activeOption(input)).toBeTruthy());
+    for (let i = 0; i < 10 && activeOption(input) !== linkRow; i++) {
+      key(input, "ArrowDown");
+    }
+    key(input, "Enter");
+    expect(actions.queueUrl).toHaveBeenCalledWith(
+      "https://v.example.com/b.mp4",
+      { name: "Link B", img: "https://img.example.com/b.jpg" },
+    );
+    key(input, "Enter", { shiftKey: true });
+    expect(actions.playUrl).toHaveBeenCalledWith(
+      "https://v.example.com/b.mp4",
+      { name: "Link B", img: "https://img.example.com/b.jpg" },
+    );
+    // A recent title opens the episode's streams
+    const titleRow = screen
+      .getByText("S01E03 · Three · pick a stream")
+      .closest('[role="option"]')!;
+    for (let i = 0; i < 10 && activeOption(input) !== titleRow; i++) {
+      key(input, "ArrowUp");
+    }
+    key(input, "Enter");
+    expect(await screen.findByText("Direct.One.mp4")).toBeTruthy();
+  });
+
+  it("YouTube rows: the button queues, or plays in queue mode", async () => {
+    const actions = makeActions();
+    const { input } = renderPalette(actions);
+    type(input, "clips");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add Clip One to queue" }),
+    );
+    expect(actions.queueUrl).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+      { name: "Clip One", img: "" },
+    );
+    cleanup();
+    const queueActions = makeActions();
+    const q = renderPalette(queueActions, vi.fn(), null, "queue");
+    type(q.input, "clips");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Play Clip Two now" }),
+    );
+    expect(queueActions.playUrl).toHaveBeenCalledWith(
+      "https://www.youtube.com/watch?v=bbbbbbbbbbb",
+      { name: "Clip Two", img: "" },
+    );
+  });
+});

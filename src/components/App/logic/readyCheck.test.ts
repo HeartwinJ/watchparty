@@ -172,3 +172,62 @@ describe("describeReadyCheckChange", () => {
     ).toBeNull();
   });
 });
+
+describe("ready check edge cases", () => {
+  it("has no names and a generic pill with nobody to wait for", () => {
+    expect(formatNames([], names, "me")).toBe("");
+    expect(waitingLabel({ active: true, waitingFor: [] }, names, "me")).toBe(
+      "Getting ready…",
+    );
+    expect(
+      waitingLabel({ active: false, waitingFor: ["a"] }, names, "me"),
+    ).toBe("");
+  });
+
+  it("names everyone waited for without a trigger, and stays quiet with nobody", () => {
+    expect(
+      describeReadyCheckChange(
+        null,
+        { active: true, waitingFor: ["a", "b"], reason: "buffering" },
+        names,
+        "me",
+      )?.text,
+    ).toBe("Paused — waiting for Sam and Alex to buffer");
+    expect(
+      describeReadyCheckChange(
+        null,
+        { active: true, waitingFor: [], reason: "buffering" },
+        names,
+        "me",
+      ),
+    ).toBeNull();
+  });
+
+  it("ends a timeout without names, and an anonymous skip", () => {
+    const prev: ReadyCheckState = { active: true, waitingFor: [] };
+    expect(
+      describeReadyCheckChange(
+        prev,
+        { active: false, waitingFor: [], outcome: "timeout" },
+        names,
+        "me",
+      )?.text,
+    ).toBe("Resumed without waiting longer");
+    expect(
+      describeReadyCheckChange(
+        prev,
+        { active: false, waitingFor: [], outcome: "skipped", actorId: "zz" },
+        names,
+        "me",
+      )?.text,
+    ).toBe("Someone resumed without waiting");
+    expect(
+      describeReadyCheckChange(
+        prev,
+        { active: false, waitingFor: [], outcome: "skipped" },
+        names,
+        "me",
+      )?.text,
+    ).toBe("Someone resumed without waiting");
+  });
+});

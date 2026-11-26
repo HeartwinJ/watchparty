@@ -98,12 +98,16 @@ const SUBS = [
 
 let subtitles: () => Response;
 let srt: () => Response;
+let searchReply: () => Response | Promise<Response>;
+let metaReply: () => Response;
 let fileNameSearch = false;
 const calls: { url: string; init?: RequestInit }[] = [];
 
 beforeEach(() => {
   subtitles = () => json(SUBS);
   srt = () => new Response(SRT);
+  searchReply = () => json({ movies: [MOVIE], series: [SHOW], anime: [] });
+  metaReply = () => json(META);
   fileNameSearch = false;
   calls.length = 0;
   resetAddonsConfigured();
@@ -118,10 +122,10 @@ beforeEach(() => {
       }
       const path = new URL(url).pathname;
       if (path === "/addon/search") {
-        return json({ movies: [MOVIE], series: [SHOW], anime: [] });
+        return searchReply();
       }
       if (path.startsWith("/addon/meta/series/")) {
-        return json(META);
+        return metaReply();
       }
       if (path.startsWith("/addon/subtitles/")) {
         return subtitles();
@@ -313,5 +317,80 @@ describe("SubtitleSearch", () => {
     const props = renderSearch();
     fireEvent.click(await screen.findByText(/Search by file name/));
     expect(props.openFileNameSearch).toHaveBeenCalled();
+  });
+});
+
+describe("SubtitleSearch edge cases", () => {
+  it("explains a failed title search and retries it", async () => {
+    searchReply = () => json({ error: "upstream_error" }, 502);
+    renderSearch();
+    expect(
+      await screen.findByText("The title search didn't answer"),
+    ).toBeTruthy();
+    searchReply = () => json({ movies: [MOVIE], series: [SHOW], anime: [] });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Breaking Bad")).toBeTruthy();
+  });
+
+  it("shows other errors as they are", async () => {
+    searchReply = () => json({ error: "not_found" }, 404);
+    renderSearch();
+    await screen.findByRole("button", { name: "Try again" });
+  });
+
+  it("goes back to the hint when the query is cleared", async () => {
+    renderSearch();
+    await screen.findByText("Breaking Bad");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: " " } });
+    expect(await screen.findByText(/Type the name/)).toBeTruthy();
+  });
+
+  it("replaces a poster that doesn't load", async () => {
+    renderSearch({
+      mediaUrl: "https://files.example.com/x/Shawshank.1994.mkv",
+    });
+    await screen.findByText("The Shawshank Redemption");
+    const img = document.querySelector("img")!;
+    expect(img.getAttribute("src")).toBe(MOVIE.poster);
+    fireEvent.error(img);
+    await waitFor(() => expect(document.querySelector("img")).toBeNull());
+  });
+
+  it("switches seasons, lists specials last and falls back to the first real season", async () => {
+    metaReply = () =>
+      json({
+        ...META,
+        seasons: [
+          {
+            season: 0,
+            episodes: [
+              { id: "tt0903747:0:1", season: 0, episode: 1, title: "Minisode" },
+            ],
+          },
+          ...META.seasons,
+        ],
+      });
+    renderSearch({ mediaUrl: "https://files.example.com/x/Breaking.Bad.mkv" });
+    fireEvent.click(await screen.findByText("Breaking Bad"));
+    expect(
+      await screen.findByRole("button", { name: "Season 1", pressed: true }),
+    ).toBeTruthy();
+    expect(screen.getByText("Pilot")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Specials" }));
+    expect(await screen.findByText("Minisode")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Season 2" }));
+    expect(await screen.findByText("Bit by a Dead Bee")).toBeTruthy();
+  });
+
+  it("explains a failed episode list and retries it", async () => {
+    metaReply = () => json({ error: "upstream_timeout" }, 504);
+    renderSearch();
+    fireEvent.click(await screen.findByText("Breaking Bad"));
+    expect(
+      await screen.findByText("The title search took too long to answer"),
+    ).toBeTruthy();
+    metaReply = () => json(META);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Down")).toBeTruthy();
   });
 });

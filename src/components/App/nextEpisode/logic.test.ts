@@ -138,3 +138,49 @@ describe("nextEpisodeNotice", () => {
     ).toBeNull();
   });
 });
+
+describe("next episode edge cases", () => {
+  it("labels episodes without a season or number", () => {
+    expect(episodeLabel({ season: null, episode: 5 })).toBe("E05");
+    expect(episodeLabel({ season: 1, episode: null })).toBe("");
+  });
+
+  it("uses the poster when there's no thumbnail, and the show name without a code", () => {
+    const movieLike = {
+      ...meta,
+      season: null,
+      episode: null,
+      episodeTitle: null,
+    };
+    expect(describeNext({ meta: movieLike, thumbnail: null })).toMatchObject({
+      heading: "Up next",
+      short: meta.title,
+      image: meta.poster,
+    });
+  });
+
+  it("falls back to Someone for an unknown person", () => {
+    expect(
+      nextEpisodeNotice(
+        { state: "cancelled", by: { id: "zz" } },
+        { clientId: "me", nameMap: {} },
+      ),
+    ).toBe("Someone cancelled the next episode");
+    expect(
+      nextEpisodeNotice(
+        { state: "cancelled", by: null },
+        { clientId: "me", nameMap: {} },
+      ),
+    ).toBe("Next episode cancelled");
+    expect(
+      nextEpisodeNotice(
+        {
+          state: "starting",
+          next: { meta, thumbnail: null },
+          by: { id: "me" },
+        },
+        { clientId: "me", nameMap: {} },
+      ),
+    ).toBe("Up next: Example Show · S01E03");
+  });
+});

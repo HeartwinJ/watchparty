@@ -212,6 +212,8 @@ const RoomWideSettings = ({ room, roomId }: { room: Room; roomId: string }) => {
         placeholder={prettyRoomName(roomId)}
         maxLength={ROOM_TITLE_MAX}
         value={titleDraft ?? roomSettings.title}
+        // The modal closes on Escape in a window capture listener, so stopPropagation() can't stop it; this can
+        data-mantine-stop-propagation={titleDraft !== null || undefined}
         onChange={(e) => setTitleDraft(e.currentTarget.value)}
         onBlur={saveTitle}
         onKeyDown={(e) => {
@@ -488,6 +490,7 @@ export const RoomPasswordSettings = ({ room }: { room: Room }) => {
             autoCapitalize="none"
             spellCheck={false}
             autoFocus
+            data-mantine-stop-propagation
             onChange={(e) => setDraft(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") {

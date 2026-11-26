@@ -73,4 +73,17 @@ describe("TapDetector", () => {
     vi.advanceTimersByTime(1000);
     expect(single).not.toHaveBeenCalled();
   });
+
+  it("a late second tap replaces a pending one whose timer hasn't fired yet", () => {
+    const single = vi.fn();
+    const double = vi.fn();
+    const d = new TapDetector<string>(single, double, 100);
+    d.tap("a", 0);
+    // The clock says the window passed, but the single-tap timer hasn't run (e.g. a busy main thread)
+    d.tap("b", 500);
+    vi.advanceTimersByTime(100);
+    expect(single).toHaveBeenCalledTimes(1);
+    expect(single).toHaveBeenCalledWith("b");
+    expect(double).not.toHaveBeenCalled();
+  });
 });

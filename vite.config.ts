@@ -44,6 +44,8 @@ export default {
         "words/**",
         "build/**",
         "dist-server/**",
+        // Shared test fakes (socket, browser APIs, mediabunny)
+        "src/test/**",
         // The process entry point (listen, timers, signals); the app itself is createApp() in server/app.ts
         "server/server.ts",
       ],
@@ -58,10 +60,10 @@ export default {
           branches: 95,
         },
         "src/**": {
-          lines: 68,
-          statements: 68,
-          functions: 64,
-          branches: 63,
+          lines: 98,
+          statements: 98,
+          functions: 97,
+          branches: 94,
         },
       },
     },
