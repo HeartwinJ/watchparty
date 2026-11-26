@@ -67,6 +67,24 @@ describe("getMediaDisplayName", () => {
     expect(getMediaDisplayName("fileshare://u1", ctx)).toBe("Alex's file");
   });
 
+  it("takes the sharer from the URL when the roster hasn't caught up", () => {
+    const lagging = { ...ctx, participants: [], nameMap: { u2: "Sam" } };
+    expect(getMediaDisplayName("screenshare://u2", lagging)).toBe(
+      "Sam's screen",
+    );
+    expect(getMediaDisplayName("fileshare://u2@x", lagging)).toBe("Sam's file");
+  });
+
+  it("never shows undefined for an unknown sharer", () => {
+    const empty = { ...ctx, participants: [], nameMap: {} };
+    expect(getMediaDisplayName("screenshare://gone", empty)).toBe(
+      "a shared screen",
+    );
+    expect(getMediaDisplayName("fileshare://gone", empty)).toBe(
+      "a shared file",
+    );
+  });
+
   it("uses the displayName of proxied URLs", () => {
     expect(
       getMediaDisplayName(

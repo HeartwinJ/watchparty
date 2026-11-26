@@ -20,6 +20,7 @@ import {
   isEmojiString,
 } from "../../utils/utils";
 import type { RoomCommands } from "../App/socketEvents";
+import { parseShareUrl } from "../App/logic/media";
 import {
   CSSTransition,
   SwitchTransition,
@@ -189,7 +190,7 @@ export class Chat extends React.Component<ChatProps> {
   };
 
   formatMessage = (cmd: string, msg?: string): React.ReactNode | string => {
-    if (cmd === "host") {
+    if (cmd === "host" && !parseShareUrl(msg)) {
       return (
         <React.Fragment>
           {`changed the video to `}
