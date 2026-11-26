@@ -71,8 +71,14 @@ export const isFileShare = (input: string) => {
   return input.startsWith("fileshare://");
 };
 
+/**
+ * A blocked autoplay rejects at once; the library's default 250 ms timeout also fails a slow or busy device, which
+ * then got a needless "Unmute" scrim that swallowed its first click (e.g. on the seek bar).
+ */
+export const AUTOPLAY_TEST_TIMEOUT_MS = 2000;
+
 export async function testAutoplay() {
-  const result = await canAutoplay.video();
+  const result = await canAutoplay.video({ timeout: AUTOPLAY_TEST_TIMEOUT_MS });
   return result.result;
 }
 

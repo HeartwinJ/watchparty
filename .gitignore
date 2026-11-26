@@ -32,3 +32,8 @@ yarn-error.log*
 .claude/worktrees/
 # Compiled server (npm run buildServer)
 /dist-server
+# Playwright e2e output and server data
+/test-results
+/playwright-report
+/blob-report
+/e2e/.data
