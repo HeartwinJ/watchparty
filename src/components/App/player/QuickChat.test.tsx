@@ -191,6 +191,71 @@ describe("QuickChat", () => {
     });
   });
 
+  describe("recent messages", () => {
+    const line = (
+      id: string,
+      t: number,
+      msg: string,
+      cmd?: string,
+    ): ChatMessage => ({
+      id,
+      msg,
+      cmd,
+      timestamp: new Date(t * 1000).toISOString(),
+    });
+    const names = { a: "Ann", b: "Ben" };
+    const history = [
+      line("a", 1, "first"),
+      line("b", 2, "second"),
+      line("a", 3, "10", "pause"),
+      line("me", 4, "third"),
+      line("b", 5, "fourth"),
+      line("", 6, '{"via":"queue","title":"Ep 2"}', "nowPlaying"),
+    ];
+    const renderWith = (chat: ChatMessage[]) =>
+      render(
+        <QuickChat
+          onSend={() => {}}
+          onClose={() => {}}
+          chat={chat}
+          nameMap={names}
+          clientId="me"
+        />,
+        { wrapper: MantineProvider },
+      );
+    const lines = () =>
+      Array.from(
+        screen.getByRole("log", { name: "Recent messages" }).children,
+      ).map((el) => el.textContent);
+
+    it("shows the last 3 typed messages from history, skipping system lines", () => {
+      renderWith(history);
+      expect(lines()).toEqual(["Bensecond", "Youthird", "Benfourth"]);
+      const log = screen.getByRole("log", { name: "Recent messages" });
+      // Not focusable clutter
+      expect(log.querySelector("[tabindex], button, a")).toBeNull();
+    });
+
+    it("updates live: a new message pushes the oldest out", () => {
+      const view = renderWith(history);
+      view.rerender(
+        <QuickChat
+          onSend={() => {}}
+          onClose={() => {}}
+          chat={[...history, line("a", 7, "fifth")]}
+          nameMap={names}
+          clientId="me"
+        />,
+      );
+      expect(lines()).toEqual(["Youthird", "Benfourth", "Annfifth"]);
+    });
+
+    it("shows nothing without conversation", () => {
+      renderWith([line("a", 1, "5", "play"), line("b", 2, "9", "seek")]);
+      expect(screen.queryByRole("log")).toBeNull();
+    });
+  });
+
   describe("emoji picker", () => {
     it("opens from the emoji button", () => {
       const { emojiButton, picker, clickEmojiButton } = setup();

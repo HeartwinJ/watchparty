@@ -229,7 +229,12 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   While it's open the countdown is paused and the ring hidden; closing it with the input empty restarts the full 5 s
   (`emptySinceAfterPicker`). Esc closes only the picker first (outside fullscreen), a click outside it (but not on the
   bar) closes it, and the picker is a `data-no-shortcuts` zone, so typing in its search box never triggers player
-  shortcuts.
+  shortcuts. Just above the bar, the **last 3 messages** people typed (older history too, oldest first, "You" for your
+  own, clamped to 2 lines, same look as the bubbles) give context for the reply: `recentConversation()`
+  (`quickChatPreview.ts`, pure) skips system and personless lines, so nothing shows without conversation. It's a
+  labelled `role="log"` region, updates live (a new message pushes the oldest out), and goes away with the quick chat.
+  While quick chat is open the 8 s bubbles (`ChatOverlay`) aren't shown, to avoid duplicates; they resume for new
+  messages when it closes. The emoji picker opens over it.
 - **Chat panel** (`ChatPanel.tsx`, `useChatPanel.ts`, pure logic in `chatPanel.ts`): the real `Chat` in a translucent
   panel over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control
   bar so both stay usable. Offered where quick chat is (`fullscreen || sidebarCollapsed`, not on the phone layout's

@@ -666,6 +666,48 @@
   }
 }
 
+/* The last 3 messages, just above the quick chat bar (same look as the bubbles; not interactive) */
+.quickChatPreview {
+  position: absolute;
+  left: var(--wp-sp-5);
+  bottom: calc(96px + 42px + var(--wp-sp-2));
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100% - 96px - 42px - var(--wp-sp-2) - var(--wp-sp-3));
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  overflow: hidden;
+  z-index: var(--wp-z-chat-overlay);
+  pointer-events: none;
+  color: var(--wp-on-video);
+}
+
+.quickChatPreviewLine {
+  flex: none;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: var(--wp-r-lg);
+  background: rgba(10, 10, 14, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-size: var(--wp-fs-sm);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  /* Long messages: 2 lines */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  animation: wpFadeUp var(--wp-dur-slow) var(--wp-ease);
+}
+
+.quickChatPreviewLine b {
+  margin-right: 6px;
+}
+
 .quickChatEmoji {
   flex: none;
   color: var(--wp-on-video-2);
@@ -1323,6 +1365,13 @@
   .quickChat {
     left: var(--wp-sp-3);
     bottom: 64px;
+  }
+
+  .quickChatPreview {
+    left: var(--wp-sp-3);
+    bottom: calc(64px + 42px + var(--wp-sp-2));
+    width: calc(100% - 2 * var(--wp-sp-3));
+    max-height: calc(100% - 64px - 42px - var(--wp-sp-2) - var(--wp-sp-2));
   }
 
   .quickChatPicker {

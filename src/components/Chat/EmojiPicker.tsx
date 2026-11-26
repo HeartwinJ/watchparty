@@ -35,8 +35,7 @@ export const EmojiPicker = (props: EmojiPickerProps) => {
         perLine,
         onEmojiSelect: (emoji: { native: string }) =>
           propsRef.current.onEmojiSelect(emoji),
-        onClickOutside: (e: MouseEvent) =>
-          propsRef.current.onClickOutside?.(e),
+        onClickOutside: (e: MouseEvent) => propsRef.current.onClickOutside?.(e),
       }) as unknown as HTMLElement;
       containerRef.current.append(picker);
     });
