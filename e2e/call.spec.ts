@@ -229,3 +229,99 @@ test("three people: a third joins, turns the camera on, and someone reloads", as
   await cameraKey(b);
   await expectCall([a, b, c], () => 2, "B camera on after the reload");
 });
+
+/** How much inbound video (frames decoded) and audio (packets) this page got, over all its peer connections. */
+function inbound(page: Page) {
+  return page.evaluate(async () => {
+    let videoFrames = 0;
+    let audioPackets = 0;
+    for (const pc of window.__pcs.filter(
+      (p) => p.connectionState !== "closed",
+    )) {
+      (await pc.getStats()).forEach((s) => {
+        if (s.type === "inbound-rtp" && s.kind === "video") {
+          videoFrames += s.framesDecoded ?? 0;
+        } else if (s.type === "inbound-rtp" && s.kind === "audio") {
+          audioPackets += s.packetsReceived ?? 0;
+        }
+      });
+    }
+    return { videoFrames, audioPackets };
+  });
+}
+
+/** Inbound growth over `ms` */
+async function inboundGrowth(page: Page, ms = 1500) {
+  const before = await inbound(page);
+  await page.waitForTimeout(ms);
+  const after = await inbound(page);
+  return {
+    video: after.videoFrames - before.videoFrames,
+    audio: after.audioPackets - before.audioPackets,
+  };
+}
+
+/** Polls until this page gets no new video frames while audio keeps coming */
+async function expectVideoStopped(v: Viewer, stage: string) {
+  await expect
+    .poll(
+      async () => {
+        const g = await inboundGrowth(v.page);
+        return g.video === 0 && g.audio > 0 ? "ok" : JSON.stringify(g);
+      },
+      {
+        message: `${stage}: ${v.label} gets audio but no video`,
+        timeout: 20_000,
+      },
+    )
+    .toBe("ok");
+}
+
+test("hidden or collapsed video tiles stop receiving camera video; voice and the others are unaffected", async ({
+  join,
+  baseURL,
+}) => {
+  const room = await createRoom(baseURL!);
+  const a = await joinPage(join, room, "A");
+  const b = await joinPage(join, room, "B");
+  const c = await joinPage(join, room, "C");
+  for (const v of [a, b, c]) {
+    await joinCall(v);
+  }
+  await cameraKey(a);
+  await cameraKey(c);
+  await expectCall([a, b, c], (v) => (v === b ? 2 : 1), "A and C cameras");
+
+  // B hides the tiles: A and C stop sending B video, B still hears them, C still gets A's camera
+  await b.page
+    .getByRole("button", { name: "Hide video tiles on this device" })
+    .click();
+  await expectVideoStopped(b, "B hid the tiles");
+  for (const v of [a, c]) {
+    expect(await liveRemoteVideos(v.page)).toBe(1);
+  }
+  expect((await inboundGrowth(c.page)).video).toBeGreaterThan(0);
+
+  // B shows them again (call panel switch): video resumes quickly
+  await openCallPanel(b.page);
+  await b.page.getByRole("switch", { name: /Show video tiles/ }).click();
+  await openCallPanel(b.page);
+  await expect
+    .poll(() => liveRemoteVideos(b.page), {
+      message: "B sees both cameras again",
+      timeout: 10_000,
+    })
+    .toBe(2);
+
+  // Collapsing the strip works the same way
+  await b.page.getByRole("button", { name: "Collapse call video" }).click();
+  await expectVideoStopped(b, "B collapsed the strip");
+  await b.page.getByRole("button", { name: "Show call video (2)" }).click();
+  await expect
+    .poll(() => liveRemoteVideos(b.page), {
+      message: "B sees both cameras after expanding",
+      timeout: 10_000,
+    })
+    .toBe(2);
+  await expectCall([a, b, c], (v) => (v === b ? 2 : 1), "everyone again");
+});
