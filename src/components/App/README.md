@@ -423,7 +423,7 @@ Voice, plus an optional camera (see **Camera** below).
   (the fullscreen target) and shows only while we're in the call and someone has `camera` on (`videoMembers`; our own
   tile follows our local camera state). A column of 4:3 tiles (wrapping into more columns; the grid never has more
   rows than tiles, or the strip would be too tall to move), draggable (5 px threshold so a click still enlarges; the
-  move and release are followed on `window`, so a quick drag that leaves the strip keeps going), collapsible into a pill, with a hover header (always visible on touch). Position is stored
+  move and release are followed on `window`, so a quick drag that leaves the strip keeps going), collapsible into a pill (which fades out with the player's controls while idle, via the player root's `data-idle`, unless it's focused), with a hover header (always visible on touch). Position is stored
   per device (`wp-call-tiles`: fractions of the safe area, so it keeps its corner when resizing or going fullscreen);
   the default is top-left so a fullscreen chat panel sliding in from the right stays clear: change
   `DEFAULT_STRIP_POSITION`, or reserve an edge with `stripInsets({reserve})`. The safe area avoids the fullscreen title

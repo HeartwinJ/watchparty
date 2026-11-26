@@ -17,6 +17,17 @@
   cursor: grabbing;
 }
 
+/* Collapsed to a pill: it shows and hides with the player's controls (kept while focused or being dragged) */
+.strip[data-collapsed] {
+  transition: opacity var(--wp-dur-slow) var(--wp-ease);
+}
+
+[data-idle="true"]
+  > .strip[data-collapsed]:not(:focus-within, [data-dragging]) {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -196,7 +207,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tile,
-  .header {
+  .header,
+  .strip[data-collapsed] {
     transition: none;
   }
 }
