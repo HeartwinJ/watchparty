@@ -211,7 +211,8 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   page, and only on players ≥ 480 px wide: `chatPanelAllowed`); 40 % of the player, 260–380 px (`chatPanelWidth`).
   **Starts collapsed every time** it becomes available and closes when it stops (`chatPanelReducer`; open state isn't
   remembered). Toggle: the control bar's chat button (auto-hides with the controls) or Shift+C; close: its × button,
-  clicking/tapping the video (that click doesn't pause), Esc outside fullscreen (in fullscreen the browser takes Esc and
+  clicking/tapping the video (that click doesn't pause), Esc outside fullscreen (an open emoji or reaction picker
+  closes first, the next Esc closes the panel; in fullscreen the browser takes Esc and
   exits fullscreen, which closes it too). Opening focuses its input (not on touch screens, where that would pop the
   keyboard over the video), hides the bubbles and closes quick chat; `c` then focuses its input. The panel's `Chat` has
   its own ref (`room.chatRef` stays the sidebar's) and its own draft; it's mounted on the first open and unmounted when
