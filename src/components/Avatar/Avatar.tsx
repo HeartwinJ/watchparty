@@ -12,6 +12,7 @@ export const UserAvatar = ({
   picture,
   size = 28,
   presence,
+  speaking,
   className,
 }: {
   id: string;
@@ -20,6 +21,8 @@ export const UserAvatar = ({
   size?: number;
   /** Shows a small green presence dot */
   presence?: boolean;
+  /** Voice call: a ring while they're speaking */
+  speaking?: boolean;
   className?: string;
 }) => {
   const style = {
@@ -32,6 +35,7 @@ export const UserAvatar = ({
     <span
       className={`${styles.avatar} ${className ?? ""}`}
       style={style}
+      data-speaking={speaking || undefined}
       aria-hidden="true"
     >
       {picture ? (
@@ -49,10 +53,13 @@ export const AvatarStack = ({
   users,
   max = 4,
   size = 26,
+  speaking,
 }: {
   users: { id: string; name?: string; picture?: string }[];
   max?: number;
   size?: number;
+  /** Voice call: ids of people speaking (ringed) */
+  speaking?: string[];
 }) => {
   const shown = users.slice(0, max);
   const rest = users.length - shown.length;
@@ -68,6 +75,7 @@ export const AvatarStack = ({
           name={u.name}
           picture={u.picture}
           size={size}
+          speaking={speaking?.includes(u.id)}
           className={styles.stacked}
         />
       ))}

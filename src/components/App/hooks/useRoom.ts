@@ -33,6 +33,7 @@ import { usePlaylist } from "./usePlaylist";
 import { useSubtitles } from "./useSubtitles";
 import { useReadyCheck } from "./useReadyCheck";
 import { useSubtitleSync } from "../subsync/useSubtitleSync";
+import { useCall } from "../call/useCall";
 import { toast } from "../ui/toast";
 import { useAuth } from "../../AuthGate/AuthGate";
 import { navigate } from "../../../router";
@@ -134,6 +135,7 @@ export function useRoom(roomId: string) {
     clientId,
     connected: Boolean(socket),
   });
+  const call = useCall({ store, cmd, clientId, roomId, player });
 
   const actions = useMemo(() => {
     const updateName = (name: string) => {
@@ -311,6 +313,7 @@ export function useRoom(roomId: string) {
           warningMessage: "",
         });
         player.setSocketConnected(true);
+        call.onConnect();
         // Use the name in our state, generate one if empty
         updateName(store.get().myName || (await generateName()));
       },
@@ -327,6 +330,7 @@ export function useRoom(roomId: string) {
       },
       disconnect: (reason) => {
         player.setSocketConnected(false);
+        call.onDisconnect(reason);
         if (reason === "io server disconnect") {
           // the disconnection was initiated by the server, you need to reconnect manually
           store.set({ overlayMsg: "Disconnected from server." });
@@ -420,6 +424,9 @@ export function useRoom(roomId: string) {
       "REC:nextEpisode": (nextEpisode) =>
         store.set({ nextEpisode: { ...nextEpisode, at: Date.now() } }),
       signalSS: share.handleSignal,
+      "REC:callState": call.onState,
+      "REC:callSignal": call.onSignal,
+      "REC:callModerated": call.onModerated,
     };
 
     return { updateName, displayName, handlers };
@@ -435,6 +442,7 @@ export function useRoom(roomId: string) {
     subtitles,
     subsync,
     readyCheck,
+    call,
     shareSession,
     showMessage,
   ]);
@@ -509,6 +517,7 @@ export function useRoom(roomId: string) {
     subtitles,
     subsync,
     readyCheck,
+    call,
     showError,
     updateName: actions.updateName,
     getMediaDisplayName: actions.displayName,

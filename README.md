@@ -15,6 +15,7 @@ A self-hosted site for watching videos in sync with friends. This is a personal 
 - **Ready check** (on by default, can be turned off per room): when someone buffers or joins mid-play, the room pauses until everyone has enough loaded.
 - **Next episode**: near the end of an episode, everyone gets an "Up next" card. It plays the next episode from the same release automatically unless someone cancels.
 - **Continue watching** on the home page: what you were watching, with progress, resumes in a new room where you left off.
+- **Voice call** (audio for now): join from the room's top bar, pick your mic and check its level first. If the video is playing you join muted (so you don't talk over the movie); after that, play/pause never changes your mic. `M` mutes and unmutes, optional push-to-talk (hold `T`), speaking rings on avatars, and an optional per-device "lower the movie while people talk" (40 % quieter while someone speaks). Owners can ask someone to mute or remove them from the call. Peer-to-peer (fine for a handful of people); a reload or a dropped connection rejoins on its own. **TURN credentials (`CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN`) are strongly recommended**: without a relay, calls between some networks (mobile data, strict NATs) can't connect.
 
 **Sources**
 
@@ -69,7 +70,7 @@ All settings are environment variables. See [`.env.example`](.env.example) and `
 | `APP_PASSWORD`                         | Instance password. Blank turns off auth (fine for local dev only)                                 |
 | `SESSION_SECRET`                       | Signs login cookies. Set it in production so logins survive restarts                              |
 | `DATA_DIR`                             | Where the SQLite database lives (default `./data`)                                                |
-| `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` | Cloudflare Realtime TURN relay for screen/file share behind strict networks                       |
+| `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN` | Cloudflare Realtime TURN relay for voice calls and screen/file share behind strict networks       |
 | `AIOSTREAMS_MANIFEST_URL`              | Your AIOStreams manifest URL. Turns on movies & shows search. **Secret**: it contains your config |
 | `SUBTITLE_LANGS`                       | Preferred languages for automatic subtitles, e.g. `en,es` (default `en`)                          |
 | `ROOM_MAX_IDLE_DAYS`                   | Delete rooms nobody has used for this many days (default `60`, `0` = never)                       |

@@ -13,8 +13,11 @@ import {
   IconCopy,
   IconDots,
   IconFile,
+  IconHeadset,
   IconKey,
+  IconMicrophoneOff,
   IconPencil,
+  IconPhoneOff,
   IconScreenShare,
   IconUserX,
 } from "@tabler/icons-react";
@@ -117,6 +120,14 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
                   hasMedia,
                   hasDuration,
                 });
+            const member = state.call.members.find((m) => m.clientId === p.id);
+            const callMuted =
+              member &&
+              (isMe && state.call.status !== "idle"
+                ? state.call.pushToTalk
+                  ? !state.call.pttHeld
+                  : state.call.muted
+                : member.muted);
             const sharing = p.isScreenShare
               ? isFileShare(state.roomMedia)
                 ? "Sharing a file"
@@ -130,6 +141,7 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
                   picture={state.pictureMap[p.id]}
                   size={32}
                   presence
+                  speaking={state.call.speaking.includes(p.id)}
                 />
                 <div className={styles.personInfo}>
                   <div className={styles.personName}>
@@ -145,6 +157,33 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
                     {playback.label}
                   </div>
                 </div>
+                {member && (
+                  <Tooltip
+                    label={
+                      member.reconnecting
+                        ? "In the voice call · reconnecting"
+                        : callMuted
+                          ? "In the voice call · muted"
+                          : "In the voice call"
+                    }
+                  >
+                    <span
+                      className={callMuted ? styles.callMuted : styles.callIcon}
+                      data-reconnecting={member.reconnecting || undefined}
+                      aria-label={
+                        callMuted
+                          ? "In the voice call, muted"
+                          : "In the voice call"
+                      }
+                    >
+                      {callMuted ? (
+                        <IconMicrophoneOff size={16} />
+                      ) : (
+                        <IconHeadset size={16} />
+                      )}
+                    </span>
+                  </Tooltip>
+                )}
                 {sharing && (
                   <Tooltip label={sharing}>
                     <span className={styles.dim} aria-label={sharing}>
@@ -161,6 +200,15 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
                   <PersonMenu
                     name={name}
                     onKick={() => room.cmd.kickUser(p.id)}
+                    call={
+                      member
+                        ? {
+                            muted: member.muted,
+                            onMute: () => room.call.moderate(p.id, "mute"),
+                            onRemove: () => room.call.moderate(p.id, "remove"),
+                          }
+                        : undefined
+                    }
                   />
                 )}
               </li>
@@ -172,8 +220,17 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
   );
 };
 
-/** Owners: actions on someone else (remove them from the room) */
-const PersonMenu = ({ name, onKick }: { name: string; onKick: () => void }) => (
+/** Owners: actions on someone else (mute in / remove from the voice call, remove from the room) */
+const PersonMenu = ({
+  name,
+  onKick,
+  call,
+}: {
+  name: string;
+  onKick: () => void;
+  /** Set while they're in the voice call */
+  call?: { muted: boolean; onMute: () => void; onRemove: () => void };
+}) => (
   <Menu position="bottom-end" width={220} zIndex={400} withinPortal>
     <Menu.Target>
       <ActionIcon
@@ -186,6 +243,25 @@ const PersonMenu = ({ name, onKick }: { name: string; onKick: () => void }) => (
       </ActionIcon>
     </Menu.Target>
     <Menu.Dropdown>
+      {call && (
+        <>
+          <Menu.Item
+            leftSection={<IconMicrophoneOff size={16} />}
+            disabled={call.muted}
+            onClick={call.onMute}
+          >
+            Mute in call
+            <div className={styles.menuHint}>They can unmute themselves</div>
+          </Menu.Item>
+          <Menu.Item
+            leftSection={<IconPhoneOff size={16} />}
+            onClick={call.onRemove}
+          >
+            Remove from call
+          </Menu.Item>
+          <Menu.Divider />
+        </>
+      )}
       <Menu.Item
         color="var(--wp-danger)"
         leftSection={<IconUserX size={16} />}

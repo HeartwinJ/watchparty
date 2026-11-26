@@ -27,6 +27,7 @@ import { usePlaybackState } from "./usePlaybackState";
 import { useSubtitleStyle } from "./useSubtitleStyle";
 import { useTextTracks } from "./useTextTracks";
 import styles from "./Player.module.css";
+import { inCall } from "../call/callReducer";
 
 /** Fired by the overflow menu to open the shortcuts overlay (shell/shortcuts.ts requestShortcutsOverlay) */
 const SHOW_SHORTCUTS_EVENT = "wp:show-shortcuts";
@@ -166,6 +167,18 @@ export const PlayerArea = ({ room }: { room: Room }) => {
           e.preventDefault();
           openChat();
           return;
+        case "toggleMute":
+          // In a voice call, M is the mic (the movie keeps its volume control); otherwise it mutes the video
+          if (inCall(s.call)) {
+            e.preventDefault();
+            if (s.call.pushToTalk) {
+              showOsd("Push to talk is on: hold T to talk");
+            } else {
+              showOsd(room.call.toggleMute() ? "Mic muted" : "Mic on");
+            }
+            return;
+          }
+          break;
       }
       if (!media) {
         return;
@@ -225,6 +238,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     showOsd,
     shortcuts,
     quickChat,
+    room.call,
   ]);
 
   // Close the quick chat if it no longer applies (left fullscreen with the sidebar open)

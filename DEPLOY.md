@@ -8,7 +8,7 @@ One `compose.yaml` runs the whole stack on a VPS that already has Docker:
 | `cloudflared` | Cloudflare Tunnel. Dials out to Cloudflare and forwards your hostname to `http://app:8080`. Provides HTTPS                               |
 | `backup`      | Nightly consistent SQLite backup into `backups/` in the same volume, keeping the last 7 (built locally from `backup/`, ~12 MB)           |
 
-**No ports are published on the host.** The stack has its own private network (`watchparty_watchparty`), so it doesn't touch your other services. WebRTC media (screen/file share) goes peer-to-peer, or through Cloudflare's TURN relay when P2P fails, so no UDP ports are needed either.
+**No ports are published on the host.** The stack has its own private network (`watchparty_watchparty`), so it doesn't touch your other services. WebRTC media (voice calls, screen/file share) goes peer-to-peer, or through Cloudflare's TURN relay when P2P fails, so no UDP ports are needed either.
 
 ## 1. Get the files onto the VPS
 
@@ -34,9 +34,9 @@ chmod 600 .env
    - Service type: **HTTP**, URL: **`app:8080`** (i.e. `http://app:8080`, the compose service name)
 5. Save. WebSockets are enabled by default on Cloudflare (Network → WebSockets for the zone); Socket.IO needs them, so leave that on.
 
-## 3. Create the TURN key (screen/file share across strict networks)
+## 3. Create the TURN key (voice calls and screen/file share across strict networks)
 
-Screen and file share are peer-to-peer WebRTC. Between some networks (mobile carriers, corporate NAT) P2P fails and traffic has to be relayed. Cloudflare Realtime TURN does that for free within its limits (check Cloudflare's pricing page).
+Voice calls and screen/file share are peer-to-peer WebRTC. Between some networks (mobile carriers, corporate NAT) P2P fails and traffic has to be relayed. Cloudflare Realtime TURN does that for free within its limits (check Cloudflare's pricing page).
 
 1. In the Cloudflare dashboard (account level, not Zero Trust) open **Realtime → TURN Server** and click **Create** (name it e.g. `watchparty`).
 2. Cloudflare shows a **Turn Token ID** and an **API Token** once. Put them in `.env`:
@@ -45,7 +45,7 @@ Screen and file share are peer-to-peer WebRTC. Between some networks (mobile car
    CF_TURN_API_TOKEN=<API Token>
    ```
 
-The API token stays on the server. Browsers only get short-lived credentials from `GET /iceServers`. If you skip this step, screen share still works when P2P succeeds (STUN only).
+The API token stays on the server. Browsers only get short-lived credentials from `GET /iceServers`. If you skip this step, calls and screen share still work when P2P succeeds (STUN only). **For voice calls it's strongly recommended:** a call is a connection between every pair of people, so one person on mobile data or a strict NAT can otherwise drop out of the call for everyone. When a call connection keeps failing, the browser switches it to relay-only, which only helps with TURN configured.
 
 ## 4. Fill in the rest of `.env`
 
@@ -143,7 +143,7 @@ The node process's RSS reads higher (~85 MB) because it counts ~60 MB of the nod
 ## Troubleshooting
 
 - **Login doesn't stick / you keep getting the password form:** always use the `https://` hostname from the tunnel. The app marks the session cookie `Secure` when the request arrived over HTTPS (it trusts cloudflared's `X-Forwarded-Proto` because cloudflared connects from a private address; see `TRUST_PROXY` in `server/config.ts` if you put another proxy in front). Screen/file share also need HTTPS (a secure context). And set `SESSION_SECRET`, otherwise every restart logs everyone out.
-- **Screen share connects for some people but not others:** that's a strict NAT. Set `CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN` (step 3). `curl` the app's `/iceServers` while logged in to check it returns `turn:` URLs.
+- **Screen share or a voice call connects for some people but not others** (in a call, someone stays "Reconnecting…" or "Connecting…"): that's a strict NAT. Set `CF_TURN_KEY_ID`/`CF_TURN_API_TOKEN` (step 3). `curl` the app's `/iceServers` while logged in to check it returns `turn:` URLs.
 - **`cloudflared` keeps restarting with "Provided Tunnel token is not valid":** recheck `TUNNEL_TOKEN` (no quotes, no `--token` prefix).
 - **Cloudflare shows 502 / "Bad gateway":** the public hostname must point at `http://app:8080` (not `localhost`), and `docker compose ps` should show `app` as healthy.
 - **App exits with "unable to open database file" / "is not writable by uid 1000":** the image's entrypoint fixes the data directory's ownership on start, and the default named volume doesn't need any host setup. If you changed the volume to a host folder (`./data:/app/data`), append `:z` on SELinux hosts (Fedora/RHEL) and make sure the folder is on a local filesystem.

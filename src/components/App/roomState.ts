@@ -2,6 +2,13 @@ import type { AudioTrackInfo } from "../../utils/clientTranscode";
 import type { Store } from "./hooks/useStore";
 import type { SyncStatus } from "./logic/sync";
 import type { SubtitleScope } from "./logic/subtitles";
+import { initialCallState, type CallUiState } from "./call/callReducer";
+import { CALL_PREFS, readPref } from "./call/logic";
+
+const readCallPrefs = () => ({
+  pushToTalk: readPref(CALL_PREFS.pushToTalk) === "1",
+  ducking: readPref(CALL_PREFS.ducking) === "1",
+});
 
 /**
  * A subtitle the menu can offer besides the room's own (e.g. auto subtitles found for an AIOStreams title). Picking
@@ -107,6 +114,8 @@ export interface RoomState {
   roomAccess: RoomAccessInfo | null;
   /** Set when an owner deleted the room while we were in it (REC:roomDeleted): the room page shows RoomDeleted */
   roomDeleted: { by: string | null } | null;
+  /** The voice call: membership (REC:callState) and this device's status, peers and speaking (call/) */
+  call: CallUiState;
 }
 
 /** Mirrors DEFAULT_ROOM_SETTINGS in server/roomSettings.ts */
@@ -192,5 +201,6 @@ export function createInitialRoomState(): RoomState {
     subtitleSyncRemote: null,
     roomAccess: null,
     roomDeleted: null,
+    call: initialCallState(readCallPrefs()),
   };
 }

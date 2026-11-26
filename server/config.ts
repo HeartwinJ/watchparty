@@ -17,7 +17,7 @@ const defaults = {
   APP_PASSWORD: "", // Instance password. If blank, auth is disabled and anyone can use the instance
   SESSION_SECRET: "", // Secret used to sign session cookies. If blank, a random one is generated per process (sessions reset on restart)
   TRUST_PROXY: "loopback, linklocal, uniquelocal", // Express "trust proxy" setting, so req.ip/req.secure honor X-Forwarded-* from cloudflared
-  CF_TURN_KEY_ID: "", // Optional, Cloudflare Realtime TURN key ID (enables TURN relay for screen/file share)
+  CF_TURN_KEY_ID: "", // Optional, Cloudflare Realtime TURN key ID (enables TURN relay for voice calls and screen/file share; strongly recommended for calls)
   CF_TURN_API_TOKEN: "", // Optional, Cloudflare Realtime TURN API token. Server-side only, never sent to clients
   YOUTUBE_API_KEY: "", // Optional, provide one to enable searching YouTube
   OPENSUBTITLES_KEY: "", // Optional, API key of an OpenSubtitles.com API consumer (profile -> API Consumers)

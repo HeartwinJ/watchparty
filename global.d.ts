@@ -203,3 +203,47 @@ type NextEpisodeState =
   | { state: "starting"; next: NextEpisodeInfo; by: PlaybackActor | null }
   /** It couldn't be found or has no playable stream (`next` is set when the episode itself is known) */
   | { state: "failed"; next: NextEpisodeInfo | null };
+
+/** Someone in the room's voice call (REC:callState). Call membership is separate from the roster. */
+interface CallMember {
+  clientId: string;
+  /** The member's call instance (new per page load): a new session means a new peer connection */
+  session: string;
+  muted: boolean;
+  /** Server time (ms) they joined; kept across a rejoin */
+  joinedAt: number;
+  /** Their socket dropped; they stay listed for a short grace period (see server/callState.ts) */
+  reconnecting: boolean;
+}
+
+/** REC:callState: everyone in the voice call, in join order (sent on connect and on every change) */
+interface CallState {
+  members: CallMember[];
+}
+
+/** WebRTC session description or ICE candidate for the voice call (CMD:callSignal / REC:callSignal) */
+interface CallSignalPayload {
+  description?: { type: "offer" | "answer" | "rollback"; sdp: string };
+  /** null = end of candidates */
+  candidate?: {
+    candidate: string;
+    sdpMid: string | null;
+    sdpMLineIndex: number | null;
+    usernameFragment: string | null;
+  } | null;
+}
+
+/** REC:callSignal: relayed from another call member (the server sets `from` and `session`) */
+interface CallSignalEvent extends CallSignalPayload {
+  from: string;
+  /** The sender's session */
+  session: string;
+  /** The recipient session it was meant for (drop it if that isn't ours anymore) */
+  toSession: string;
+}
+
+/** REC:callModerated: an owner asked you to mute (you mute yourself) or removed you from the call */
+interface CallModeratedEvent {
+  action: "mute" | "remove";
+  by: PlaybackActor;
+}

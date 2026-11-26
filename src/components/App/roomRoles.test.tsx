@@ -148,6 +148,45 @@ describe("room page roles", () => {
     ]);
   });
 
+  it("owners can mute someone in the voice call or remove them from it", async () => {
+    const socket = await renderRoom("owner");
+    await act(async () =>
+      socket.receive("REC:callState", {
+        members: [
+          {
+            clientId: "bob",
+            session: "bobsession1",
+            muted: false,
+            joinedAt: 1,
+            reconnecting: false,
+          },
+        ],
+      }),
+    );
+    await openPeople();
+    expect(screen.getByLabelText("In the voice call")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Options for Bob" }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText("Mute in call"));
+    });
+    expect(socket.emitted).toContainEqual([
+      "CMD:callModerate",
+      { action: "mute", clientId: "bob" },
+    ]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Options for Bob" }));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText("Remove from call"));
+    });
+    expect(socket.emitted).toContainEqual([
+      "CMD:callModerate",
+      { action: "remove", clientId: "bob" },
+    ]);
+  });
+
   it("guests get no room management, no Home link and never the password", async () => {
     await renderRoom("guest");
     await openPeople();

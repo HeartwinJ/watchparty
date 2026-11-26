@@ -130,6 +130,13 @@ export const SHORTCUT_GROUPS: { title: string; rows: [string, string[]][] }[] =
       ],
     },
     {
+      title: "Voice call",
+      rows: [
+        ["Mute / unmute your mic (instead of the video)", ["m"]],
+        ["Push to talk (when on in the call panel)", ["hold t"]],
+      ],
+    },
+    {
       title: "Mouse & touch",
       rows: [
         ["Click video", ["play / pause"]],

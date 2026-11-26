@@ -12,6 +12,11 @@ export abstract class Player {
   public abstract setMute: (muted: boolean) => void;
   public abstract getVolume: () => number;
   public abstract setVolume: (volume: number) => void;
+  /**
+   * Voice call ducking: plays at the viewer's volume × factor (1 = normal). getVolume/setVolume keep working with
+   * the viewer's own volume, so ducking never overwrites it.
+   */
+  public abstract setDuck: (factor: number) => void;
   public abstract isSubtitled: () => boolean;
   public abstract getSubtitleMode: () => TextTrackMode;
   public abstract setSubtitleMode: (mode?: TextTrackMode) => void;

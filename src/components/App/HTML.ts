@@ -15,6 +15,8 @@ export interface SubtitleTrackInfo {
  * draw them) and the player overlay renders the active cues itself, so size/background/position follow the redesign.
  * Offsets re-time the cues in place from their original times (logic/subtitles.ts retimeCues).
  */
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
 export class HTML implements Player {
   elId: string;
   /** Index into textTracks of the track to show (-1 = none) */
@@ -28,6 +30,9 @@ export class HTML implements Player {
   private cueOriginals = new WeakMap<CueLike, { start: number; end: number }>();
   /** The <track> element we added for the room subtitle */
   private roomTrack: TextTrack | null = null;
+  /** Voice call ducking factor and the viewer's own volume while ducked (see setDuck) */
+  private duck = 1;
+  private userVolume: number | null = null;
 
   constructor(elId: string) {
     this.elId = elId;
@@ -106,13 +111,29 @@ export class HTML implements Player {
   };
 
   setVolume = (volume: number) => {
+    this.userVolume = volume;
     if (this.getVideoEl()) {
-      this.getVideoEl().volume = volume;
+      this.getVideoEl().volume = clamp01(volume * this.duck);
     }
   };
 
   getVolume = (): number => {
+    if (this.duck !== 1 && this.userVolume !== null) {
+      return this.userVolume;
+    }
     return this.getVideoEl()?.volume ?? 1;
+  };
+
+  setDuck = (factor: number) => {
+    const el = this.getVideoEl();
+    if (this.duck === 1 || this.userVolume === null) {
+      // Not ducked yet: the element's volume is the viewer's own
+      this.userVolume = el?.volume ?? 1;
+    }
+    this.duck = factor;
+    if (el) {
+      el.volume = clamp01(this.userVolume * factor);
+    }
   };
 
   /** mode "showing" turns subtitles on, "hidden" off; no mode toggles */

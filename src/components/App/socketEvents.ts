@@ -61,6 +61,12 @@ export interface ServerToClientEvents {
     from: string;
     sharer: boolean;
   }) => void;
+  /** Everyone in the voice call (sent on connect and on every change) */
+  "REC:callState": (state: CallState) => void;
+  /** A WebRTC signal from another call member (see call/transport.ts) */
+  "REC:callSignal": (signal: CallSignalEvent) => void;
+  /** An owner asked us to mute, or removed us from the call */
+  "REC:callModerated": (event: CallModeratedEvent) => void;
 }
 
 type ReactionPayload = Omit<Reaction, "user">;
@@ -88,6 +94,12 @@ export type RoomPasswordCommand =
   | { action: "regenerate" }
   | { action: "set"; password: string }
   | { action: "enable"; enabled: boolean };
+
+/** CMD:call (mirrors parseCallCommand in server/callState.ts). `camera` comes with video calls. */
+export type CallCommand =
+  | { action: "join"; session: string; muted: boolean }
+  | { action: "leave" }
+  | { action: "state"; muted: boolean };
 
 export interface ClientToServerEvents {
   "CMD:name": (name: string) => void;
@@ -144,6 +156,17 @@ export interface ClientToServerEvents {
     to: string;
     msg: SignalMessage;
     sharer?: boolean;
+  }) => void;
+  /** Join/leave the voice call or change our mute state */
+  "CMD:call": (cmd: CallCommand) => void;
+  /** Relayed to `to` only while both are call members (size capped, rate limited) */
+  "CMD:callSignal": (
+    data: { to: string; toSession: string } & CallSignalPayload,
+  ) => void;
+  /** Owners only: ask a call member to mute, or remove them from the call */
+  "CMD:callModerate": (data: {
+    action: "mute" | "remove";
+    clientId: string;
   }) => void;
 }
 
@@ -207,6 +230,11 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     nextEpisode: (data: NextEpisodeCommand) => emit("CMD:nextEpisode", data),
     signal: (to: string, msg: SignalMessage, sharer?: boolean) =>
       emit("signalSS", { to, msg, sharer }),
+    call: (cmd: CallCommand) => emit("CMD:call", cmd),
+    callSignal: (to: string, toSession: string, payload: CallSignalPayload) =>
+      emit("CMD:callSignal", { to, toSession, ...payload }),
+    moderateCall: (clientId: string, action: "mute" | "remove") =>
+      emit("CMD:callModerate", { action, clientId }),
   };
 }
 
