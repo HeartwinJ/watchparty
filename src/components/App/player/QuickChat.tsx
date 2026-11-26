@@ -85,7 +85,6 @@ export function QuickChat(props: {
         </svg>
       )}
       <span className={styles.kbd}>Enter</span>
-      <span className={styles.kbd}>Esc</span>
     </form>
   );
 }
