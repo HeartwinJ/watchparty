@@ -14,7 +14,13 @@ import { UserAvatar } from "../../Avatar/Avatar";
 import { useAuth } from "../../AuthGate/AuthGate";
 import type { Room } from "../hooks/useRoom";
 import { inCall, memberConnection } from "./callReducer";
-import { CAMERA_KEY, joinMuted, MIC_ERROR_TEXT, PTT_KEY } from "./logic";
+import {
+  CAMERA_KEY,
+  deviceOptions,
+  joinMuted,
+  MIC_ERROR_TEXT,
+  PTT_KEY,
+} from "./logic";
 import { CAMERA_ERROR_TEXT } from "./video";
 import { useCallVideo } from "./videoStreams";
 import styles from "./Call.module.css";
@@ -417,12 +423,7 @@ function useCameras(room: Room) {
   useEffect(() => {
     refreshRef.current();
   }, [room.state.call.camera]);
-  const options = devices
-    .filter((d) => d.deviceId)
-    .map((d, i) => ({
-      value: d.deviceId,
-      label: d.label || `Camera ${i + 1}`,
-    }));
+  const options = deviceOptions(devices, "Camera");
   return {
     options,
     current: options.some((o) => o.value === current) ? current : null,
@@ -451,12 +452,7 @@ function useMics(room: Room) {
   useEffect(() => {
     refreshRef.current();
   }, [room.state.call.status]);
-  const options = devices
-    .filter((d) => d.deviceId)
-    .map((d, i) => ({
-      value: d.deviceId,
-      label: d.label || `Microphone ${i + 1}`,
-    }));
+  const options = deviceOptions(devices, "Microphone");
   return {
     options,
     current: options.some((o) => o.value === current) ? current : null,

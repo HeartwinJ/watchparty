@@ -3,6 +3,7 @@ import {
   classifyMicError,
   createDebouncedFlag,
   createStateThrottle,
+  deviceOptions,
   isPttKey,
   isTransmitting,
   joinMuted,
@@ -187,5 +188,24 @@ describe("createDebouncedFlag", () => {
     other.push(true);
     vi.advanceTimersByTime(10);
     expect(fresh).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("deviceOptions", () => {
+  it("drops devices without an id and repeated ids", () => {
+    expect(
+      deviceOptions(
+        [
+          { deviceId: "", label: "" },
+          { deviceId: "a", label: "Desk cam" },
+          { deviceId: "a", label: "Desk cam" },
+          { deviceId: "b", label: "" },
+        ],
+        "Camera",
+      ),
+    ).toEqual([
+      { value: "a", label: "Desk cam" },
+      { value: "b", label: "Camera 2" },
+    ]);
   });
 });
