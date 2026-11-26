@@ -2,7 +2,7 @@ import { navigate } from "../router";
 import { apiFetch } from "./api";
 
 /**
- * Server-side watch history (PLAN 6d "Continue watching"): GET /history, DELETE /history/:id,
+ * Server-side watch history: GET /history, DELETE /history/:id,
  * POST /history/:id/resume. Items never carry the video URL (AIOStreams URLs hold a debrid credential); resuming
  * asks the server to start a room on the stored URL.
  */

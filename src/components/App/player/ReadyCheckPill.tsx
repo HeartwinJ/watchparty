@@ -5,7 +5,7 @@ import styles from "./ReadyCheck.module.css";
 
 /**
  * "Waiting for Sam, Alex…" with their avatars and a "Resume now" button, shown on the player while the room is
- * paused by the ready check (PLAN 6d). Renders nothing otherwise.
+ * paused by the ready check. Renders nothing otherwise.
  */
 export function ReadyCheckPill({
   state,

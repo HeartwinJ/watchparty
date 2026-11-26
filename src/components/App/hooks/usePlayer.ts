@@ -109,6 +109,10 @@ export function usePlayer(opts: {
       }
       const canAutoplay = store.get().isAutoPlayable || (await testAutoplay());
       store.set({ roomPaused: false, isAutoPlayable: canAutoplay });
+      if (store.get().playback?.mode === "probing") {
+        // No source yet: onHost starts playing once the probe has picked one (roomPaused is now false)
+        return;
+      }
       if (!store.get().isAutoPlayable || (share.localStream && !share.isFile)) {
         console.log("auto-muting to allow autoplay or screenshare host");
         localSetMute(true);

@@ -1,4 +1,4 @@
-// Click/tap gestures on the video (PLAN 6a + design spec "Phone gestures").
+// Click/tap gestures on the video.
 
 /** Single taps wait this long to tell them apart from a double-tap */
 export const DOUBLE_TAP_MS = 260;

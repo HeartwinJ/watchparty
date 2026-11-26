@@ -1,4 +1,4 @@
-// Auto-hide for the player controls and cursor (PLAN 6a).
+// Auto-hide for the player controls and cursor.
 
 export const IDLE_HIDE_MS = 2500;
 /** When the pointer leaves the player while playing, hide sooner */

@@ -1020,7 +1020,7 @@ export class Room {
     this.io.of(this.roomId).emit("REC:subtitle", this.subtitle);
   };
 
-  // --- Subtitle offset (PLAN 6b) ---
+  // --- Subtitle offset ---
 
   /** The saved offset for a video (0 when none was saved or it has no stable key) */
   private loadSubtitleOffset = (
@@ -1071,7 +1071,7 @@ export class Room {
     }, Room.SUBTITLE_OFFSET_CHAT_DELAY_MS);
   };
 
-  // --- Ready check (PLAN 6d, see readyCheck.ts) ---
+  // --- Ready check (see readyCheck.ts) ---
 
   private isReadyCheckOn = () => this.roomSettings.readyCheck;
 

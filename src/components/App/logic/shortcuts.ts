@@ -1,4 +1,4 @@
-// Room keyboard shortcuts (PLAN 6a, design spec "Keyboard shortcuts").
+// Room keyboard shortcuts.
 
 export type ShortcutAction =
   | { type: "togglePlay" }

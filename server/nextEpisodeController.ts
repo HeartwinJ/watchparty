@@ -1,5 +1,5 @@
 /**
- * Room-wide, server-authoritative "next episode" card (PLAN 6d).
+ * Room-wide, server-authoritative "next episode" card.
  *
  * Flow for one video:
  *   idle ──CMD:nextEpisode {action:"offer", url, time, duration}──▶ resolving

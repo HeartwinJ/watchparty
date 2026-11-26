@@ -11,8 +11,8 @@ import {
 } from "../logic/subtitles";
 
 /**
- * Room subtitles: REC:subtitle, keeping them in sync with a screen sharer, the subtitle modal, and the subtitle offset
- * (PLAN 6b). The offset is room-wide by default ("Everyone": CMD:subtitleOffset, saved per video by the server), or a
+ * Room subtitles: REC:subtitle, keeping them in sync with a screen sharer, the subtitle modal, and the subtitle offset.
+ * The offset is room-wide by default ("Everyone": CMD:subtitleOffset, saved per video by the server), or a
  * local override ("Just me") that wins until it's reset. It's applied by re-timing the cues (HTML.ts).
  */
 export function useSubtitles(opts: {

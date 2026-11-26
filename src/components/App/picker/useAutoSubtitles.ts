@@ -16,7 +16,7 @@ export function toSubtitleTracks(subs: Subtitle[]): SubtitleTrackOption[] {
 }
 
 /**
- * PLAN 6d "auto subtitles": when the room's video has AIOStreams metadata, list the title's subtitles
+ * Auto subtitles: when the room's video has AIOStreams metadata, list the title's subtitles
  * (/addon/subtitles, OpenSubtitles v3) in the player's subtitle menu (`state.subtitleTracks`). Cleared otherwise.
  */
 export function useAutoSubtitles(

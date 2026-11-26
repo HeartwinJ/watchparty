@@ -14,7 +14,7 @@ import { toast } from "../App/ui/toast";
 import styles from "./ContinueWatching.module.css";
 
 /**
- * Home's "Continue watching" row (PLAN 6d): unfinished items from the server-side history, newest first, one per
+ * Home's "Continue watching" row: unfinished items from the server-side history, newest first, one per
  * title. A card starts a new room paused where it was left. Hidden while loading, on errors and when empty.
  */
 export const ContinueWatching = () => {

@@ -1,4 +1,4 @@
-// Ready check (PLAN 6d), client side: is this device ready to play, has it stalled long enough to count as
+// Ready check, client side: is this device ready to play, has it stalled long enough to count as
 // buffering, and what to tell people. The server decides when to pause/resume (server/readyCheck.ts).
 
 /** Seconds buffered ahead of the playhead that count as ready */

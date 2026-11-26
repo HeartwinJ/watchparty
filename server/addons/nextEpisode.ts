@@ -1,5 +1,5 @@
 /**
- * Next episode (PLAN 6d): finds the episode after the room's current one and picks a stream for it, so the room
+ * Next episode: finds the episode after the room's current one and picks a stream for it, so the room
  * can play it without anyone opening the picker. Used by the room (server/nextEpisode.ts), not by an HTTP route.
  *
  * The stream URL that comes back is an AIOStreams playback URL. It goes straight into the room's media (with a

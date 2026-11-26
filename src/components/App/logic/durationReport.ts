@@ -1,4 +1,4 @@
-// When to send CMD:duration (the server's watch history uses it to mark items finished, PLAN 6d).
+// When to send CMD:duration (the server's watch history uses it to mark items finished).
 
 /** Re-sent this often even when unchanged, so a room reloaded on the server learns it again */
 export const DURATION_REPORT_INTERVAL_MS = 30_000;

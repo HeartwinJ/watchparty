@@ -1,5 +1,5 @@
 /**
- * Per-viewer playback decision for direct links (PLAN 6c "auto-convert"). Each browser probes the real tracks of the
+ * Per-viewer playback decision for direct links. Each browser probes the real tracks of the
  * room's video (clientTranscode.ts probeMedia) and decides for itself: play it directly, convert it in the browser
  * (copy what plays, re-encode what doesn't), or give up and tell the room. Pure functions, unit tested.
  */

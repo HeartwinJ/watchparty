@@ -1,4 +1,4 @@
-// Ready check (PLAN 6d): when someone buffers or joins mid-play, pause the room until every viewer has enough
+// Ready check: when someone buffers or joins mid-play, pause the room until every viewer has enough
 // buffered, then resume. This module is the pure state machine; Room (room.ts) feeds it events and applies the
 // effects it returns (pause/seek/play broadcasts and REC:readyCheck).
 

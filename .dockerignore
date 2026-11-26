@@ -12,6 +12,7 @@ coverage
 .env.*
 !.env.example
 design
+docs
 *.log
 **/.DS_Store
 Dockerfile

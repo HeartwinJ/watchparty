@@ -1,5 +1,5 @@
 /*
- * The redesigned player (PLAN 4 + 6a/6b). Video chrome is always dark glass. Uses only --wp-* tokens.
+ * The redesigned player. Video chrome is always dark glass. Uses only --wp-* tokens.
  * The container fills its (position: relative) parent and is the fullscreen target.
  */
 

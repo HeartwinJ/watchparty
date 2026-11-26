@@ -1,7 +1,5 @@
 //@ts-expect-error
 import canAutoplay from "can-autoplay";
-import { cyrb53 } from "./hash";
-import { apiFetch } from "./api";
 
 export { serverPath } from "./api";
 
@@ -26,37 +24,6 @@ export function formatTimestamp(input: any, zeroTime?: number): string {
     .toString()
     .padStart(2, "0");
   return `${Number(input) < 0 ? "-" : ""}${hours ? `${hours}:` : ""}${minutes}:${seconds}`;
-}
-
-export const colorMappings: StringDict = {
-  red: "B03060",
-  orange: "FE9A76",
-  yellow: "FFD700",
-  olive: "32CD32",
-  green: "016936",
-  teal: "008080",
-  blue: "0E6EB8",
-  violet: "EE82EE",
-  purple: "B413EC",
-  pink: "FF1493",
-  brown: "A52A2A",
-  grey: "A0A0A0",
-};
-
-export const softWhite = "whitesmoke";
-
-let colorCache: NumberDict = {};
-export function getColorForString(id: string) {
-  let colors = Object.keys(colorMappings);
-  if (colorCache[id]) {
-    return colors[colorCache[id]];
-  }
-  colorCache[id] = Math.abs(cyrb53(id)) % colors.length;
-  return colors[colorCache[id]];
-}
-
-export function getColorForStringHex(id: string) {
-  return colorMappings[getColorForString(id)];
 }
 
 export const isYouTube = (input: string) => {
@@ -92,7 +59,7 @@ export const isDash = (input: string) => {
   return input.includes(".mpd");
 };
 
-export const isMpegTs = (input: string) => {
+const isMpegTs = (input: string) => {
   return input.includes(".mpegts");
 };
 
@@ -114,31 +81,9 @@ export function decodeEntities(input: string) {
   return doc.documentElement.textContent;
 }
 
-export const debounce = (callback: Function, wait = 500) => {
-  let timeoutId: any = null;
-  return (...args: any[]) => {
-    window.clearTimeout(timeoutId);
-    timeoutId = window.setTimeout(() => {
-      callback(...args);
-    }, wait);
-  };
-};
-
-export const getDefaultPicture = (name: string, background = "a0a0a0") => {
-  return `https://ui-avatars.com/api/?name=${name}&background=${background}&size=256&color=ffffff`;
-};
-
 export const isMobile = () => {
   return window.screen.width <= 600;
 };
-
-export async function getYouTubeResults(
-  query: string,
-): Promise<SearchResult[]> {
-  const response = await apiFetch("/youtube?q=" + encodeURIComponent(query));
-  const data = await response.json();
-  return data.map((d: any) => ({ ...d, type: "youtube" }));
-}
 
 export async function openFileSelector(accept?: string) {
   return new Promise<FileList | null>((resolve) => {
@@ -186,7 +131,7 @@ export function getOrCreateSessionId() {
   return sessionId;
 }
 
-export function createUuid() {
+function createUuid() {
   return crypto.randomUUID ? crypto.randomUUID() : uuidv4();
 }
 
@@ -212,10 +157,6 @@ export function calculateMedian(array: number[]): number {
   return 0;
 }
 
-export const getFileName = (input: string) => {
-  return input.split("/").slice(-1)[0];
-};
-
 export const isEmojiString = (input?: string): boolean => {
   return /^(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])+$/g.test(
     input ?? "",
@@ -230,7 +171,3 @@ function uuidv4() {
     ).toString(16),
   );
 }
-
-// Subtract header, URL row, button row, 3 gaps, controls
-export const VIDEO_MAX_HEIGHT_CSS =
-  "calc(100vh - 64px - 36px - 36px - 4px - 4px - 4px - 32px)";

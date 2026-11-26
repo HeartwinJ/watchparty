@@ -1,5 +1,5 @@
 /**
- * The source picker's command palette (PLAN Phase 4 / 6c): one input that pastes a link, searches Movies & Shows
+ * The source picker's command palette: one input that pastes a link, searches Movies & Shows
  * (AIOStreams) and YouTube, or starts a share, with a drill-down title → season/episode → streams.
  * Desktop: centred palette. Phone (≤ 768px): full-screen sheet. Keyboard: ↑/↓ move, Enter plays/opens,
  * Shift+Enter adds to the queue, Esc goes back one level then closes, Backspace in an empty input goes back.
