@@ -328,6 +328,8 @@ export interface AlignOptions {
   detrendSec?: number;
   /** Added to every lag's cue variance (× frames, default 0.05) so stretches with one stray cue can't win */
   shrink?: number;
+  /** Work on frames this many times coarser (default 1 = 10 ms): 5 is a fast first pass for the drift search */
+  frameStep?: number;
 }
 
 /**
@@ -351,9 +353,11 @@ export function alignWindows(
   const maxOffset = opts.maxOffset ?? 600;
   const minPeakZ = opts.minPeakZ ?? 6;
   const minConfidence = opts.minConfidence ?? 0.3;
-  const exclusion = Math.round((opts.peakExclusion ?? 1.5) / FRAME_SEC);
-  const R = Math.round(maxOffset / FRAME_SEC);
-  const detrendFrames = Math.round((opts.detrendSec ?? 5) / FRAME_SEC);
+  const step = Math.max(1, Math.round(opts.frameStep ?? 1));
+  const frameSec = FRAME_SEC * step;
+  const exclusion = Math.round((opts.peakExclusion ?? 1.5) / frameSec);
+  const R = Math.round(maxOffset / frameSec);
+  const detrendFrames = Math.round((opts.detrendSec ?? 5) / frameSec);
   const shrink = opts.shrink ?? 0.05;
   const lags = 2 * R + 1;
   const total = new Float64Array(lags);
@@ -366,12 +370,13 @@ export function alignWindows(
   };
   let used = 0;
   for (const w of windows) {
-    const len = w.activity.length;
-    if (len < 100) {
+    const activity = step > 1 ? decimate(w.activity, step) : w.activity;
+    const len = activity.length;
+    if (len * step < 100) {
       continue;
     }
     const a = zeroMean(
-      detrendFrames > 1 ? detrend(w.activity, detrendFrames) : w.activity,
+      detrendFrames > 1 ? detrend(activity, detrendFrames) : activity,
     );
     let aNorm = 0;
     for (let i = 0; i < len; i++) {
@@ -382,7 +387,7 @@ export function alignWindows(
       continue;
     }
     // Subtitle timeline covering every lag: [start − R, start + len + R)
-    const s = cueSignal(cues, w.start - maxOffset, len + 2 * R);
+    const s = cueSignal(cues, w.start - maxOffset, len + 2 * R, frameSec);
     const c = crossCorrelate(a, s);
     // Pearson correlation per lag: the cue segment's own spread (s is 0/1, so Σs² = Σs) comes from a running sum,
     // so a dense stretch of dialogue doesn't win just for being dense. Segments without cues give 0.
@@ -437,7 +442,7 @@ export function alignWindows(
     second === -Infinity
       ? 1
       : Math.max(0, Math.min(1, 1 - (second - mean) / peak));
-  const candidate = roundOffset((best - R) * FRAME_SEC);
+  const candidate = roundOffset((best - R) * frameSec);
   if (!(peakZ >= minPeakZ) || !(confidence >= minConfidence)) {
     return { ...fail, confidence, peakZ, candidate };
   }
@@ -452,8 +457,90 @@ export function alignWindows(
       frac = Math.max(-0.5, Math.min(0.5, (0.5 * (y0 - y2)) / denom));
     }
   }
-  const offset = roundOffset((best - R + frac) * FRAME_SEC);
+  const offset = roundOffset((best - R + frac) * frameSec);
   return { offset, scale: 1, confidence, peakZ, candidate: offset };
+}
+
+/** 23.976 fps exactly */
+const FILM_NTSC = 24000 / 1001;
+
+/**
+ * Time scales tried for frame-rate drift: shown time = original × scale + offset, where scale = subtitle fps / video
+ * fps (subtitles timed for 25 fps PAL on a 23.976 fps video run 4% slow → 25/23.976). The NTSC 1000/1001 pairs also
+ * cover 29.97 vs 30. Scale 1 first: it's preferred.
+ */
+export const DRIFT_SCALES: readonly number[] = [
+  1,
+  1000 / 1001,
+  1001 / 1000,
+  24 / 25,
+  25 / 24,
+  FILM_NTSC / 25,
+  25 / FILM_NTSC,
+];
+
+/** How much better (peakZ) another scale has to be than scale 1 to be used: max(1, 10 % of scale 1's peakZ) */
+const DRIFT_MARGIN_Z = 1;
+const DRIFT_MARGIN_REL = 0.1;
+
+/** Coarse frames (50 ms) for the scale search: ~5× less work per scale */
+const DRIFT_SEARCH_STEP = 5;
+
+const stretch = (cues: readonly Cue[], scale: number) =>
+  scale === 1
+    ? cues
+    : cues.map((c) => ({ start: c.start * scale, end: c.end * scale }));
+
+/**
+ * Picks a scale from coarse (50 ms) results: the best confident one, but scale 1 unless another scale's peakZ beats
+ * it by a clear margin (a tiny ratio like 1000/1001 fits almost as well over a short stretch). Undefined when none is
+ * confident.
+ */
+export function pickScale(
+  results: readonly (SyncResult & { scale: number })[],
+): number | undefined {
+  const confident = results.filter((r) => r.offset !== null);
+  if (!confident.length) {
+    return undefined;
+  }
+  const best = confident.reduce((a, b) => (b.peakZ > a.peakZ ? b : a));
+  const plain = confident.find((r) => r.scale === 1);
+  if (plain && best.scale !== 1) {
+    const margin = Math.max(DRIFT_MARGIN_Z, plain.peakZ * DRIFT_MARGIN_REL);
+    if (best.peakZ < plain.peakZ + margin) {
+      return 1;
+    }
+  }
+  return best.scale;
+}
+
+/**
+ * Like alignWindows, but also corrects frame-rate drift: every ratio in DRIFT_SCALES is tried on coarse frames (cues
+ * stretched to original × scale), pickScale() chooses one, and that scale is aligned again at full resolution for the
+ * offset. Falls back to plain scale-1 alignment when no scale is confident (or the chosen one isn't at full resolution).
+ */
+export function alignWithDrift(
+  windows: readonly ActivityWindow[],
+  cues: readonly Cue[],
+  opts: AlignOptions & { scales?: readonly number[] } = {},
+): SyncResult {
+  const scales = opts.scales ?? DRIFT_SCALES;
+  const coarse = scales.map((scale) => ({
+    ...alignWindows(windows, stretch(cues, scale), {
+      ...opts,
+      frameStep: DRIFT_SEARCH_STEP,
+    }),
+    scale,
+  }));
+  const scale = pickScale(coarse) ?? 1;
+  const fine = {
+    ...alignWindows(windows, stretch(cues, scale), opts),
+    scale,
+  };
+  if (fine.offset !== null || scale === 1) {
+    return fine;
+  }
+  return { ...alignWindows(windows, cues, opts), scale: 1 };
 }
 
 /** Rounds to 0.05 s without float noise or −0 */
@@ -475,6 +562,19 @@ export function detrend(x: Float32Array, n: number): Float32Array {
     const lo = Math.max(0, i - half);
     const hi = Math.min(len, i + half + 1);
     out[i] = x[i] - (prefix[hi] - prefix[lo]) / (hi - lo);
+  }
+  return out;
+}
+
+/** Averages every `step` frames into one */
+function decimate(x: Float32Array, step: number): Float32Array {
+  const out = new Float32Array(Math.floor(x.length / step));
+  for (let i = 0; i < out.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < step; j++) {
+      sum += x[i * step + j];
+    }
+    out[i] = sum / step;
   }
   return out;
 }

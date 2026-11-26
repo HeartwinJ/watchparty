@@ -88,6 +88,10 @@ export interface RoomState {
   roomSubtitleOffset: number;
   /** "Just me" override, null when following the room */
   localSubtitleOffset: number | null;
+  /** Room-wide subtitle time scale (frame-rate drift): cues show at original × scale + offset */
+  roomSubtitleScale: number;
+  /** "Just me" time scale, set together with localSubtitleOffset (null when following the room) */
+  localSubtitleScale: number | null;
   subtitleScope: SubtitleScope;
   /** Subtitle auto-sync running on this device (subsync/): manual wand or the room's auto-sync, progress 0..1 */
   subtitleSyncJob: { auto: boolean; progress: number } | null;
@@ -179,6 +183,8 @@ export function createInitialRoomState(): RoomState {
     syncStatus: { kind: "in-sync" },
     roomSubtitleOffset: 0,
     localSubtitleOffset: null,
+    roomSubtitleScale: 1,
+    localSubtitleScale: null,
     subtitleScope: "everyone",
     playerNotice: null,
     roomSettings: { ...DEFAULT_ROOM_SETTINGS },

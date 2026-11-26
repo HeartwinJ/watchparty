@@ -137,6 +137,35 @@ describe("Room subtitle auto-sync", () => {
     again.destroy();
   });
 
+  it("applies a time scale (frame-rate drift) with the offset", async () => {
+    const t = await playing();
+    cleanups.push(t.close);
+    const bOffset = collect<{ offset: number; scale: number }>(
+      t.b,
+      "REC:subtitleOffset",
+    );
+    const bSync = collect<SubtitleSyncEvent>(t.b, "REC:subtitleSync");
+    t.a.emit("CMD:subtitleSync", { action: "claim", video: V, key: K });
+    await settle();
+    t.a.emit("CMD:subtitleSync", {
+      action: "result",
+      video: V,
+      key: K,
+      offset: -1.2,
+      scale: 0.959041,
+    });
+    await settle();
+    expect(bOffset).toEqual([
+      expect.objectContaining({ offset: -1.2, scale: 0.959041, auto: true }),
+    ]);
+    expect(t.room.subtitleScale).toBe(0.959041);
+    expect(bSync.at(-1)).toMatchObject({
+      status: "done",
+      offset: -1.2,
+      scale: 0.959041,
+    });
+  });
+
   it("keeps an offset set by hand", async () => {
     const t = await playing();
     cleanups.push(t.close);

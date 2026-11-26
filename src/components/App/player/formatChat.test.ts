@@ -23,6 +23,31 @@ describe("describeChatCommand roomSettings", () => {
     );
   });
 
+  it("describes subtitle timings with a time scale", () => {
+    expect(
+      describeChatCommand(
+        "subtitleOffset",
+        JSON.stringify({ offset: 2.35, scale: 0.959041 }),
+      ),
+    ).toBe("set subtitles +2.35 s · speed 0.959 (23.976→25 fps) for everyone");
+    expect(describeChatCommand("subtitleOffset", "1.5")).toBe(
+      "set subtitles +1.5 s for everyone",
+    );
+    expect(describeChatCommand("subtitleOffset", "0")).toBe(
+      "reset the subtitle offset",
+    );
+    expect(
+      describeChatCommand(
+        "subtitleAutoSync",
+        JSON.stringify({ offset: -1, scale: 1.041667 }),
+      ),
+    ).toBe(
+      "auto-synced the subtitles: −1.0 s · speed 1.042 (25→24 fps) for everyone",
+    );
+    expect(describeChatCommand("subtitleOffset", "{oops")).toBeUndefined();
+    expect(describeChatCommand("subtitleOffset", "")).toBeUndefined();
+  });
+
   it("describes the room's subtitle auto-sync", () => {
     expect(describeChatCommand("subtitleAutoSync", "2.35")).toBe(
       "auto-synced the subtitles: +2.35 s for everyone",

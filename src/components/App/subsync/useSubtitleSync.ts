@@ -143,9 +143,9 @@ export function useSubtitleSync(opts: {
         const result = await startJob(false, sel.cues, avail.source);
         const timing = syncResultToTiming(result);
         if (timing) {
-          subtitles.setOffset(timing.offset);
+          subtitles.setTiming(timing.offset, timing.scale);
         }
-        toast(describeSyncOutcome(timing?.offset ?? null), {
+        toast(describeSyncOutcome(timing?.offset ?? null, timing ?? {}), {
           id: TOAST_ID,
           tone: timing ? "success" : "warning",
         });
@@ -213,11 +213,13 @@ export function useSubtitleSync(opts: {
       }
       try {
         const result = await startJob(true, sel.cues, avail.source);
+        const timing = syncResultToTiming(result);
         cmd.subtitleSync({
           action: "result",
           video,
           key,
-          offset: syncResultToTiming(result)?.offset ?? null,
+          offset: timing?.offset ?? null,
+          ...(timing && timing.scale !== 1 ? { scale: timing.scale } : {}),
           confidence: result.confidence,
         });
       } catch (err) {
@@ -262,6 +264,7 @@ export function useSubtitleSync(opts: {
                 describeSyncOutcome(e.offset ?? null, {
                   auto: true,
                   by: mine ? undefined : nameOf(e.by),
+                  scale: e.scale,
                 }),
                 {
                   id: TOAST_ID,

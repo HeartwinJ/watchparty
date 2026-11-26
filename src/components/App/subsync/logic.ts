@@ -1,7 +1,7 @@
 // Auto subtitle sync: pure decisions for the hook and the menu (what can be synced, how a subtitle is named, what to
 // say about a result, how to apply it).
 import { classifyMedia } from "../logic/media";
-import { formatOffset } from "../logic/subtitles";
+import { formatTiming } from "../logic/subtitles";
 import type { SyncResult } from "./signal";
 
 export type AutoSyncAvailability =
@@ -71,14 +71,18 @@ export function subtitleSyncKey(
 /** The toast after a sync. `auto`: the room's auto-sync (the offset was applied for everyone). */
 export function describeSyncOutcome(
   offset: number | null,
-  opts: { auto?: boolean; by?: string } = {},
+  opts: { auto?: boolean; by?: string; scale?: number } = {},
 ): string {
   if (offset === null) {
     return opts.auto
       ? "Auto-sync couldn't find a confident match, offset unchanged"
       : "Couldn't find a confident match, offset unchanged";
   }
-  const value = offset === 0 ? "already in sync" : formatOffset(offset);
+  const scale = opts.scale ?? 1;
+  const value =
+    offset === 0 && scale === 1
+      ? "already in sync"
+      : formatTiming(offset, scale);
   if (opts.auto && opts.by) {
     return `Subtitles auto-synced by ${opts.by}: ${value}`;
   }
@@ -93,10 +97,7 @@ export function syncProgressLabel(progress: number) {
   return pct >= 100 ? "Matching…" : `Listening… ${pct}%`;
 }
 
-/**
- * Turns a confident result into what the player applies. Today that's a plain offset; a later version can return a
- * scale too (frame-rate drift: shown = original × scale + offset) without touching the callers' flow.
- */
+/** Turns a confident result into what the player applies: shown = original × scale + offset (null = keep as is) */
 export function syncResultToTiming(
   result: SyncResult,
 ): { offset: number; scale: number } | null {

@@ -22,6 +22,51 @@ export function normalizeSubtitleOffset(value: unknown): number | undefined {
   return rounded === 0 ? 0 : rounded;
 }
 
+/** Subtitle time scale (frame-rate drift) bounds: 25→23.976 fps is 0.959, so ±10% covers every real case */
+export const SUBTITLE_SCALE_MIN = 0.9;
+export const SUBTITLE_SCALE_MAX = 1.1;
+
+/**
+ * Validates a subtitle time scale (shown time = original × scale + offset): a finite number within 0.9–1.1, rounded to
+ * 6 decimals (1 when that close to it). Returns undefined for anything else, including out-of-range values.
+ */
+export function normalizeSubtitleScale(value: unknown): number | undefined {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < SUBTITLE_SCALE_MIN ||
+    value > SUBTITLE_SCALE_MAX
+  ) {
+    return undefined;
+  }
+  const rounded = Number(value.toFixed(6));
+  return Math.abs(rounded - 1) < 1e-6 ? 1 : rounded;
+}
+
+/** A room's subtitle timing: shown time = original × scale + offset */
+export interface SubtitleTiming {
+  offset: number;
+  scale: number;
+}
+
+/** Validates a CMD:subtitleTiming payload `{offset, scale}`; undefined if either is invalid. */
+export function parseSubtitleTiming(raw: unknown): SubtitleTiming | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const d = raw as Record<string, unknown>;
+  const offset = normalizeSubtitleOffset(d.offset);
+  const scale = normalizeSubtitleScale(d.scale);
+  return offset === undefined || scale === undefined
+    ? undefined
+    : { offset, scale };
+}
+
+/** The `subtitleOffset` chat line's msg: the offset alone (as before), or JSON `{offset, scale}` with drift */
+export function subtitleTimingChatMsg(timing: SubtitleTiming): string {
+  return timing.scale === 1 ? String(timing.offset) : JSON.stringify(timing);
+}
+
 /**
  * The key a video's subtitle offset is saved under (subtitle_offsets table), or undefined when the video has no
  * stable identity (nothing playing, screen/file shares).

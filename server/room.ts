@@ -2,13 +2,17 @@ import { Server, Socket } from "socket.io";
 import type { DatabaseSync } from "node:sqlite";
 import {
   deleteRoomData,
-  getSubtitleOffset,
+  getSubtitleTiming,
   saveRoomData,
-  saveSubtitleOffset,
+  saveSubtitleTiming,
 } from "./utils/db.ts";
 import {
   normalizeSubtitleOffset,
+  normalizeSubtitleScale,
+  parseSubtitleTiming,
   subtitleOffsetKey,
+  subtitleTimingChatMsg,
+  type SubtitleTiming,
 } from "./utils/subtitleOffset.ts";
 import { fetchYoutubeVideo, getYoutubeVideoID } from "./utils/youtube.ts";
 import { HistoryRecorder, type PlaybackSnapshot } from "./utils/history.ts";
@@ -97,6 +101,8 @@ export class Room {
   public playlist: PlaylistVideo[] = [];
   /** Room-wide subtitle offset in seconds (positive = later), see setSubtitleOffset */
   public subtitleOffset = 0;
+  /** Room-wide subtitle time scale (frame-rate drift): shown time = original × scale + offset, see setSubtitleTiming */
+  public subtitleScale = 1;
   /** AIOStreams metadata for the current video (see CMD:videoMeta) */
   public videoMeta: VideoMeta | null = null;
   /** Room-wide settings (see CMD:roomSettings) */
@@ -332,6 +338,9 @@ export class Room {
       on("CMD:subtitleOffset", (data: unknown) => {
         this.setSubtitleOffset(socket, data);
       });
+      on("CMD:subtitleTiming", (data: unknown) =>
+        this.setSubtitleTiming(socket, data),
+      );
       on("CMD:subtitleSync", (data: unknown) =>
         this.subtitleSyncCommand(socket, data),
       );
@@ -433,6 +442,7 @@ export class Room {
       playlist: this.playlist,
       loop: this.loop,
       subtitleOffset: this.subtitleOffset,
+      subtitleScale: this.subtitleScale,
       videoMeta: this.videoMeta,
       roomSettings: this.roomSettings,
       access: this.access.serialize(),
@@ -469,11 +479,12 @@ export class Room {
       this.loop = roomObj.loop;
     }
     this.subtitleOffset = normalizeSubtitleOffset(roomObj.subtitleOffset) ?? 0;
+    this.subtitleScale = normalizeSubtitleScale(roomObj.subtitleScale) ?? 1;
     if (roomObj.videoMeta) {
       this.videoMeta = roomObj.videoMeta;
     }
     this.roomSettings = normalizeRoomSettings(roomObj.roomSettings);
-    this.subtitleSync.reset(this.video, this.subtitleOffset);
+    this.subtitleSync.reset(this.video, this.hasSubtitleTiming());
     this.access = RoomAccess.from(roomObj.access);
     return Boolean(roomObj.access);
   };
@@ -565,8 +576,8 @@ export class Room {
     this.videoMeta = meta;
     this.videoTS = position;
     this.paused = true;
-    this.subtitleOffset = this.loadSubtitleOffset(video, meta);
-    this.subtitleSync.reset(video, this.subtitleOffset);
+    this.setLoadedTiming(this.loadSubtitleTiming(video, meta));
+    this.subtitleSync.reset(video, this.hasSubtitleTiming());
   };
 
   private getHostState = (): HostState => {
@@ -578,6 +589,7 @@ export class Room {
       paused: this.paused,
       loop: this.loop,
       subtitleOffset: this.subtitleOffset,
+      subtitleScale: this.subtitleScale,
     };
   };
 
@@ -603,8 +615,8 @@ export class Room {
     this.subtitle = "";
     this.loop = false;
     this.playbackRate = 1;
-    this.subtitleOffset = this.loadSubtitleOffset(data, meta);
-    this.subtitleSync.reset(data, this.subtitleOffset);
+    this.setLoadedTiming(this.loadSubtitleTiming(data, meta));
+    this.subtitleSync.reset(data, this.hasSubtitleTiming());
     this.applyReadyCheck(this.readyCheck.reset(Date.now()));
     this.tsMap = {};
     this.preventTSUpdate = true;
@@ -1003,11 +1015,14 @@ export class Room {
     this.io.of(this.roomId).emit("REC:videoMeta", this.videoMeta);
     this.history.metaAttached(this.historySnapshot());
     // The metadata gives the video a stable identity, so restore the offset saved for this title/episode
-    const offset = this.loadSubtitleOffset(this.video, this.videoMeta);
-    this.subtitleSync.offsetLoaded(offset);
-    if (offset !== this.subtitleOffset) {
-      this.subtitleOffset = offset;
-      this.io.of(this.roomId).emit("REC:subtitleOffset", { offset });
+    const timing = this.loadSubtitleTiming(this.video, this.videoMeta);
+    this.subtitleSync.offsetLoaded(timing.offset !== 0 || timing.scale !== 1);
+    if (
+      timing.offset !== this.subtitleOffset ||
+      timing.scale !== this.subtitleScale
+    ) {
+      this.setLoadedTiming(timing);
+      this.io.of(this.roomId).emit("REC:subtitleOffset", timing);
     }
   };
 
@@ -1132,55 +1147,92 @@ export class Room {
 
   // --- Subtitle offset ---
 
-  /** The saved offset for a video (0 when none was saved or it has no stable key) */
-  private loadSubtitleOffset = (
+  /** The saved timing for a video (offset 0, scale 1 when none was saved or it has no stable key) */
+  private loadSubtitleTiming = (
     video: string | null,
     meta: VideoMeta | null = null,
-  ) => {
+  ): SubtitleTiming => {
+    const none = { offset: 0, scale: 1 };
     const key = subtitleOffsetKey(video, meta);
     if (!key) {
-      return 0;
+      return none;
     }
     try {
-      return normalizeSubtitleOffset(getSubtitleOffset(this.db, key)) ?? 0;
+      const saved = getSubtitleTiming(this.db, key);
+      return saved
+        ? {
+            offset: normalizeSubtitleOffset(saved.offset) ?? 0,
+            scale: normalizeSubtitleScale(saved.scale) ?? 1,
+          }
+        : none;
     } catch (e) {
       console.warn("failed to load subtitle offset:", e);
-      return 0;
+      return none;
+    }
+  };
+
+  private setLoadedTiming = (timing: SubtitleTiming) => {
+    this.subtitleOffset = timing.offset;
+    this.subtitleScale = timing.scale;
+  };
+
+  /** Whether the room has a non-default subtitle timing */
+  private hasSubtitleTiming = () =>
+    this.subtitleOffset !== 0 || this.subtitleScale !== 1;
+
+  /**
+   * CMD:subtitleOffset: sets the room-wide offset (validated, clamped to ±24 h, rounded to 0.05 s) and keeps the time
+   * scale (so ±0.1 s nudges don't undo a drift correction).
+   */
+  private setSubtitleOffset = (socket: Socket, data: unknown) => {
+    const offset = normalizeSubtitleOffset(data);
+    if (offset !== undefined) {
+      this.commitSubtitleTiming(socket, { offset, scale: this.subtitleScale });
+    }
+  };
+
+  /** CMD:subtitleTiming {offset, scale}: sets both (scale 0.9–1.1); Reset sends {offset: 0, scale: 1} */
+  private setSubtitleTiming = (socket: Socket, data: unknown) => {
+    const timing = parseSubtitleTiming(data);
+    if (timing) {
+      this.commitSubtitleTiming(socket, timing);
     }
   };
 
   /**
-   * CMD:subtitleOffset: sets the room-wide offset (validated, clamped to ±24 h, rounded to 0.05 s), tells the others
-   * (REC:subtitleOffset), saves it for this video, and announces it in chat once it stops changing.
+   * A timing set by hand: tells the others (REC:subtitleOffset {offset, scale, actor}), saves it for this video, and
+   * announces it in chat once it stops changing.
    */
-  private setSubtitleOffset = (socket: Socket, data: unknown) => {
-    const offset = normalizeSubtitleOffset(data);
-    if (offset === undefined) {
-      return;
-    }
-    this.subtitleOffset = offset;
+  private commitSubtitleTiming = (socket: Socket, timing: SubtitleTiming) => {
+    this.setLoadedTiming(timing);
     this.subtitleSync.manualOffset();
     socket.broadcast.emit("REC:subtitleOffset", {
-      offset,
+      ...timing,
       actor: this.getActor(socket),
     });
-    this.saveCurrentSubtitleOffset();
+    this.saveCurrentSubtitleTiming();
     clearTimeout(this.subtitleOffsetChatTimer);
     this.subtitleOffsetChatTimer = setTimeout(() => {
       this.addChatMessage(socket, {
         id: socket.clientId,
         cmd: "subtitleOffset",
-        msg: String(this.subtitleOffset),
+        msg: subtitleTimingChatMsg({
+          offset: this.subtitleOffset,
+          scale: this.subtitleScale,
+        }),
       });
     }, Room.SUBTITLE_OFFSET_CHAT_DELAY_MS);
   };
 
-  /** Saves the room's offset for the current video (when it has a stable key) */
-  private saveCurrentSubtitleOffset = () => {
+  /** Saves the room's timing for the current video (when it has a stable key) */
+  private saveCurrentSubtitleTiming = () => {
     const key = subtitleOffsetKey(this.video, this.videoMeta);
     if (key) {
       try {
-        saveSubtitleOffset(this.db, key, this.subtitleOffset);
+        saveSubtitleTiming(this.db, key, {
+          offset: this.subtitleOffset,
+          scale: this.subtitleScale,
+        });
       } catch (e) {
         console.warn("failed to save subtitle offset:", e);
       }
@@ -1234,21 +1286,24 @@ export class Room {
       outcome.apply && cmd.offset !== null
         ? normalizeSubtitleOffset(cmd.offset)
         : undefined;
-    if (offset !== undefined) {
-      this.subtitleOffset = offset;
-      ns.emit("REC:subtitleOffset", { offset, actor: by, auto: true });
-      this.saveCurrentSubtitleOffset();
+    const scale = normalizeSubtitleScale(cmd.scale ?? 1);
+    if (offset !== undefined && scale !== undefined) {
+      this.setLoadedTiming({ offset, scale });
+      ns.emit("REC:subtitleOffset", { offset, scale, actor: by, auto: true });
+      this.saveCurrentSubtitleTiming();
       this.addChatMessage(socket, {
         id: socket.clientId,
         cmd: "subtitleAutoSync",
-        msg: String(offset),
+        msg: subtitleTimingChatMsg({ offset, scale }),
       });
     }
+    const applied = offset !== undefined && scale !== undefined;
     ns.emit("REC:subtitleSync", {
       status: "done",
       ...base,
       by,
-      offset: offset ?? null,
+      offset: applied ? offset : null,
+      ...(applied && scale !== 1 ? { scale } : {}),
     });
   };
 

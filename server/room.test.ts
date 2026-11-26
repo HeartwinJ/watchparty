@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Server } from "socket.io";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import type { DatabaseSync } from "node:sqlite";
-import { getSubtitleOffset, openDatabase } from "./utils/db.ts";
+import {
+  getSubtitleOffset,
+  getSubtitleTiming,
+  openDatabase,
+} from "./utils/db.ts";
 import { subtitleOffsetKey } from "./utils/subtitleOffset.ts";
 import { Room } from "./room.ts";
 
@@ -119,6 +123,7 @@ describe("CMD:subtitleOffset", () => {
     alex.socket.emit("CMD:subtitleOffset", 0.32);
     expect((await rec)[0]).toEqual({
       offset: 0.3,
+      scale: 1,
       actor: { id: alex.clientId, name: "Alex" },
     });
     expect(room.subtitleOffset).toBe(0.3);
@@ -206,6 +211,94 @@ describe("CMD:subtitleOffset", () => {
       JSON.stringify({ video: "", subtitleOffset: "lots" }),
     );
     expect(garbage.subtitleOffset).toBe(0);
+    garbage.destroy();
+  });
+});
+
+describe("CMD:subtitleTiming (offset + time scale)", () => {
+  it("sets both, validates the scale, keeps it on offset nudges and resets", async () => {
+    const alex = await connect("Alex");
+    const sam = await connect("Sam");
+    let host = next<HostState>(sam.socket, "REC:host");
+    alex.socket.emit("CMD:host", VIDEO);
+    expect((await host)[0].subtitleScale).toBe(1);
+
+    let rec = next<{ offset: number; scale: number }>(
+      sam.socket,
+      "REC:subtitleOffset",
+    );
+    alex.socket.emit("CMD:subtitleTiming", {
+      offset: 2.349,
+      scale: 0.95904,
+    });
+    expect((await rec)[0]).toMatchObject({ offset: 2.35, scale: 0.95904 });
+    expect(room.subtitleScale).toBe(0.95904);
+    expect(getSubtitleTiming(db, subtitleOffsetKey(VIDEO)!)).toEqual({
+      offset: 2.35,
+      scale: 0.95904,
+    });
+
+    // ±0.1 s keeps the scale
+    rec = next(sam.socket, "REC:subtitleOffset");
+    alex.socket.emit("CMD:subtitleOffset", 2.45);
+    expect((await rec)[0]).toMatchObject({ offset: 2.45, scale: 0.95904 });
+
+    // Out of range or malformed: ignored
+    const ignored = nothing(sam.socket, "REC:subtitleOffset");
+    alex.socket.emit("CMD:subtitleTiming", { offset: 1, scale: 1.5 });
+    alex.socket.emit("CMD:subtitleTiming", { offset: 1, scale: 0.5 });
+    alex.socket.emit("CMD:subtitleTiming", { offset: 1 });
+    alex.socket.emit("CMD:subtitleTiming", { offset: "1", scale: 1 });
+    alex.socket.emit("CMD:subtitleTiming", 3);
+    expect(await ignored).toBe(true);
+    expect(room.subtitleScale).toBe(0.95904);
+
+    // A new joiner and the next load of this video get it
+    const late = await connect();
+    expect(late.hostState.subtitleScale).toBe(0.95904);
+    host = next<HostState>(sam.socket, "REC:host");
+    alex.socket.emit("CMD:host", "https://example.com/other.mp4");
+    expect((await host)[0].subtitleScale).toBe(1);
+    host = next<HostState>(sam.socket, "REC:host");
+    alex.socket.emit("CMD:host", VIDEO);
+    expect((await host)[0]).toMatchObject({
+      subtitleOffset: 2.45,
+      subtitleScale: 0.95904,
+    });
+
+    // Reset clears both (and the saved row)
+    rec = next(sam.socket, "REC:subtitleOffset");
+    alex.socket.emit("CMD:subtitleTiming", { offset: 0, scale: 1 });
+    expect((await rec)[0]).toMatchObject({ offset: 0, scale: 1 });
+    expect(getSubtitleTiming(db, subtitleOffsetKey(VIDEO)!)).toBeUndefined();
+  });
+
+  it("announces the scale in the chat line", async () => {
+    const alex = await connect("Alex");
+    const sam = await connect();
+    const chats: ChatMessage[] = [];
+    sam.socket.on("REC:chat", (m: ChatMessage) => chats.push(m));
+    alex.socket.emit("CMD:subtitleTiming", { offset: -1, scale: 1.04271 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(chats).toHaveLength(1);
+    expect(JSON.parse(chats[0].msg ?? "")).toEqual({
+      offset: -1,
+      scale: 1.04271,
+    });
+  });
+
+  it("is serialized with the room", () => {
+    room.subtitleScale = 1.001;
+    const loaded = new Room(io, db, "/scale-room", room.serialize());
+    expect(loaded.subtitleScale).toBe(1.001);
+    loaded.destroy();
+    const garbage = new Room(
+      io,
+      db,
+      "/scale-garbage",
+      JSON.stringify({ video: "", subtitleScale: 7 }),
+    );
+    expect(garbage.subtitleScale).toBe(1);
     garbage.destroy();
   });
 });

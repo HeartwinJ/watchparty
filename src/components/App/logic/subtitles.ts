@@ -93,20 +93,70 @@ export function effectiveOffset(
   return localOverride ?? roomOffset;
 }
 
+/** Same as the server: a time scale (frame-rate drift) must be within 0.9–1.1 */
+export const SUBTITLE_SCALE_MIN = 0.9;
+export const SUBTITLE_SCALE_MAX = 1.1;
+
+/** Rounds a time scale to 6 decimals (1 when that close), or 1 for anything outside 0.9–1.1 */
+export function normalizeScale(value: number | undefined | null): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < SUBTITLE_SCALE_MIN ||
+    value > SUBTITLE_SCALE_MAX
+  ) {
+    return 1;
+  }
+  const rounded = Number(value.toFixed(6));
+  return Math.abs(rounded - 1) < 1e-6 ? 1 : rounded;
+}
+
+const FILM = 24000 / 1001;
+/** Frame-rate pairs a scale usually comes from: scale = subtitle fps / video fps */
+const FPS_PAIRS: [number, string, string][] = [
+  [FILM / 24, "23.976", "24"],
+  [24 / FILM, "24", "23.976"],
+  [24 / 25, "24", "25"],
+  [25 / 24, "25", "24"],
+  [FILM / 25, "23.976", "25"],
+  [25 / FILM, "25", "23.976"],
+];
+
+/**
+ * "speed 0.959 (23.976→25 fps)" for a time scale (subtitles timed for 23.976 fps on a 25 fps video), "speed 1.0023"
+ * for a scale that isn't a known frame-rate pair, "" for 1.
+ */
+export function describeScale(scale: number): string {
+  if (scale === 1) {
+    return "";
+  }
+  const pair = FPS_PAIRS.find(([ratio]) => Math.abs(ratio - scale) < 5e-6);
+  const digits = Math.abs(scale - 1) < 0.01 ? 4 : 3;
+  const speed = `speed ${scale.toFixed(digits)}`;
+  return pair ? `${speed} (${pair[1]}→${pair[2]} fps)` : speed;
+}
+
+/** "+2.35 s", or "+2.35 s · speed 0.959 (23.976→25 fps)" with a scale */
+export function formatTiming(offset: number, scale: number) {
+  const s = describeScale(scale);
+  return s ? `${formatOffset(offset)} · ${s}` : formatOffset(offset);
+}
+
 export interface CueLike {
   startTime: number;
   endTime: number;
 }
 
 /**
- * Shifts every cue by `shift` seconds relative to its original timing. Originals are remembered in `originals` the
- * first time a cue is seen, so repeated calls never accumulate and the subtitle file isn't re-downloaded. Cues are
- * clamped at 0 (a negative start time is invalid).
+ * Re-times every cue to original × scale + shift (scale corrects frame-rate drift; 1 = a plain shift). Originals are
+ * remembered in `originals` the first time a cue is seen, so repeated calls never accumulate and the subtitle file
+ * isn't re-downloaded. Cues are clamped at 0 (a negative start time is invalid).
  */
 export function retimeCues(
   cues: ArrayLike<CueLike> | Iterable<CueLike>,
   shift: number,
   originals: WeakMap<CueLike, { start: number; end: number }>,
+  scale = 1,
 ) {
   const list = Array.from(cues as ArrayLike<CueLike>);
   for (const cue of list) {
@@ -115,8 +165,8 @@ export function retimeCues(
       orig = { start: cue.startTime, end: cue.endTime };
       originals.set(cue, orig);
     }
-    const start = Math.max(0, orig.start + shift);
-    const end = Math.max(start, orig.end + shift);
+    const start = Math.max(0, orig.start * scale + shift);
+    const end = Math.max(start, orig.end * scale + shift);
     if (cue.startTime !== start) {
       cue.startTime = start;
     }

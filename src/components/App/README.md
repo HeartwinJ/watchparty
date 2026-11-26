@@ -184,10 +184,15 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
 - Keys (window listener, ignored while typing or in a modal): space/k, ←/→, ↑/↓, m, f, c (quick chat in fullscreen or
   with the sidebar collapsed, otherwise `chatRef.current.focusInput()`), `[`/`]`, `?` (also `wp:show-shortcuts`).
 - **Subtitles:** the selected TextTrack is kept in `hidden` mode and `SubtitleCues` draws the cues at the current time (`cuesAt`; browsers can leave re-timed cues in `activeCues`) (size S–XL in
-  container units, background none/shadow/box, per device in `localStorage` `wp-subtitle-style`). The offset re-times
-  cues from their original times (`retimeCues`), so nothing is re-downloaded. "Everyone" sends `CMD:subtitleOffset`
+  container units, background none/shadow/box, per device in `localStorage` `wp-subtitle-style`). The timing re-times
+  cues from their original times (`retimeCues`: original × scale + offset, the scale corrects frame-rate drift), so
+  nothing is re-downloaded. ±0.1 s, typing and the slider change only the offset (`subtitles.setOffset`, keeps the
+  scale); `subtitles.setTiming(offset, scale)` sets both (auto-sync, Reset clears both). The menu shows the scale under
+  the value when it isn't 1 ("speed 0.959 (23.976→25 fps)", `describeScale`). "Everyone" sends `CMD:subtitleOffset`
+  (offset only) or `CMD:subtitleTiming {offset, scale}`
   (server: validated, no practical limit (±24 h sanity bound), 0.05 s steps, saved per video in `subtitle_offsets`, restored with `REC:host`
-  `subtitleOffset`, chat line after 1.5 s idle); "Just me" is `state.localSubtitleOffset`. Agent C's auto subtitles go
+  `subtitleOffset`, chat line after 1.5 s idle); "Just me" is `state.localSubtitleOffset` + `localSubtitleScale`; the room's
+  scale is `state.roomSubtitleScale`. Agent C's auto subtitles go
   in `state.subtitleTracks` (`SubtitleTrackOption[]`, shown first with an Auto badge; picking one sets the room
   subtitle). The converter's audio tracks show in the same menu.
 - **Search subtitles** (`subtitleSearch/`): the menu's "Search subtitles…" (non-YouTube) calls
@@ -215,8 +220,11 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   stretch with one stray cue can't win); the window curves are summed, the best lag is refined parabolically and
   rounded to 0.05 s. **Confidence:** `peakZ` (best vs. all lags in std devs) ≥ 6 and `confidence` = 1 − runner-up /
   best (outside ±1.5 s) ≥ 0.3, with at least two windows contributing; otherwise `offset` is null and nothing changes.
-  The result is `{offset, scale: 1, confidence, peakZ, candidate}`; `syncResultToTiming()` (`logic.ts`) is the one
-  place that turns it into what the player applies, so a later time scale (frame-rate drift) slots in there.
+  **Drift** (`alignWithDrift`): every ratio in `DRIFT_SCALES` (1, 1000/1001, 1001/1000, 24/25, 25/24, 23.976/25,
+  25/23.976; scale = subtitle fps / video fps) is tried on 50 ms frames with the cues stretched to original × scale;
+  `pickScale` keeps 1 unless another scale's peakZ beats it by max(1, 10 %); the chosen scale is aligned again at
+  10 ms for the offset (≈ 0.3 s in total). The result is `{offset, scale, confidence, peakZ, candidate}`;
+  `syncResultToTiming()` (`logic.ts`) turns it into what the player applies. No piecewise mapping.
 - **Audio** (`audio.ts` in `worker.ts`, started by `run.ts` `runAutoSync`, cancelled by terminating the worker):
   mediabunny reads the direct link via range requests (`UrlSource`, 3 retries, 20 s stall timeout) or the sharer's
   `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
@@ -241,7 +249,8 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   set by hand (a saved non-zero offset or any manual change wins; the wand always works). A failed or departed
   claimer releases the job and the others claim again.
 - Tuned on Tears of Steel (CC-BY Blender Foundation, Wikimedia Commons subtitles): known shifts from −250 s to +480 s
-  are found to within 0.1 s; reversed cues and Sintel (26 lines over a loud score) are refused.
+  are found to within 0.1 s, and subtitles drifted by 25/23.976 or 23.976/25 get that exact scale (offset within
+  0.05 s); reversed cues and Sintel (26 lines over a loud score) are refused.
 
 ## Ready check
 

@@ -45,8 +45,12 @@ function setup(opts: { cues?: typeof CUES; supported?: boolean } = {}) {
   const cmd = { subtitleSync: vi.fn() } as unknown as RoomCommands & {
     subtitleSync: ReturnType<typeof vi.fn>;
   };
-  const subtitles = { setOffset: vi.fn() } as unknown as SubtitlesApi & {
+  const subtitles = {
+    setOffset: vi.fn(),
+    setTiming: vi.fn(),
+  } as unknown as SubtitlesApi & {
     setOffset: ReturnType<typeof vi.fn>;
+    setTiming: ReturnType<typeof vi.fn>;
   };
   const calls: AutoSyncOptions[] = [];
   let settle: {
@@ -132,7 +136,7 @@ describe("the wand (syncNow)", () => {
     expect(t.result.current.state.subtitleSyncJob?.progress).toBe(0.4);
     t.finish(confident(2.35));
     await flush();
-    expect(t.subtitles.setOffset).toHaveBeenCalledWith(2.35);
+    expect(t.subtitles.setTiming).toHaveBeenCalledWith(2.35, 1);
     expect(toast).toHaveBeenCalledWith(
       "Subtitles synced: +2.35 s",
       expect.objectContaining({ tone: "success" }),
@@ -140,12 +144,24 @@ describe("the wand (syncNow)", () => {
     expect(t.result.current.state.subtitleSyncJob).toBeNull();
   });
 
+  it("applies a time scale for frame-rate drift", async () => {
+    const t = setup();
+    act(() => void t.result.current.sync.syncNow());
+    t.finish({ ...confident(-1.2), scale: 24000 / 1001 / 25 });
+    await flush();
+    expect(t.subtitles.setTiming).toHaveBeenCalledWith(-1.2, 24000 / 1001 / 25);
+    expect(toast).toHaveBeenCalledWith(
+      "Subtitles synced: −1.2 s · speed 0.959 (23.976→25 fps)",
+      expect.anything(),
+    );
+  });
+
   it("leaves the offset alone without a confident match", async () => {
     const t = setup();
     act(() => void t.result.current.sync.syncNow());
     t.finish({ ...confident(0), offset: null, confidence: 0.1 });
     await flush();
-    expect(t.subtitles.setOffset).not.toHaveBeenCalled();
+    expect(t.subtitles.setTiming).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledWith(
       "Couldn't find a confident match, offset unchanged",
       expect.anything(),
@@ -259,6 +275,45 @@ describe("room auto-sync", () => {
     );
     expect(toast).toHaveBeenCalledWith(
       "Subtitles auto-synced: −1.5 s",
+      expect.anything(),
+    );
+  });
+
+  it("sends a time scale with the room result", async () => {
+    const t = setup();
+    t.autoOn();
+    act(() => t.result.current.sync.evaluate());
+    act(() => vi.advanceTimersByTime(2000));
+    act(() =>
+      t.result.current.sync.onEvent({
+        status: "running",
+        video: VIDEO,
+        key: KEY,
+        by: { id: "me" },
+      }),
+    );
+    t.finish({ ...confident(3), scale: 25 / 24 });
+    await flush();
+    expect(t.cmd.subtitleSync).toHaveBeenLastCalledWith({
+      action: "result",
+      video: VIDEO,
+      key: KEY,
+      offset: 3,
+      scale: 25 / 24,
+      confidence: 0.6,
+    });
+    act(() =>
+      t.result.current.sync.onEvent({
+        status: "done",
+        video: VIDEO,
+        key: KEY,
+        by: { id: "bob" },
+        offset: 3,
+        scale: 1.041667,
+      }),
+    );
+    expect(toast).toHaveBeenLastCalledWith(
+      "Subtitles auto-synced by Bob: +3.0 s · speed 1.042 (25→24 fps)",
       expect.anything(),
     );
   });

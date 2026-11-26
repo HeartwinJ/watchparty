@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   normalizeSubtitleOffset,
+  normalizeSubtitleScale,
+  parseSubtitleTiming,
+  subtitleTimingChatMsg,
   subtitleOffsetKey,
 } from "./subtitleOffset.ts";
 
@@ -69,5 +72,39 @@ describe("subtitleOffsetKey", () => {
     expect(subtitleOffsetKey(null)).toBeUndefined();
     expect(subtitleOffsetKey("screenshare://abc")).toBeUndefined();
     expect(subtitleOffsetKey("fileshare://abc")).toBeUndefined();
+  });
+});
+
+describe("subtitle time scale", () => {
+  it("accepts 0.9–1.1, rounded to 6 decimals", () => {
+    expect(normalizeSubtitleScale(24 / 25)).toBe(0.96);
+    expect(normalizeSubtitleScale(24000 / 1001 / 25)).toBe(0.959041);
+    expect(normalizeSubtitleScale(1.0000001)).toBe(1);
+    expect(normalizeSubtitleScale(0.9)).toBe(0.9);
+    expect(normalizeSubtitleScale(1.1)).toBe(1.1);
+  });
+
+  it("rejects anything else", () => {
+    for (const v of [0.89, 1.11, 0, -1, NaN, Infinity, "1", null, undefined]) {
+      expect(normalizeSubtitleScale(v)).toBeUndefined();
+    }
+  });
+
+  it("parses {offset, scale}", () => {
+    expect(parseSubtitleTiming({ offset: 1.234, scale: 1 })).toEqual({
+      offset: 1.25,
+      scale: 1,
+    });
+    expect(parseSubtitleTiming({ offset: 1 })).toBeUndefined();
+    expect(parseSubtitleTiming({ offset: 1, scale: 2 })).toBeUndefined();
+    expect(parseSubtitleTiming([1, 1])).toBeUndefined();
+    expect(parseSubtitleTiming(null)).toBeUndefined();
+  });
+
+  it("formats the chat line like before unless there's a scale", () => {
+    expect(subtitleTimingChatMsg({ offset: 1.5, scale: 1 })).toBe("1.5");
+    expect(subtitleTimingChatMsg({ offset: 1.5, scale: 0.96 })).toBe(
+      '{"offset":1.5,"scale":0.96}',
+    );
   });
 });

@@ -1,6 +1,28 @@
 // Plain-text descriptions of chat system commands, for the chat overlay (and the sidebar chat if it wants them).
 import { formatTimestamp } from "../../../utils/utils";
-import { formatOffset } from "../logic/subtitles";
+import { formatTiming, normalizeScale } from "../logic/subtitles";
+
+/** A subtitle timing chat msg: the offset ("2.35"), or JSON {offset, scale} with a time scale */
+function parseTimingMsg(
+  msg: string | undefined,
+): { offset: number; scale: number } | undefined {
+  const text = msg ?? "";
+  if (text.startsWith("{")) {
+    try {
+      const d = JSON.parse(text) as { offset?: unknown; scale?: unknown };
+      return typeof d.offset === "number" && Number.isFinite(d.offset)
+        ? {
+            offset: d.offset,
+            scale: normalizeScale(typeof d.scale === "number" ? d.scale : 1),
+          }
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  const n = text.trim() === "" ? NaN : Number(text);
+  return Number.isFinite(n) ? { offset: n, scale: 1 } : undefined;
+}
 
 /**
  * Describes a chat message's `cmd` (play, pause, seek, host, subtitleOffset, ...) as "Alex <text>". Returns undefined
@@ -27,20 +49,20 @@ export function describeChatCommand(
     case "playbackRate":
       return `set the speed to ${msg === "0" ? "auto" : `${msg}×`}`;
     case "subtitleOffset": {
-      const n = Number(msg);
-      return Number.isFinite(n)
-        ? n === 0
+      const t = parseTimingMsg(msg);
+      return t
+        ? t.offset === 0 && t.scale === 1
           ? "reset the subtitle offset"
-          : `set subtitles ${formatOffset(n)} for everyone`
+          : `set subtitles ${formatTiming(t.offset, t.scale)} for everyone`
         : undefined;
     }
     case "subtitleAutoSync": {
-      // The room's auto-sync applied an offset computed on this person's device
-      const n = Number(msg);
-      return Number.isFinite(n)
-        ? n === 0
+      // The room's auto-sync applied a timing computed on this person's device
+      const t = parseTimingMsg(msg);
+      return t
+        ? t.offset === 0 && t.scale === 1
           ? "auto-synced the subtitles (already in sync)"
-          : `auto-synced the subtitles: ${formatOffset(n)} for everyone`
+          : `auto-synced the subtitles: ${formatTiming(t.offset, t.scale)} for everyone`
         : undefined;
     }
     case "roomSettings":
