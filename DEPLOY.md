@@ -55,16 +55,17 @@ openssl rand -hex 32
 ```
 
 ```
-APP_PASSWORD=<the password your friends will type>
+APP_PASSWORD=<your owner password: only you need it>
 SESSION_SECRET=<output of openssl rand -hex 32>
 TUNNEL_TOKEN=eyJ...
 CF_TURN_KEY_ID=...
 CF_TURN_API_TOKEN=...
 # Optional
 YOUTUBE_API_KEY=...
-OPENSUBTITLES_KEY=...
+OPENSUBTITLES_KEY=...          # OpenSubtitles API consumer key, enables subtitle search
 AIOSTREAMS_MANIFEST_URL=...   # contains credentials, keep .env private
-SUBTITLE_LANGS=en              # subtitle languages for AIOStreams titles
+SUBTITLE_LANGS=en              # preferred subtitle languages, e.g. en,es
+ROOM_MAX_IDLE_DAYS=60          # delete rooms nobody has used for this many days (0 = never)
 ```
 
 `.env` is read by compose (for `TUNNEL_TOKEN`) and passed to the app. Never commit it.
@@ -81,6 +82,8 @@ docker compose ps        # app should become "healthy", then cloudflared starts
 The build needs about **1 GB of free RAM** for a minute or two the first time (the client build alone peaks at ~700 MB; `npm ci` downloads the dependencies once and is cached afterwards). If the VPS is tight on memory, stop the stack's other heavy services or add swap during the first build.
 
 Open `https://watch.example.com` and log in with `APP_PASSWORD`.
+
+**Inviting people:** don't share `APP_PASSWORD`. It's the owner password: it lets you create, manage and delete rooms and see Home. Each room has its own password (generated automatically; change it or turn it off in the room's settings). Use **Invite** in the room's top bar to copy either the plain link (guests type the room password) or a link that includes it. Guests can only reach that room.
 
 ## Updating
 
