@@ -103,6 +103,10 @@ export const mapYoutubePlaylistResult = (
   };
 };
 
+/** GET /youtube's `q`: a non-blank string of at most 500 characters, else undefined (400 invalid_params) */
+export const parseYoutubeQuery = (raw: unknown): string | undefined =>
+  typeof raw === "string" && raw.trim() && raw.length <= 500 ? raw : undefined;
+
 export const searchYoutube = async (
   query: string,
 ): Promise<PlaylistVideo[]> => {
