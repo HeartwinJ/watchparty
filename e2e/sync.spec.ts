@@ -8,6 +8,7 @@ import {
   media,
   playUrl,
   playing,
+  seekBarTo,
   showControls,
   test,
 } from "./helpers.ts";
@@ -61,11 +62,8 @@ test("video changes, play/pause and seeks stay in sync; a late joiner lands on t
     );
   }
 
-  // Seek bar click on A to ~50 % (5:00)
-  await showControls(a.page);
-  const bar = a.page.getByRole("slider", { name: "Seek" });
-  const box = (await bar.boundingBox())!;
-  await a.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  // Seek bar click on A to 5:00
+  await seekBarTo(a.page, 300);
   for (const v of [a, b]) {
     await expectMedia(
       v.page,

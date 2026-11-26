@@ -173,6 +173,7 @@ export async function focusPlayer(page: Page) {
 
 /** Wakes the auto-hiding controls by moving the mouse over the player. */
 export async function showControls(page: Page) {
+  await dismissUnmute(page);
   const box = await page.locator("#leftVideo").boundingBox();
   if (!box) throw new Error("no video box");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -189,14 +190,31 @@ export async function sendChat(page: Page, text: string) {
   await expect(input).toHaveValue("");
 }
 
-/** Clicks the seek bar at `seconds` (a room-wide seek). */
+/**
+ * Clicks the seek bar at `seconds` (a room-wide seek), like a person would: wake the controls, then click once the bar
+ * is visible, still and actually under the pointer (Playwright's actionability checks retry until then).
+ */
 export async function seekBarTo(page: Page, seconds: number) {
   const { duration } = await media(page);
   await showControls(page);
-  const box = await page.getByRole("slider", { name: "Seek" }).boundingBox();
+  const bar = page.getByRole("slider", { name: "Seek" });
+  await expect(bar).toBeVisible();
+  await expect(bar).not.toHaveAttribute("aria-disabled", "true");
+  const box = await bar.boundingBox();
   if (!box) throw new Error("no seek bar");
-  await page.mouse.click(
-    box.x + (box.width * seconds) / duration,
-    box.y + box.height / 2,
-  );
+  await bar.click({
+    position: { x: (box.width * seconds) / duration, y: box.height / 2 },
+  });
+}
+
+/**
+ * When the browser blocks autoplay with sound, the player shows an "Unmute" scrim over everything and the first click
+ * only unmutes. Click it away first, as a person would.
+ */
+export async function dismissUnmute(page: Page) {
+  const scrim = page.locator('[class*="_unmute_"]');
+  if (await scrim.isVisible()) {
+    await scrim.click();
+    await expect(scrim).toHaveCount(0);
+  }
 }
