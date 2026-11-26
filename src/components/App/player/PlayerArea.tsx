@@ -596,6 +596,8 @@ export const PlayerArea = ({ room }: { room: Room }) => {
         <QuickChat
           onSend={(msg) => cmd.sendChat(msg)}
           onClose={() => setQuickChat(false)}
+          container={container}
+          compact={phone}
         />
       )}
 

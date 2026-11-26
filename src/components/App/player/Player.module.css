@@ -666,6 +666,53 @@
   }
 }
 
+.quickChatEmoji {
+  flex: none;
+  color: var(--wp-on-video-2);
+}
+
+/*
+ * Quick chat's emoji picker: portaled into the player (the fullscreen element), above the bar and aligned with it.
+ * The wrapper spans from near the top of the player to just above the bar, so the picker shrinks to fit short players
+ * (phones in landscape) instead of running off the top.
+ */
+.quickChatPicker {
+  --wp-quick-chat-bottom: 96px;
+  position: absolute;
+  left: var(--wp-sp-5);
+  right: var(--wp-sp-5);
+  top: var(--wp-sp-3);
+  bottom: calc(var(--wp-quick-chat-bottom) + 42px + var(--wp-sp-2));
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  z-index: calc(var(--wp-z-chat-overlay) + 2);
+  pointer-events: none;
+}
+
+.quickChatPickerBox {
+  display: flex;
+  min-height: 0;
+  max-height: 100%;
+  max-width: 100%;
+  pointer-events: auto;
+  animation: wpFadeUp var(--wp-dur-base) var(--wp-ease);
+}
+
+.quickChatPickerBox > div {
+  display: flex;
+  min-height: 0;
+  max-width: 100%;
+}
+
+.quickChatPickerBox :global(em-emoji-picker) {
+  min-height: 0;
+  max-height: 100%;
+  max-width: 100%;
+  box-shadow: var(--wp-sh-2);
+}
+
 .kbd {
   display: inline-block;
   min-width: 20px;
@@ -1276,6 +1323,13 @@
   .quickChat {
     left: var(--wp-sp-3);
     bottom: 64px;
+  }
+
+  .quickChatPicker {
+    --wp-quick-chat-bottom: 64px;
+    left: var(--wp-sp-3);
+    right: var(--wp-sp-3);
+    top: var(--wp-sp-2);
   }
 
   .overlayTop {

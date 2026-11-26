@@ -220,7 +220,14 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   outside fullscreen (in fullscreen the browser takes Esc and exits fullscreen). It also closes by itself after
   **5 s empty** (`quickChatIdle.ts`, pure): the countdown starts when it opens and again whenever the input becomes
   empty, and any text (not just spaces) cancels it. A small ring next to the input empties over those 5 s (`aria-hidden`; a still ring
-  with reduced motion) and is hidden while there's text.
+  with reduced motion) and is hidden while there's text. The bar shows only an Enter hint. The emoji button ("Insert
+  emoji") opens the Chat's emoji-mart picker (`Chat/EmojiPicker.tsx`), portaled into the player container (the
+  fullscreen element) above the bar; it shrinks to fit short players and shows 7 per row on phones. Picks go in at the
+  caret (replacing a selection, `insertText.ts`, pure), focus stays in the input and the picker stays open for more.
+  While it's open the countdown is paused and the ring hidden; closing it with the input empty restarts the full 5 s
+  (`emptySinceAfterPicker`). Esc closes only the picker first (outside fullscreen), a click outside it (but not on the
+  bar) closes it, and the picker is a `data-no-shortcuts` zone, so typing in its search box never triggers player
+  shortcuts.
 - **Chat panel** (`ChatPanel.tsx`, `useChatPanel.ts`, pure logic in `chatPanel.ts`): the real `Chat` in a translucent
   panel over the right side of the video (the video doesn't shrink), between the fullscreen title bar and the control
   bar so both stay usable. Offered where quick chat is (`fullscreen || sidebarCollapsed`, not on the phone layout's

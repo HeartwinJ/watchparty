@@ -6,7 +6,8 @@ type EmojiPickerProps = {
   maxFrequentRows?: number;
   perLine?: number;
   onEmojiSelect: (emoji: { native: string }) => void;
-  onClickOutside?: () => void;
+  /** Any click outside the picker (the document's click event, retargeted to the picker's host if inside it) */
+  onClickOutside?: (e: MouseEvent) => void;
 };
 
 /**
@@ -34,7 +35,8 @@ export const EmojiPicker = (props: EmojiPickerProps) => {
         perLine,
         onEmojiSelect: (emoji: { native: string }) =>
           propsRef.current.onEmojiSelect(emoji),
-        onClickOutside: () => propsRef.current.onClickOutside?.(),
+        onClickOutside: (e: MouseEvent) =>
+          propsRef.current.onClickOutside?.(e),
       }) as unknown as HTMLElement;
       containerRef.current.append(picker);
     });
