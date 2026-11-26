@@ -77,11 +77,6 @@ export class IntroSkipTracker {
     this.settled = false;
   }
 
-  /** The skipped seconds for `video` while the notice is meaningful, else 0 */
-  active(video: string | null): number {
-    return this.video !== null && this.video === video ? this.seconds : 0;
-  }
-
   /** Someone played or paused: the skip can no longer be undone on its own */
   interact() {
     this.interacted = true;

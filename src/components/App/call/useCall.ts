@@ -186,27 +186,19 @@ export function useCall(opts: {
       }
     };
 
-    /** Opens the mic (the remembered one, or `deviceId`); null and a micError when it can't */
-    const ensureMic = async (deviceId?: string): Promise<boolean> => {
+    /** Opens the remembered mic unless one is live; false and a micError when it can't */
+    const ensureMic = async (): Promise<boolean> => {
       const current = micTrack();
-      if (
-        current &&
-        current.readyState === "live" &&
-        (deviceId === undefined ||
-          current.getSettings?.().deviceId === deviceId)
-      ) {
+      if (current && current.readyState === "live") {
         return true;
       }
-      const result = await openMic(deviceId ?? readPref(CALL_PREFS.mic));
+      const result = await openMic(readPref(CALL_PREFS.mic));
       if (!result.ok) {
         dispatch({ type: "patch", patch: { micError: result.error } });
         return false;
       }
       dispatch({ type: "patch", patch: { micError: null } });
       adoptStream(result.stream);
-      if (deviceId) {
-        writePref(CALL_PREFS.mic, deviceId);
-      }
       return true;
     };
 

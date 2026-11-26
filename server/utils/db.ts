@@ -208,14 +208,6 @@ export function getSubtitleTiming(
     : undefined;
 }
 
-/** The saved subtitle offset (seconds) for a video key, or undefined if none was saved. */
-export function getSubtitleOffset(
-  db: DatabaseSync,
-  videoKey: string,
-): number | undefined {
-  return getSubtitleTiming(db, videoKey)?.offset;
-}
-
 /** Saves a video's subtitle timing. Offset 0 with scale 1 deletes the row (it's the default). */
 export function saveSubtitleTiming(
   db: DatabaseSync,
@@ -232,14 +224,4 @@ export function saveSubtitleTiming(
      ON CONFLICT(videoKey) DO UPDATE SET offset = excluded.offset, scale = excluded.scale,
        updatedAt = excluded.updatedAt`,
   ).run(videoKey, timing.offset, timing.scale, now);
-}
-
-/** Saves a video's subtitle offset with no time scale. An offset of 0 deletes the row (it's the default). */
-export function saveSubtitleOffset(
-  db: DatabaseSync,
-  videoKey: string,
-  offset: number,
-  now = Date.now(),
-) {
-  saveSubtitleTiming(db, videoKey, { offset, scale: 1 }, now);
 }

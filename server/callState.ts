@@ -324,11 +324,6 @@ export class CallMembership {
     return changed;
   }
 
-  /** Returns whether anything changed */
-  setMuted(clientId: string, socketId: string, muted: boolean): boolean {
-    return this.setState(clientId, socketId, { muted });
-  }
-
   /** The member's socket disconnected: keep them for the grace period. Returns whether anything changed. */
   disconnect(clientId: string, socketId: string, now: number): boolean {
     const m = this.members.get(clientId);
