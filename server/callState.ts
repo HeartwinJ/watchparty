@@ -24,9 +24,28 @@ export const CALL_LIMITS = {
 
 /** CMD:call. `session` identifies the client's call instance (a new one per page load). */
 export type CallCommand =
-  | { action: "join"; session: string; muted: boolean; camera: boolean }
+  | {
+      action: "join";
+      session: string;
+      muted: boolean;
+      camera: boolean;
+      wantsVideo: boolean;
+    }
   | { action: "leave" }
-  | { action: "state"; muted?: boolean; camera?: boolean };
+  | CallStatePatch;
+
+/**
+ * `state`: any of mute, camera and `wantsVideo` (this viewer shows the video tiles; the others send it their camera
+ * only while it's true)
+ */
+export interface CallStatePatch {
+  action: "state";
+  muted?: boolean;
+  camera?: boolean;
+  wantsVideo?: boolean;
+}
+
+const STATE_FLAGS = ["muted", "camera", "wantsVideo"] as const;
 
 /**
  * CMD:callModerate (owners only): ask someone to mute or to turn their camera off (their own client does it), or
@@ -66,11 +85,13 @@ export function parseCallCommand(raw: unknown): CallCommand | null {
   }
   const d = raw as Record<string, unknown>;
   if (d.action === "join") {
-    // `camera` is optional (an audio-only client): absent = off
+    // `camera` is optional (an audio-only client): absent = off. `wantsVideo` is optional (older clients): absent =
+    // they show the tiles, so they get video as before.
     if (
       !isCallSession(d.session) ||
       typeof d.muted !== "boolean" ||
-      (d.camera !== undefined && typeof d.camera !== "boolean")
+      (d.camera !== undefined && typeof d.camera !== "boolean") ||
+      (d.wantsVideo !== undefined && typeof d.wantsVideo !== "boolean")
     ) {
       return null;
     }
@@ -79,32 +100,28 @@ export function parseCallCommand(raw: unknown): CallCommand | null {
       session: d.session,
       muted: d.muted,
       camera: d.camera === true,
+      wantsVideo: d.wantsVideo !== false,
     };
   }
   if (d.action === "leave") {
     return { action: "leave" };
   }
   if (d.action === "state") {
-    // `muted` and/or `camera`: at least one, each a boolean when present
-    const hasMuted = d.muted !== undefined;
-    const hasCamera = d.camera !== undefined;
-    if (
-      (!hasMuted && !hasCamera) ||
-      (hasMuted && typeof d.muted !== "boolean") ||
-      (hasCamera && typeof d.camera !== "boolean")
-    ) {
-      return null;
+    // `muted`, `camera` and/or `wantsVideo`: at least one, each a boolean when present
+    const out: CallStatePatch = { action: "state" };
+    let any = false;
+    for (const key of STATE_FLAGS) {
+      const v = d[key];
+      if (v === undefined) {
+        continue;
+      }
+      if (typeof v !== "boolean") {
+        return null;
+      }
+      out[key] = v;
+      any = true;
     }
-    const out: { action: "state"; muted?: boolean; camera?: boolean } = {
-      action: "state",
-    };
-    if (hasMuted) {
-      out.muted = d.muted as boolean;
-    }
-    if (hasCamera) {
-      out.camera = d.camera as boolean;
-    }
-    return out;
+    return any ? out : null;
   }
   return null;
 }
@@ -233,6 +250,8 @@ interface Member {
   session: string;
   muted: boolean;
   camera: boolean;
+  /** They show the video tiles: the others send them their camera */
+  wantsVideo: boolean;
   joinedAt: number;
   /** The socket that speaks for this member, null while it's gone (grace period) */
   socketId: string | null;
@@ -260,10 +279,16 @@ export class CallMembership {
   join(
     clientId: string,
     socketId: string,
-    cmd: { session: string; muted: boolean; camera?: boolean },
+    cmd: {
+      session: string;
+      muted: boolean;
+      camera?: boolean;
+      wantsVideo?: boolean;
+    },
     now: number,
   ): JoinOutcome {
     const camera = cmd.camera === true;
+    const wantsVideo = cmd.wantsVideo !== false;
     const existing = this.members.get(clientId);
     if (existing) {
       existing.socketId = socketId;
@@ -271,6 +296,7 @@ export class CallMembership {
       existing.session = cmd.session;
       existing.muted = cmd.muted;
       existing.camera = camera;
+      existing.wantsVideo = wantsVideo;
       return "rejoined";
     }
     if (this.members.size >= this.maxMembers) {
@@ -281,6 +307,7 @@ export class CallMembership {
       session: cmd.session,
       muted: cmd.muted,
       camera,
+      wantsVideo,
       joinedAt: now,
       socketId,
       graceUntil: null,
@@ -302,24 +329,23 @@ export class CallMembership {
     return this.members.delete(clientId);
   }
 
-  /** Mute and/or camera, from the member's own socket. Returns whether anything changed. */
+  /** Mute, camera and/or wantsVideo, from the member's own socket. Returns whether anything changed. */
   setState(
     clientId: string,
     socketId: string,
-    patch: { muted?: boolean; camera?: boolean },
+    patch: Omit<CallStatePatch, "action">,
   ): boolean {
     const m = this.members.get(clientId);
     if (!m || m.socketId !== socketId) {
       return false;
     }
     let changed = false;
-    if (patch.muted !== undefined && patch.muted !== m.muted) {
-      m.muted = patch.muted;
-      changed = true;
-    }
-    if (patch.camera !== undefined && patch.camera !== m.camera) {
-      m.camera = patch.camera;
-      changed = true;
+    for (const key of STATE_FLAGS) {
+      const v = patch[key];
+      if (v !== undefined && v !== m[key]) {
+        m[key] = v;
+        changed = true;
+      }
     }
     return changed;
   }
@@ -397,6 +423,7 @@ export class CallMembership {
           session: m.session,
           muted: m.muted,
           camera: m.camera,
+          wantsVideo: m.wantsVideo,
           joinedAt: m.joinedAt,
           reconnecting: m.socketId === null,
         })),

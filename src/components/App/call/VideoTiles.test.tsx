@@ -26,17 +26,24 @@ const member = (clientId: string, camera: boolean, muted = false) => ({
   camera,
   joinedAt: 1,
   reconnecting: false,
+  wantsVideo: true,
 });
 
-function fakeRoom(opts: { camera?: boolean; members: CallMember[] }) {
+function fakeRoom(opts: {
+  camera?: boolean;
+  members: CallMember[];
+  tilesCollapsed?: boolean;
+}) {
   const call = {
     ...initialCallState({ pushToTalk: false, ducking: false }),
     status: "joined" as const,
     session: "aaaaaaaasession",
     camera: opts.camera ?? false,
     members: opts.members,
+    tilesCollapsed: opts.tilesCollapsed ?? false,
   };
   const setTilesHidden = vi.fn();
+  const setTilesCollapsed = vi.fn();
   const room = {
     clientId: ME,
     state: {
@@ -44,9 +51,9 @@ function fakeRoom(opts: { camera?: boolean; members: CallMember[] }) {
       nameMap: { [ME]: "Me", [BOB]: "Bob", [CAT]: "Cat" },
       pictureMap: {},
     },
-    call: { video: new CallVideo(), setTilesHidden },
+    call: { video: new CallVideo(), setTilesHidden, setTilesCollapsed },
   } as unknown as Room;
-  return { room, setTilesHidden };
+  return { room, setTilesHidden, setTilesCollapsed };
 }
 
 function playerEl() {
@@ -84,7 +91,7 @@ describe("VideoTiles", () => {
   });
 
   it("shows a tile per camera, enlarges on click, collapses and hides", () => {
-    const { room, setTilesHidden } = fakeRoom({
+    const { room, setTilesHidden, setTilesCollapsed } = fakeRoom({
       camera: true,
       members: [member(ME, false), member(BOB, true, true), member(CAT, false)],
     });
@@ -101,21 +108,30 @@ describe("VideoTiles", () => {
       screen.getByRole("button", { name: /^Bob/ }).getAttribute("aria-pressed"),
     ).toBe("true");
 
+    // Collapsing goes through the call (it stops video to us while collapsed)
     fireEvent.click(
       screen.getByRole("button", { name: "Collapse call video" }),
     );
+    expect(setTilesCollapsed).toHaveBeenCalledWith(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide video tiles on this device" }),
+    );
+    expect(setTilesHidden).toHaveBeenCalledWith(true);
+  });
+
+  it("collapsed (state.call.tilesCollapsed): a pill that expands through the call", () => {
+    const { room, setTilesCollapsed } = fakeRoom({
+      camera: true,
+      tilesCollapsed: true,
+      members: [member(ME, false), member(BOB, true)],
+    });
+    renderTiles(room);
     expect(screen.queryByRole("button", { name: /^Bob/ })).toBeNull();
-    expect(
-      JSON.parse(window.localStorage.getItem("wp-call-tiles")!),
-    ).toMatchObject({ collapsed: true });
     act(() =>
       fireEvent.click(
         screen.getByRole("button", { name: "Show call video (2)" }),
       ),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Hide video tiles on this device" }),
-    );
-    expect(setTilesHidden).toHaveBeenCalledWith(true);
+    expect(setTilesCollapsed).toHaveBeenCalledWith(false);
   });
 });

@@ -191,7 +191,7 @@ export const CallPanel = ({ room }: { room: Room }) => {
           />
           <Switch
             label="Show video tiles"
-            description="Cameras over the video, only on this device"
+            description="Cameras over the video, only on this device (hidden, they use no bandwidth)"
             checked={!c.tilesHidden}
             onChange={(e) => call.setTilesHidden(!e.currentTarget.checked)}
           />

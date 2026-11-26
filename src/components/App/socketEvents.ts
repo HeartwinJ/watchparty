@@ -99,9 +99,21 @@ export type RoomPasswordCommand =
 
 /** CMD:call (mirrors parseCallCommand in server/callState.ts) */
 export type CallCommand =
-  | { action: "join"; session: string; muted: boolean; camera: boolean }
+  | {
+      action: "join";
+      session: string;
+      muted: boolean;
+      camera: boolean;
+      /** We show the video tiles (the others send us their camera only then) */
+      wantsVideo: boolean;
+    }
   | { action: "leave" }
-  | { action: "state"; muted?: boolean; camera?: boolean };
+  | {
+      action: "state";
+      muted?: boolean;
+      camera?: boolean;
+      wantsVideo?: boolean;
+    };
 
 /** CMD:callModerate actions (owners only) */
 export type CallModerationAction = "mute" | "camera" | "remove";
@@ -162,7 +174,7 @@ export interface ClientToServerEvents {
     msg: SignalMessage;
     sharer?: boolean;
   }) => void;
-  /** Join/leave the call or change our mute / camera state */
+  /** Join/leave the call or change our mute / camera / wantsVideo state */
   "CMD:call": (cmd: CallCommand) => void;
   /** Relayed to `to` only while both are call members (size capped, rate limited) */
   "CMD:callSignal": (

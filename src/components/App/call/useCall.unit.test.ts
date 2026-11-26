@@ -108,6 +108,7 @@ const member = (clientId: string, session: string, extra = {}) => ({
   camera: false,
   joinedAt: 1,
   reconnecting: false,
+  wantsVideo: true,
   ...extra,
 });
 
@@ -153,7 +154,12 @@ describe("useCall: joining", () => {
       expect.objectContaining({ action: "join", muted: false, camera: false }),
     );
     expect(transports[0].setPeers).toHaveBeenLastCalledWith([
-      { clientId: BOB, session: "bobsession", reconnecting: false },
+      {
+        clientId: BOB,
+        session: "bobsession",
+        reconnecting: false,
+        wantsVideo: true,
+      },
     ]);
     // The rejoin marker for a reload
     expect(JSON.parse(window.sessionStorage.getItem(rejoinKey(ROOM))!)).toEqual(
@@ -752,5 +758,119 @@ describe("useCall: preview then join", () => {
     act(() => ctx.api().stopPreview());
     await act(async () => onended?.());
     expect(devices.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useCall: wantsVideo (video only while the tiles show)", () => {
+  const setVisibility = (state: "visible" | "hidden") => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => state,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const wantsVideoSent = (ctx: ReturnType<typeof setup>) =>
+    ctx.cmd.call.mock.calls
+      .map(([c]) => c)
+      .filter((c) => c.action === "state" && "wantsVideo" in c)
+      .map((c) => c.wantsVideo);
+  afterEach(() => setVisibility("visible"));
+
+  it("joins with it, sends changes debounced, and passes each member's to the transport", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const ctx = setup();
+    const session = await joined(ctx);
+    expect(ctx.cmd.call).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "join", wantsVideo: true }),
+    );
+    // Hide then show again quickly: nothing sent
+    act(() => ctx.api().setTilesHidden(true));
+    act(() => vi.advanceTimersByTime(200));
+    act(() => ctx.api().setTilesHidden(false));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(wantsVideoSent(ctx)).toEqual([]);
+    // Hidden for good: sent after the delay
+    act(() => ctx.api().setTilesHidden(true));
+    act(() => vi.advanceTimersByTime(499));
+    expect(wantsVideoSent(ctx)).toEqual([]);
+    act(() => vi.advanceTimersByTime(1));
+    expect(wantsVideoSent(ctx)).toEqual([false]);
+    // Collapsing while hidden changes nothing; showing again (still collapsed) neither
+    act(() => ctx.api().setTilesCollapsed(true));
+    act(() => ctx.api().setTilesHidden(false));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(wantsVideoSent(ctx)).toEqual([false]);
+    expect(
+      JSON.parse(window.localStorage.getItem(CALL_PREFS.tiles)!),
+    ).toMatchObject({ collapsed: true });
+    // Expanded: video resumes quickly
+    act(() => ctx.api().setTilesCollapsed(false));
+    act(() => vi.advanceTimersByTime(150));
+    expect(wantsVideoSent(ctx)).toEqual([false, true]);
+    expect(ctx.call().tilesCollapsed).toBe(false);
+
+    // The transport gets each member's wantsVideo
+    act(() =>
+      ctx.api().onState({
+        members: [
+          member(ME, session),
+          member(BOB, "bobsession", { wantsVideo: false }),
+        ],
+      }),
+    );
+    expect(transports[0].setPeers).toHaveBeenLastCalledWith([
+      expect.objectContaining({ clientId: BOB, wantsVideo: false }),
+    ]);
+  });
+
+  it("a hidden tab doesn't want video; a reconnect re-sends the current value with join", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const ctx = setup();
+    await joined(ctx);
+    act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(600));
+    expect(wantsVideoSent(ctx)).toEqual([false]);
+    // Socket reconnect while hidden: join carries it, nothing pending afterwards
+    act(() => ctx.api().onConnect());
+    expect(ctx.cmd.call).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: "join", wantsVideo: false }),
+    );
+    act(() => setVisibility("visible"));
+    act(() => vi.advanceTimersByTime(200));
+    expect(wantsVideoSent(ctx)).toEqual([false, true]);
+  });
+
+  it("nothing is sent outside the call, and leaving drops a pending change", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const ctx = setup();
+    act(() => ctx.api().setTilesHidden(true));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(ctx.cmd.call).not.toHaveBeenCalled();
+    act(() => ctx.api().setTilesHidden(false));
+    await joined(ctx);
+    act(() => ctx.api().setTilesHidden(true));
+    act(() => ctx.api().leave());
+    act(() => vi.advanceTimersByTime(1000));
+    expect(wantsVideoSent(ctx)).toEqual([]);
+  });
+
+  it("starts collapsed from the saved strip and joins without video", async () => {
+    window.localStorage.setItem(
+      CALL_PREFS.tiles,
+      JSON.stringify({ fx: 0.5, fy: 0, collapsed: true }),
+    );
+    const ctx = setup();
+    expect(ctx.call().tilesCollapsed).toBe(true);
+    await joined(ctx);
+    expect(ctx.cmd.call).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "join", wantsVideo: false }),
+    );
+    // Expanding keeps the position
+    act(() => ctx.api().setTilesCollapsed(false));
+    expect(JSON.parse(window.localStorage.getItem(CALL_PREFS.tiles)!)).toEqual({
+      fx: 0.5,
+      fy: 0,
+      collapsed: false,
+    });
   });
 });

@@ -219,6 +219,11 @@ interface CallMember {
   muted: boolean;
   /** Their camera is on (they send video). Off by default on join. */
   camera: boolean;
+  /**
+   * They show the video tiles (not hidden or collapsed, tab visible): the others send them their camera only while
+   * this is true (older clients that don't say get true)
+   */
+  wantsVideo: boolean;
   /** Server time (ms) they joined; kept across a rejoin */
   joinedAt: number;
   /** Their socket dropped; they stay listed for a short grace period (see server/callState.ts) */

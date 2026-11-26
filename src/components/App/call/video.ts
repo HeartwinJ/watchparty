@@ -30,6 +30,26 @@ export function videoCapsFor(peerCount: number): VideoCaps {
   return { maxBitrate: 200_000, maxHeight: 240, maxFramerate: 15 };
 }
 
+/**
+ * Whether we send our camera to a peer: only while they show the video tiles (`wantsVideo`). A peer that doesn't say
+ * (an older client) gets it, as before.
+ */
+export const sendsVideoTo = (peer: { wantsVideo?: boolean }) =>
+  peer.wantsVideo !== false;
+
+/** The caps for our video senders, counting only the peers that actually receive our camera (sendsVideoTo) */
+export function videoCapsForPeers(
+  peers: Iterable<{ wantsVideo?: boolean }>,
+): VideoCaps {
+  let receivers = 0;
+  for (const p of peers) {
+    if (sendsVideoTo(p)) {
+      receivers++;
+    }
+  }
+  return videoCapsFor(receivers);
+}
+
 /** `scaleResolutionDownBy` that brings a capture of `trackHeight` down to `maxHeight` (never up) */
 export function scaleDownBy(
   trackHeight: number | undefined,

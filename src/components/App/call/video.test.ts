@@ -3,8 +3,29 @@ import {
   cameraConstraints,
   classifyCameraError,
   scaleDownBy,
+  sendsVideoTo,
   videoCapsFor,
+  videoCapsForPeers,
 } from "./video";
+
+describe("who gets our camera", () => {
+  it("only peers showing the tiles; a peer that doesn't say (older client) does", () => {
+    expect(sendsVideoTo({ wantsVideo: true })).toBe(true);
+    expect(sendsVideoTo({ wantsVideo: false })).toBe(false);
+    expect(sendsVideoTo({})).toBe(true);
+  });
+
+  it("caps count only the peers that receive it", () => {
+    const show = { wantsVideo: true };
+    const hide = { wantsVideo: false };
+    expect(videoCapsForPeers([show, hide, hide])).toEqual(videoCapsFor(1));
+    expect(videoCapsForPeers([show, {}, hide])).toEqual(videoCapsFor(2));
+    expect(videoCapsForPeers([hide, hide])).toEqual(videoCapsFor(1));
+    expect(videoCapsForPeers(new Set([show, { ...show }, {}]))).toEqual(
+      videoCapsFor(3),
+    );
+  });
+});
 
 describe("videoCapsFor", () => {
   it("shrinks each sender's video as the call grows", () => {

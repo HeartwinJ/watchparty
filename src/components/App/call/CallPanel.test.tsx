@@ -29,6 +29,7 @@ const member = (clientId: string, extra: Partial<CallMember> = {}) => ({
   camera: false,
   joinedAt: 1,
   reconnecting: false,
+  wantsVideo: true,
   ...extra,
 });
 

@@ -28,6 +28,8 @@ export interface CallUiState {
   ducking: boolean;
   /** Don't show the video tiles over the player on this device */
   tilesHidden: boolean;
+  /** The tile strip is collapsed into a pill (per device, saved with the strip's position) */
+  tilesCollapsed: boolean;
   /** Connection to each other member, by clientId */
   peers: Record<string, PeerStatus>;
   /** clientIds speaking right now (us included), sorted */
@@ -44,6 +46,7 @@ export const initialCallState = (prefs: {
   pushToTalk: boolean;
   ducking: boolean;
   tilesHidden?: boolean;
+  tilesCollapsed?: boolean;
 }): CallUiState => ({
   status: "idle",
   session: null,
@@ -56,6 +59,7 @@ export const initialCallState = (prefs: {
   pushToTalk: prefs.pushToTalk,
   ducking: prefs.ducking,
   tilesHidden: prefs.tilesHidden ?? false,
+  tilesCollapsed: prefs.tilesCollapsed ?? false,
   peers: {},
   speaking: [],
   busy: false,
@@ -85,6 +89,7 @@ export type CallAction =
           | "cameraBusy"
           | "cameraError"
           | "tilesHidden"
+          | "tilesCollapsed"
         >
       >;
     };

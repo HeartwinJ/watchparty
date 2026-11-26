@@ -9,7 +9,7 @@ import {
   type PeerStatus,
 } from "./negotiation";
 import { tuneVoiceSdp, VOICE_MAX_BITRATE } from "./sdp";
-import { scaleDownBy, videoCapsFor } from "./video";
+import { scaleDownBy, sendsVideoTo, videoCapsForPeers } from "./video";
 
 export type CallMediaKind = "audio" | "video";
 const MEDIA_KINDS: CallMediaKind[] = ["audio", "video"];
@@ -29,6 +29,11 @@ export interface CallPeerInfo {
   session: string;
   /** Their socket is reconnecting: keep an existing connection, but don't start a new one (they can't signal) */
   reconnecting: boolean;
+  /**
+   * They show the video tiles: we send them our camera only while this is true (absent = true). Hidden tiles get
+   * `replaceTrack(null)` on that peer's video sender, so no renegotiation and voice is never touched.
+   */
+  wantsVideo?: boolean;
 }
 
 export interface CallTransportEvents {
@@ -41,11 +46,12 @@ export interface CallTransportEvents {
 
 export interface CallTransport {
   /**
-   * Sends `track` (or nothing, with null) to everyone. Every connection has an audio and a video sender from the
-   * start, so switching devices or turning the camera on and off only replaces the track (no renegotiation).
+   * Sends `track` (or nothing, with null) to everyone (video only to peers that want it, see CallPeerInfo). Every
+   * connection has an audio and a video sender from the start, so switching devices or turning the camera on and off
+   * only replaces the track (no renegotiation).
    */
   setLocalTrack: (kind: CallMediaKind, track: MediaStreamTrack | null) => void;
-  /** The other call members; connects to new ones, drops departed ones */
+  /** The other call members; connects to new ones, drops departed ones, follows their wantsVideo */
   setPeers: (peers: CallPeerInfo[]) => void;
   /** A REC:callSignal for us */
   handleSignal: (signal: CallSignalEvent) => void;
@@ -73,6 +79,13 @@ interface MeshPeer {
   queue: Promise<void>;
   recovery: PeerRecovery;
   senders: Map<CallMediaKind, RTCRtpSender>;
+  /**
+   * The track we last asked each sender to send. replaceTrack is async (`sender.track` changes when it resolves), so
+   * a quick off/on must compare against what was asked for, or the second call would be skipped.
+   */
+  sending: Map<CallMediaKind, MediaStreamTrack | null>;
+  /** They show the video tiles: they get our camera */
+  wantsVideo: boolean;
   status: PeerStatus;
   /** What setParameters last applied per sender (so it runs only when something changed) */
   paramsKey: Map<CallMediaKind, string>;
@@ -103,6 +116,12 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
     }
   };
 
+  /** What the peer should get of `kind`: our track, except video for a peer that hides the tiles */
+  const trackFor = (peer: MeshPeer, kind: CallMediaKind) =>
+    kind === "video" && !peer.wantsVideo
+      ? null
+      : (localTracks.get(kind) ?? null);
+
   /** Puts our current track of `kind` (or nothing) on the peer's sender, once it has one */
   const sendTrack = (peer: MeshPeer, kind: CallMediaKind) => {
     const sender = peer.senders.get(kind);
@@ -110,12 +129,20 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       // The answering side: it adopts the offer's transceivers (adoptTransceivers) and sends then
       return;
     }
-    const track = localTracks.get(kind) ?? null;
-    if (sender.track === track) {
+    const track = trackFor(peer, kind);
+    const current = peer.sending.has(kind)
+      ? peer.sending.get(kind)
+      : sender.track;
+    if (current === track) {
       return;
     }
+    peer.sending.set(kind, track);
     sender.replaceTrack(track).catch((e) => {
       console.warn("[call] replaceTrack failed", e);
+      // Unknown now: the next change tries again
+      if (peer.sending.get(kind) === track) {
+        peer.sending.delete(kind);
+      }
     });
   };
 
@@ -145,8 +172,9 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
 
   /**
    * Sender encodings: audio capped to voice size with high network priority; video capped by how many peers we send
-   * to (videoCapsFor), low priority and "maintain-framerate", so a congested uplink drops video resolution first and
-   * never the voice. Re-applied when the call size, the camera or the connection changes.
+   * it to (videoCapsForPeers: only those showing the tiles), low priority and "maintain-framerate", so a congested
+   * uplink drops video resolution first and never the voice. Re-applied when the call size, who wants video, the
+   * camera or the connection changes.
    */
   const applyParams = (peer: MeshPeer) => {
     peer.paramsQueue = peer.paramsQueue.then(async () => {
@@ -155,7 +183,7 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
           return;
         }
         const height = localTracks.get("video")?.getSettings?.().height;
-        const caps = videoCapsFor(peers.size);
+        const caps = videoCapsForPeers(peers.values());
         const key =
           kind === "audio"
             ? "audio"
@@ -208,6 +236,8 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       queue: Promise.resolve(),
       recovery: new PeerRecovery(now),
       senders: new Map(),
+      sending: new Map(),
+      wantsVideo: sendsVideoTo(info),
       status: "connecting",
       paramsKey: new Map(),
       paramsQueue: Promise.resolve(),
@@ -266,11 +296,13 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       // One side offers (the impolite one), with an audio and a video transceiver from the start, so turning the
       // camera on or off later is only replaceTrack: no renegotiation, and never two offers at once
       for (const kind of MEDIA_KINDS) {
-        const t = pc.addTransceiver(localTracks.get(kind) ?? kind, {
+        const track = trackFor(peer, kind);
+        const t = pc.addTransceiver(track ?? kind, {
           direction: "sendrecv",
           streams: [localStream],
         });
         peer.senders.set(kind, t.sender);
+        peer.sending.set(kind, track);
       }
     }
     events.onPeerStatus(peer.id, peer.status);
@@ -411,10 +443,19 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
         list.filter((p) => p.clientId !== selfId).map((p) => [p.clientId, p]),
       );
       const before = peers.size;
+      let receiversChanged = false;
       for (const peer of [...peers.values()]) {
         const info = wanted.get(peer.id);
         if (!info || info.session !== peer.session) {
           closePeer(peer);
+          continue;
+        }
+        const wantsVideo = sendsVideoTo(info);
+        if (wantsVideo !== peer.wantsVideo) {
+          // They hid or showed their tiles: stop or resume our camera to them only
+          peer.wantsVideo = wantsVideo;
+          sendTrack(peer, "video");
+          receiversChanged = true;
         }
       }
       for (const info of wanted.values()) {
@@ -422,8 +463,8 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
           createPeer(info);
         }
       }
-      if (peers.size !== before) {
-        // The call size changed: every sender's video caps follow
+      if (peers.size !== before || receiversChanged) {
+        // How many peers get our video changed: every sender's video caps follow
         for (const peer of peers.values()) {
           applyParams(peer);
         }
