@@ -237,3 +237,171 @@ describe("mesh transport negotiation", () => {
     answering.t.close();
   });
 });
+
+describe("mesh transport: video only to peers showing the tiles", () => {
+  // "z" offers to both (it owns the senders from the start)
+  const member = (clientId: string, wantsVideo?: boolean) => ({
+    ...peer(clientId),
+    ...(wantsVideo === undefined ? {} : { wantsVideo }),
+  });
+  const videoSender = (pc: FakePC) => pc.transceivers[1].sender;
+  const audioSender = (pc: FakePC) => pc.transceivers[0].sender;
+  const connect = async (pc: FakePC) => {
+    pc.connectionState = "connected";
+    (pc.onconnectionstatechange as () => void)();
+    await flush();
+  };
+  const lastVideoBitrate = (pc: FakePC) => {
+    const calls = videoSender(pc).setParameters.mock.calls as unknown as [
+      { encodings: { maxBitrate?: number }[] },
+    ][];
+    return calls[calls.length - 1]?.[0].encodings[0].maxBitrate;
+  };
+
+  it("sends the camera only to members that want it; voice goes to everyone", () => {
+    const { t } = transport("z");
+    t.setLocalTrack("audio", mic as MediaStreamTrack);
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    // An older client (no wantsVideo) still gets video
+    t.setPeers([member("a", true), member("c", false), member("d")]);
+    const [pa, pc, pd] = pcs;
+    expect(videoSender(pa).track).toBe(cam);
+    expect(videoSender(pc).track).toBeNull();
+    expect(videoSender(pd).track).toBe(cam);
+    for (const p of pcs) {
+      expect(audioSender(p).track).toBe(mic);
+    }
+    t.close();
+  });
+
+  it("replaceTrack(null) only for the peer that hides the tiles, and resumes when it shows them again", async () => {
+    const { t } = transport("z");
+    t.setLocalTrack("audio", mic as MediaStreamTrack);
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    t.setPeers([member("a", true), member("c", true)]);
+    const [pa, pc] = pcs;
+    t.setPeers([member("a", true), member("c", false)]);
+    await flush();
+    expect(videoSender(pc).replaceTrack.mock.calls).toEqual([[null]]);
+    expect(videoSender(pa).replaceTrack).not.toHaveBeenCalled();
+    expect(audioSender(pc).replaceTrack).not.toHaveBeenCalled();
+    // The same state again changes nothing
+    t.setPeers([member("a", true), member("c", false)]);
+    expect(videoSender(pc).replaceTrack).toHaveBeenCalledTimes(1);
+
+    // A camera switch while c hides the tiles: only a gets the new camera
+    const cam2 = { kind: "video", getSettings: () => ({}) } as FakeTrack;
+    t.setLocalTrack("video", cam2 as MediaStreamTrack);
+    await flush();
+    expect(videoSender(pa).replaceTrack.mock.calls).toEqual([[cam2]]);
+    expect(videoSender(pc).replaceTrack).toHaveBeenCalledTimes(1);
+
+    // c shows the tiles again: the current camera resumes, without renegotiating
+    t.setPeers([member("a", true), member("c", true)]);
+    await flush();
+    expect(videoSender(pc).replaceTrack.mock.calls).toEqual([[null], [cam2]]);
+    expect(pc.transceivers).toHaveLength(2);
+    expect(pc.addTrack).not.toHaveBeenCalled();
+
+    // Camera off while c hides: nothing to stop for c, a stops
+    t.setPeers([member("a", true), member("c", false)]);
+    t.setLocalTrack("video", null);
+    await flush();
+    expect(videoSender(pa).track).toBeNull();
+    expect(videoSender(pc).replaceTrack.mock.calls).toEqual([
+      [null],
+      [cam2],
+      [null],
+    ]);
+    t.close();
+  });
+
+  it("a quick hide/show doesn't lose the camera while replaceTrack is still pending", async () => {
+    const { t } = transport("z");
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    t.setPeers([member("a", true)]);
+    const sender = videoSender(pcs[0]);
+    // replaceTrack resolves later (sender.track only changes then)
+    const pending: (() => void)[] = [];
+    sender.replaceTrack.mockImplementation(
+      (tr: FakeTrack | null) =>
+        new Promise<void>((resolve) =>
+          pending.push(() => {
+            sender.track = tr;
+            resolve();
+          }),
+        ),
+    );
+    t.setPeers([member("a", false)]);
+    t.setPeers([member("a", true)]);
+    expect(sender.replaceTrack.mock.calls).toEqual([[null], [cam]]);
+    pending.forEach((fn) => fn());
+    await flush();
+    expect(sender.track).toBe(cam);
+    t.close();
+  });
+
+  it("retries after a failed replaceTrack", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { t } = transport("z");
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    t.setPeers([member("a", true)]);
+    const sender = videoSender(pcs[0]);
+    sender.replaceTrack.mockRejectedValueOnce(new Error("bad"));
+    t.setPeers([member("a", false)]);
+    await flush();
+    expect(warn).toHaveBeenCalled();
+    // The sender still has the camera; the next change goes through
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    expect(sender.replaceTrack.mock.calls).toEqual([[null], [null]]);
+    warn.mockRestore();
+    t.close();
+  });
+
+  it("a peer created while it hides the tiles starts without our camera", () => {
+    const { t } = transport("z");
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    t.setPeers([member("a", false)]);
+    expect(videoSender(pcs[0]).track).toBeNull();
+    t.close();
+  });
+
+  it("the answering side follows wantsVideo on the senders it adopts", async () => {
+    const { t } = transport("a");
+    t.setLocalTrack("audio", mic as MediaStreamTrack);
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    t.setPeers([member("b", false)]);
+    t.handleSignal({
+      from: "b",
+      session: "their-session",
+      toSession: "my-session",
+      description: { type: "offer", sdp: "m=audio sendrecv\nm=video sendrecv" },
+    });
+    await flush();
+    const [pc] = pcs;
+    expect(pc.transceivers.map((x) => x.sender.track)).toEqual([mic, null]);
+    t.setPeers([member("b", true)]);
+    await flush();
+    expect(videoSender(pc).track).toBe(cam);
+    t.close();
+  });
+
+  it("video caps count only the peers that receive our camera", async () => {
+    const { t } = transport("z");
+    t.setLocalTrack("video", cam as MediaStreamTrack);
+    t.setPeers([member("a", true), member("c", true)]);
+    const [pa, pc] = pcs;
+    await connect(pa);
+    await connect(pc);
+    // Two receivers: 700 kbps each
+    expect(lastVideoBitrate(pa)).toBe(700_000);
+    // c hides the tiles: a is the only receiver, so it gets the one-peer caps
+    t.setPeers([member("a", true), member("c", false)]);
+    await flush();
+    expect(lastVideoBitrate(pa)).toBe(1_200_000);
+    t.setPeers([member("a", true), member("c", true)]);
+    await flush();
+    expect(lastVideoBitrate(pa)).toBe(700_000);
+    t.close();
+  });
+});
