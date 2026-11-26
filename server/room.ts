@@ -329,9 +329,14 @@ export class Room {
       on("CMD:roomSettings", (data: unknown) =>
         this.setRoomSettings(socket, data),
       );
-      on("CMD:nextEpisode", (data: unknown) =>
-        this.nextEpisode.command(data, this.getActor(socket)),
-      );
+      on("CMD:nextEpisode", (data: unknown) => {
+        const d = data as { action?: unknown; url?: unknown } | null;
+        if (d?.action === "ended" && d.url === this.video) {
+          // Played to the end: the history entry counts as finished before the next episode replaces it
+          this.history.markEnded(this.video);
+        }
+        this.nextEpisode.command(data, this.getActor(socket));
+      });
 
       on("CMD:readyState", (data: unknown) => this.setReadyState(socket, data));
       on("CMD:readyCheckSkip", () =>
