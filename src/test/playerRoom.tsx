@@ -118,6 +118,7 @@ export function createFakePlayer(media: FakeMedia) {
     localSetMute: vi.fn((m: boolean) => {
       media.muted = m;
     }),
+    setAudioBoost: vi.fn(),
     toggleFullscreen: vi.fn(() => {
       media.fullscreen = !media.fullscreen;
       document.dispatchEvent(new Event("fullscreenchange"));

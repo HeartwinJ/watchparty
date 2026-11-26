@@ -1,6 +1,7 @@
 import { Player } from "./Player";
 import { apiFetch } from "../../utils/api";
 import { retimeCues, toWebVtt, type CueLike } from "./logic/subtitles";
+import { AudioBoost, isBoostActive } from "./audioBoost";
 
 export interface SubtitleTrackInfo {
   index: number;
@@ -33,9 +34,16 @@ export class HTML implements Player {
   /** Voice call ducking factor and the viewer's own volume while ducked (see setDuck) */
   private duck = 1;
   private userVolume: number | null = null;
+  /** Volume boost / Night mode (audioBoost.ts) */
+  readonly boost: AudioBoost;
+  /** Called when the boosted element can't play a new source (see AudioBoost.prepareLoad); usePlayer reloads */
+  onBoostBlocked: (() => void) | null = null;
+  /** Bumped by every load, so a slow boost check never applies an outdated source */
+  private loadGen = 0;
 
   constructor(elId: string) {
     this.elId = elId;
+    this.boost = new AudioBoost(() => this.getVideoEl());
   }
 
   getVideoEl = (): HTMLMediaElement => {
@@ -69,7 +77,21 @@ export class HTML implements Player {
   };
 
   setSrcAndTime = async (src: string, time: number) => {
+    const gen = ++this.loadGen;
     const leftVideo = this.getVideoEl();
+    if (leftVideo && !this.boost.bound && !isBoostActive(this.boost.settings)) {
+      // Boost off: load the way the element always has (no CORS mode)
+      leftVideo.removeAttribute("crossorigin");
+    } else if (leftVideo) {
+      const ok = await this.boost.prepareLoad(leftVideo, src);
+      if (gen !== this.loadGen) {
+        return;
+      }
+      if (!ok) {
+        this.onBoostBlocked?.();
+        return;
+      }
+    }
     if (leftVideo) {
       leftVideo.currentTime = time;
       leftVideo.src = src;
@@ -242,6 +264,7 @@ export class HTML implements Player {
   };
 
   clearState = () => {
+    this.loadGen++;
     const leftVideo = this.getVideoEl();
 
     // Clear src and srcObject

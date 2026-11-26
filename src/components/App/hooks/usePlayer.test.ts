@@ -15,6 +15,9 @@ vi.mock("../../../utils/utils", async (importOriginal) => ({
   isMobile: () => mobile,
 }));
 
+const toast = vi.fn();
+vi.mock("../ui/toast", () => ({ toast: (...a: unknown[]) => toast(...a) }));
+
 const { usePlayer } = await import("./usePlayer");
 const { useStore } = await import("./useStore");
 const { createInitialRoomState } = await import("../roomState");
@@ -622,5 +625,98 @@ describe("usePlayer YouTube iframe API", () => {
     act(() => events().onStateChange({ data: 3, target: {} }));
     expect(get().buffering).toBe(false);
     act(() => events().onReady());
+  });
+});
+
+describe("usePlayer volume boost", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    toast.mockClear();
+  });
+
+  it("saves the setting and passes it to the player", () => {
+    const r = setup();
+    const boost = r.api().html().boost;
+    const set = vi.spyOn(boost, "set");
+    act(() => r.api().setAudioBoost({ level: 2 }));
+    expect(r.get().audioBoost).toEqual({ level: 2, night: false });
+    expect(localStorage.getItem("wp-volume-boost")).toBe("2");
+    expect(set).toHaveBeenCalledWith({ level: 2, night: false });
+    // No video loaded yet (and no Web Audio in the test DOM): waiting
+    expect(r.get().audioBoostStatus).toBe("idle");
+    act(() => r.api().setAudioBoost({ night: true }));
+    expect(localStorage.getItem("wp-night-mode")).toBe("1");
+  });
+
+  it("re-checks the boost when the video loads or plays", () => {
+    const r = setup();
+    const refresh = vi.spyOn(r.api().html().boost, "refresh");
+    video.dispatchEvent(new Event("loadedmetadata"));
+    video.dispatchEvent(new Event("play"));
+    expect(refresh).toHaveBeenCalledTimes(2);
+    const other = document.createElement("audio");
+    document.body.appendChild(other);
+    other.dispatchEvent(new Event("play"));
+    expect(refresh).toHaveBeenCalledTimes(2);
+    r.unmount();
+    video.dispatchEvent(new Event("play"));
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads the page for a video the boost can't play, then explains", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    const r = setup();
+    r.api().html().onBoostBlocked?.();
+    expect(reload).toHaveBeenCalled();
+    expect(sessionStorage.getItem("wp-boost-reload")).toBe("1");
+    r.unmount();
+    expect(r.api().html().onBoostBlocked).toBeNull();
+    setup();
+    expect(toast).toHaveBeenCalledWith(
+      expect.stringContaining("Volume boost"),
+      { tone: "warning" },
+    );
+    expect(sessionStorage.getItem("wp-boost-reload")).toBeNull();
+  });
+
+  it("turns the boost off instead of reloading in a loop", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    localStorage.setItem("wp-volume-boost", "2");
+    localStorage.setItem("wp-night-mode", "1");
+    const r = setup();
+    r.api().html().onBoostBlocked?.();
+    expect(localStorage.getItem("wp-volume-boost")).toBe("2");
+    r.unmount();
+    // The reloaded page hits it again within 30 s
+    const again = setup();
+    again.api().html().onBoostBlocked?.();
+    expect(reload).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("wp-volume-boost")).toBe("1");
+    expect(localStorage.getItem("wp-night-mode")).toBe("0");
+    again.unmount();
+    toast.mockClear();
+    const after = setup();
+    expect(after.get().audioBoost).toEqual({ level: 1, night: false });
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining("turned"), {
+      tone: "warning",
+    });
+  });
+
+  it("copes with blocked sessionStorage", () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const r = setup();
+    r.api().html().onBoostBlocked?.();
+    expect(reload).toHaveBeenCalled();
+    expect(toast).not.toHaveBeenCalled();
   });
 });

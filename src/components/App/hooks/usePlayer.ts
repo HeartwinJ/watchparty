@@ -22,6 +22,14 @@ import {
 } from "../logic/sync";
 import { decideOnVideoEnded } from "../logic/playlist";
 import {
+  BOOST_RELOAD_AT_KEY,
+  BOOST_RELOAD_KEY,
+  BOOST_RELOAD_LOOP_MS,
+  saveBoostSettings,
+  type BoostSettings,
+} from "../audioBoost";
+import { toast } from "../ui/toast";
+import {
   nextDurationReport,
   type DurationReport,
 } from "../logic/durationReport";
@@ -102,6 +110,14 @@ export function usePlayer(opts: {
     };
 
     const localToggleMute = () => localSetMute(!current().isMuted());
+
+    /** Volume boost / Night mode for this device (audioBoost.ts). Call from a click so audio may start at once. */
+    const setAudioBoost = (patch: Partial<BoostSettings>) => {
+      const audioBoost = { ...store.get().audioBoost, ...patch };
+      saveBoostSettings(audioBoost);
+      store.set({ audioBoost });
+      htmlRef.current.boost.set(audioBoost);
+    };
 
     const localPlay = async () => {
       if (!store.get().roomMedia) {
@@ -420,6 +436,7 @@ export function usePlayer(opts: {
       localSetMute,
       localSetVolume,
       localToggleMute,
+      setAudioBoost,
       toggleFullscreen,
       isFullscreen,
       /** The player view registers its container element here (fullscreen target) */
@@ -441,6 +458,64 @@ export function usePlayer(opts: {
       loadYouTube,
     };
   }, [store, cmd, clientId, share]);
+
+  // Volume boost / Night mode: bind when a readable video loads or starts, reload when a new one can't be boosted
+  useEffect(() => {
+    const html = htmlRef.current;
+    const boost = html.boost;
+    boost.onStatus = (audioBoostStatus) => store.set({ audioBoostStatus });
+    html.onBoostBlocked = () => {
+      // Reload so this video plays on a fresh <video>. If that just happened, turn the boost off first: an inactive
+      // boost never binds, so this can't loop.
+      const now = Date.now();
+      let last = 0;
+      try {
+        last = Number(window.sessionStorage.getItem(BOOST_RELOAD_AT_KEY)) || 0;
+      } catch {
+        // Treat as the first reload
+      }
+      const again = now - last < BOOST_RELOAD_LOOP_MS;
+      if (again) {
+        saveBoostSettings({ level: 1, night: false });
+      }
+      try {
+        window.sessionStorage.setItem(BOOST_RELOAD_KEY, again ? "off" : "1");
+        window.sessionStorage.setItem(BOOST_RELOAD_AT_KEY, String(now));
+      } catch {
+        // No notice after the reload, that's all
+      }
+      window.location.reload();
+    };
+    boost.set(store.get().audioBoost);
+    try {
+      const reloaded = window.sessionStorage.getItem(BOOST_RELOAD_KEY);
+      if (reloaded) {
+        window.sessionStorage.removeItem(BOOST_RELOAD_KEY);
+        toast(
+          reloaded === "off"
+            ? "Reloaded to play this video, and turned volume boost and Night mode off."
+            : "Reloaded to play this video. Volume boost and Night mode can't be used with it.",
+          { tone: "warning" },
+        );
+      }
+    } catch {
+      // sessionStorage blocked
+    }
+    // Media events don't bubble, but capture listeners on the document see them
+    const onMedia = (e: Event) => {
+      if ((e.target as Element | null)?.id === VIDEO_ELEMENT_ID) {
+        boost.refresh();
+      }
+    };
+    const events = ["loadedmetadata", "play", "emptied"];
+    events.forEach((e) => document.addEventListener(e, onMedia, true));
+    return () => {
+      events.forEach((e) => document.removeEventListener(e, onMedia, true));
+      boost.onStatus = null;
+      html.onBoostBlocked = null;
+      boost.dispose();
+    };
+  }, [store]);
 
   // Report our position to the room every second (and the duration now and then, for the watch history)
   useEffect(() => {

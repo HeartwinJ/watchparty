@@ -5,6 +5,11 @@ import type { SubtitleScope } from "./logic/subtitles";
 import { initialCallState, type CallUiState } from "./call/callReducer";
 import { CALL_PREFS, readPref } from "./call/logic";
 import { parseStripPrefs } from "./call/tileLayout";
+import {
+  readBoostSettings,
+  type BoostSettings,
+  type BoostStatus,
+} from "./audioBoost";
 
 const readCallPrefs = () => ({
   pushToTalk: readPref(CALL_PREFS.pushToTalk) === "1",
@@ -83,6 +88,9 @@ export interface RoomState {
   convertProgress: number | undefined;
   audioTracks: AudioTrackInfo[] | undefined;
   audioTrackId: number | undefined;
+  /** Per-device volume boost and Night mode (audioBoost.ts; <video> only, not YouTube) */
+  audioBoost: BoostSettings;
+  audioBoostStatus: BoostStatus;
   /** Whether this device is sharing its screen or a file (see useShare) */
   isPublishing: boolean;
   // Messages
@@ -194,6 +202,8 @@ export function createInitialRoomState(): RoomState {
     convertProgress: undefined,
     audioTracks: undefined,
     audioTrackId: undefined,
+    audioBoost: readBoostSettings(),
+    audioBoostStatus: "off",
     isPublishing: false,
     overlayMsg: "",
     errorMessage: "",

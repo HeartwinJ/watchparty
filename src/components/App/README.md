@@ -91,6 +91,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `roomState.ts`                            | `RoomState` type and initial values (incl. localStorage-backed prefs)                                               |
 | `socketEvents.ts`                         | Typed socket events and `createRoomCommands`                                                                        |
 | `Player.ts`, `HTML.ts`, `YouTube.ts`      | Player implementations (HTML.ts: subtitle track selection + cue re-timing)                                          |
+| `audioBoost.ts`                           | Volume boost / Night mode through Web Audio (`AudioBoost`, used by HTML.ts); see Player                             |
 | `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks                            |
 | `subtitleSearch/`                         | "Search subtitles…" modal, title/episode guessing from file names, sharing a found subtitle                         |
 | `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes                                      |
@@ -283,6 +284,22 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   scale is `state.roomSubtitleScale`. The picker's auto subtitles go
   in `state.subtitleTracks` (`SubtitleTrackOption[]`, shown first with an Auto badge; picking one sets the room
   subtitle). The converter's audio tracks show in the same menu.
+- **Volume boost / Night mode** (`audioBoost.ts`, `player/AudioBoostSection.tsx` in the CC menu, non-YouTube): per
+  device (`state.audioBoost {level: 1|1.5|2|3, night}`, `localStorage` `wp-volume-boost`/`wp-night-mode`), set with
+  `player.setAudioBoost(patch)`. `HTML.boost` (`AudioBoost`) routes the `<video>` through Web Audio: source → night
+  compressor (transparent when off) → gain (level × 2 for night) → limiter (−1 dB). Element volume, mute and call
+  ducking still apply before it. Nothing changes until it's turned on. Two browser rules drive the design:
+  `createMediaElementSource` is permanent for the element (anything it plays afterwards must be readable by Web Audio
+  or it's silent), and an `AudioContext` only runs after a gesture (we never bind while it's suspended). So: it binds
+  only once real media has loaded (`readyState ≥ 1`) from a readable source (same origin, blob/MSE, `srcObject`, or a
+  link loaded with `crossorigin`); while it's on, `HTML.setSrcAndTime` loads cross-origin links in CORS mode when a
+  1-byte CORS request succeeds (`corsReadable`); turning it on mid-video reloads a CORS-friendly link in CORS mode at
+  the same time (`reloadWithCors`); native HLS (`.m3u8` without MSE) is never boosted. When the bound element must
+  play something unreadable, `onBoostBlocked` reloads the page (a fresh element; toast after the reload via
+  `sessionStorage` `wp-boost-reload`); a second one within 30 s turns the boost off first, so it can't loop.
+  `state.audioBoostStatus`: `off`/`on`/`idle` (no video yet)/`pending` (waits for a click or key)/`unavailable`;
+  the control bar shows a badge ("200% · Night") while `on`. `e2e/volume-boost.spec.ts` covers it in Chromium
+  (`?nocors` on the e2e media server drops its CORS headers).
 - **Search subtitles** (`subtitleSearch/`): the menu's "Search subtitles…" (non-YouTube) calls
   `room.subtitles.openSearch()` (`state.isSubtitleSearchOpen`; `SubtitleSearch` is mounted in `RoomMessages`). It's a
   Mantine modal (bottom sheet on phones, dark glass): search (pre-filled by `guessSubtitleSearch()` in
