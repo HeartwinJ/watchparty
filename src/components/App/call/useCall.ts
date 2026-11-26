@@ -15,6 +15,7 @@ import {
 import { Ducker } from "./ducking";
 import {
   CALL_PREFS,
+  createDebouncedFlag,
   createStateThrottle,
   isPttKey,
   isTransmitting,
@@ -23,10 +24,12 @@ import {
   newCallSession,
   readPref,
   readRejoin,
+  wantsVideo,
   writePref,
   writeRejoin,
 } from "./logic";
 import { meterLevel } from "./speaking";
+import { parseStripPrefs } from "./tileLayout";
 import { createMeshTransport, type CallTransport } from "./transport";
 import { CAMERA_ERROR_TEXT, listCameras, openCamera } from "./video";
 import { CallVideo } from "./videoStreams";
@@ -95,6 +98,22 @@ export function useCall(opts: {
     const stateThrottle = createStateThrottle<boolean>((muted) =>
       cmd.call({ action: "state", muted }),
     );
+
+    // wantsVideo: whether we show the tiles, so the others send us their camera (debounced, see logic.ts)
+    const wantsVideoFlag = createDebouncedFlag((value) => {
+      if (inCall(call())) {
+        cmd.call({ action: "state", wantsVideo: value });
+      }
+    });
+    const pageVisible = () =>
+      typeof document === "undefined" || document.visibilityState !== "hidden";
+    const currentWantsVideo = () => wantsVideo(call(), pageVisible());
+    /** Tiles hidden/shown, strip collapsed/expanded, tab hidden/visible: tell the room (debounced) */
+    const syncWantsVideo = () => {
+      if (inCall(call())) {
+        wantsVideoFlag.push(currentWantsVideo());
+      }
+    };
 
     const micTrack = () => session.micStream?.getAudioTracks()[0] ?? null;
     const cameraTrack = () => session.camStream?.getVideoTracks()[0] ?? null;
@@ -406,9 +425,19 @@ export function useCall(opts: {
       }
     };
 
+    /** "Hide video tiles" (per device). Hidden tiles don't receive video (wantsVideo). */
     const setTilesHidden = (hidden: boolean) => {
       writePref(CALL_PREFS.tilesHidden, hidden ? "1" : null);
       dispatch({ type: "patch", patch: { tilesHidden: hidden } });
+      syncWantsVideo();
+    };
+
+    /** Collapse the tile strip into a pill (per device, saved with its position). Collapsed tiles don't receive video. */
+    const setTilesCollapsed = (collapsed: boolean) => {
+      const prefs = parseStripPrefs(readPref(CALL_PREFS.tiles));
+      writePref(CALL_PREFS.tiles, JSON.stringify({ ...prefs, collapsed }));
+      dispatch({ type: "patch", patch: { tilesCollapsed: collapsed } });
+      syncWantsVideo();
     };
 
     /** Pre-join: open the mic so the panel can show its level */
@@ -462,6 +491,7 @@ export function useCall(opts: {
       session.seq++;
       clearJoinTimer();
       stateThrottle.cancel();
+      wantsVideoFlag.cancel();
       session.transport?.close();
       session.transport = null;
       session.camSeq++;
@@ -564,13 +594,16 @@ export function useCall(opts: {
       if (track) {
         track.enabled = on;
       }
+      const wants = currentWantsVideo();
       cmd.call({
         action: "join",
         session: callSession,
         muted: !on,
         camera: s.camera && Boolean(cameraTrack()),
+        wantsVideo: wants,
       });
       stateThrottle.reset(!on);
+      wantsVideoFlag.reset(wants);
       writeRejoin(roomId, { muted: s.muted });
     };
 
@@ -636,6 +669,7 @@ export function useCall(opts: {
             clientId: m.clientId,
             session: m.session,
             reconnecting: m.reconnecting,
+            wantsVideo: m.wantsVideo,
           })),
         );
       } else if (inCall(before)) {
@@ -728,6 +762,9 @@ export function useCall(opts: {
       listCameras,
       checkCamera,
       setTilesHidden,
+      setTilesCollapsed,
+      /** The tab was hidden or shown (wired below) */
+      syncWantsVideo,
       /** Our preview and everyone's incoming video (useCallVideo) */
       video: session.video,
       join: () => join(),
@@ -801,6 +838,17 @@ export function useCall(opts: {
     devices.addEventListener("devicechange", onChange);
     return () => devices.removeEventListener("devicechange", onChange);
   }, [api, status.inCall, status.camera]);
+
+  // A hidden tab doesn't show the tiles: the others stop sending it video until it's visible again
+  useEffect(() => {
+    if (!status.inCall) {
+      return;
+    }
+    const onVisibility = () => api.syncWantsVideo();
+    document.addEventListener("visibilitychange", onVisibility);
+    onVisibility();
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [api, status.inCall]);
 
   // Leave when the room page goes away (a layout effect, so `leave` is sent before the socket disconnects)
   const apiRef = useRef(api);

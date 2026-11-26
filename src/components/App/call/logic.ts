@@ -169,6 +169,68 @@ export function newCallSession(): string {
   }
 }
 
+/**
+ * Whether this device shows the call's video tiles, so the others should send it their camera (`wantsVideo`): not
+ * hidden by the setting, the strip not collapsed, and the tab visible. An enlarged tile is visible too.
+ */
+export function wantsVideo(
+  s: { tilesHidden: boolean; tilesCollapsed: boolean },
+  pageVisible: boolean,
+): boolean {
+  return pageVisible && !s.tilesHidden && !s.tilesCollapsed;
+}
+
+/**
+ * How long `wantsVideo` must hold before it's sent, ms. Showing goes quickly (video resumes within about a second);
+ * hiding waits a little longer, so a quick toggle or a short tab switch doesn't flap the senders.
+ */
+export const WANTS_VIDEO_DELAY_MS = { show: 150, hide: 500 };
+
+/**
+ * Sends a boolean once it has held for its delay (`delays.show` for true, `delays.hide` for false), and only when it
+ * differs from what was last sent. A change back before the delay cancels the pending one.
+ */
+export function createDebouncedFlag(
+  send: (value: boolean) => void,
+  delays = WANTS_VIDEO_DELAY_MS,
+) {
+  let sent: boolean | null = null;
+  let pending: boolean | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    pending = null;
+  };
+  return {
+    push(value: boolean) {
+      if (value === pending) {
+        return;
+      }
+      cancel();
+      if (value === sent) {
+        return;
+      }
+      pending = value;
+      timer = setTimeout(
+        () => {
+          timer = undefined;
+          pending = null;
+          sent = value;
+          send(value);
+        },
+        value ? delays.show : delays.hide,
+      );
+    },
+    /** The server already has `value` (sent with `join`): forget anything pending */
+    reset(value: boolean) {
+      cancel();
+      sent = value;
+    },
+    cancel,
+  };
+}
+
 /** Throttles mute-state updates to the server: the latest value, at most once per `intervalMs` */
 export function createStateThrottle<T>(
   send: (value: T) => void,

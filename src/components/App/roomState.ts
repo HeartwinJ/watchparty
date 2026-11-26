@@ -4,11 +4,13 @@ import type { SyncStatus } from "./logic/sync";
 import type { SubtitleScope } from "./logic/subtitles";
 import { initialCallState, type CallUiState } from "./call/callReducer";
 import { CALL_PREFS, readPref } from "./call/logic";
+import { parseStripPrefs } from "./call/tileLayout";
 
 const readCallPrefs = () => ({
   pushToTalk: readPref(CALL_PREFS.pushToTalk) === "1",
   ducking: readPref(CALL_PREFS.ducking) === "1",
   tilesHidden: readPref(CALL_PREFS.tilesHidden) === "1",
+  tilesCollapsed: parseStripPrefs(readPref(CALL_PREFS.tiles)).collapsed,
 });
 
 /**

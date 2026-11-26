@@ -295,7 +295,13 @@ describe("voice call", () => {
     act(() => socket.receive("REC:callState", { members: [] }));
     expect(result.current.state.call.status).toBe("joining");
     expect(socket.emits("CMD:call").at(-1)).toEqual([
-      { action: "join", session, muted: false, camera: false },
+      {
+        action: "join",
+        session,
+        muted: false,
+        camera: false,
+        wantsVideo: true,
+      },
     ]);
     // Reload marker for this tab
     expect(window.sessionStorage.getItem("wp-call:call-room")).toBe(

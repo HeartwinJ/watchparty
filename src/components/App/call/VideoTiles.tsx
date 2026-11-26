@@ -21,6 +21,7 @@ import {
   tilesPerColumn,
   TILE_GAP,
   type Size,
+  type StripPosition,
   type StripPrefs,
 } from "./tileLayout";
 import { useCallVideo } from "./videoStreams";
@@ -32,7 +33,8 @@ const HEADER_H = 24;
 /**
  * Floating, draggable, collapsible strip of call video tiles over the player (inside PlayerArea, so it stays in
  * fullscreen). Shown only while we're in the call and someone has their camera on; hidden per device with
- * `tilesHidden`. Click a tile to enlarge it. Layout and position math: tileLayout.ts.
+ * `tilesHidden`, collapsed with `tilesCollapsed` (both in state.call: while either is on, or the tab is hidden, the
+ * others stop sending us video, see wantsVideo). Click a tile to enlarge it. Layout and position math: tileLayout.ts.
  */
 export const VideoTiles = ({
   room,
@@ -56,13 +58,15 @@ export const VideoTiles = ({
   const c = state.call;
   const video = useCallVideo(call.video);
   const members = videoMembers(c, clientId);
-  const [prefs, setPrefs] = useState<StripPrefs>(() =>
+  // The saved position; `collapsed` lives in state.call (tilesCollapsed), so the call knows we don't show video
+  const [prefs, setPrefs] = useState<StripPosition>(() =>
     parseStripPrefs(readPref(CALL_PREFS.tiles)),
   );
+  const collapsed = c.tilesCollapsed;
   const [enlarged, setEnlarged] = useState<string | null>(null);
   const player = useSize(container);
   const [stripEl, setStripEl] = useState<HTMLDivElement | null>(null);
-  const strip = useSize(stripEl, members.length, prefs.collapsed, enlarged);
+  const strip = useSize(stripEl, members.length, collapsed, enlarged);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -75,9 +79,10 @@ export const VideoTiles = ({
   } | null>(null);
   const suppressClick = useRef(false);
 
-  const savePrefs = (next: StripPrefs) => {
+  const savePosition = (next: StripPosition) => {
     setPrefs(next);
-    writePref(CALL_PREFS.tiles, JSON.stringify(next));
+    const saved: StripPrefs = { fx: next.fx, fy: next.fy, collapsed };
+    writePref(CALL_PREFS.tiles, JSON.stringify(saved));
   };
 
   if (c.tilesHidden || !members.length || !player.width) {
@@ -149,10 +154,7 @@ export const VideoTiles = ({
     if (d.moved && dragOffset) {
       suppressClick.current = true;
       window.setTimeout(() => (suppressClick.current = false), 0);
-      savePrefs({
-        ...prefs,
-        ...positionFromOffset(dragOffset, strip, player, insets),
-      });
+      savePosition(positionFromOffset(dragOffset, strip, player, insets));
     }
     setDragOffset(null);
   };
@@ -225,7 +227,7 @@ export const VideoTiles = ({
       className={styles.strip}
       style={{ left: offset.x, top: offset.y }}
       data-dragging={dragOffset ? true : undefined}
-      data-collapsed={prefs.collapsed || undefined}
+      data-collapsed={collapsed || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -233,14 +235,14 @@ export const VideoTiles = ({
       role="region"
       aria-label="Call video"
     >
-      {prefs.collapsed ? (
+      {collapsed ? (
         <button
           type="button"
           className={styles.pill}
           aria-label={`Show call video (${members.length})`}
           onClick={() => {
             if (!suppressClick.current) {
-              savePrefs({ ...prefs, collapsed: false });
+              call.setTilesCollapsed(false);
             }
           }}
         >
@@ -257,7 +259,7 @@ export const VideoTiles = ({
               className={styles.headerBtn}
               aria-label="Collapse call video"
               title="Collapse"
-              onClick={() => savePrefs({ ...prefs, collapsed: true })}
+              onClick={() => call.setTilesCollapsed(true)}
             >
               <IconMinus size={14} />
             </button>

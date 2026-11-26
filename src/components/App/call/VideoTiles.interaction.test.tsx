@@ -32,6 +32,7 @@ const member = (clientId: string, extra: Partial<CallMember> = {}) => ({
   camera: true,
   joinedAt: 1,
   reconnecting: false,
+  wantsVideo: true,
   ...extra,
 });
 
@@ -49,7 +50,7 @@ function fakeRoom(patch: Partial<CallUiState> = {}) {
   const room = {
     clientId: ME,
     state: { call, nameMap: { [ME]: "Me" }, pictureMap: {} },
-    call: { video, setTilesHidden: vi.fn() },
+    call: { video, setTilesHidden: vi.fn(), setTilesCollapsed: vi.fn() },
   } as unknown as Room;
   return { room, video };
 }
@@ -245,11 +246,7 @@ describe("VideoTiles", () => {
   it("a collapsed strip dragged doesn't expand on release", () => {
     vi.useFakeTimers();
     try {
-      window.localStorage.setItem(
-        "wp-call-tiles",
-        JSON.stringify({ fx: 0, fy: 0, collapsed: true }),
-      );
-      const { room } = fakeRoom();
+      const { room } = fakeRoom({ tilesCollapsed: true });
       renderTiles(room);
       const strip = screen.getByRole("region", { name: "Call video" });
       fireEvent.pointerDown(strip, {
@@ -267,9 +264,11 @@ describe("VideoTiles", () => {
       fireEvent.click(
         screen.getByRole("button", { name: "Show call video (2)" }),
       );
+      expect(room.call.setTilesCollapsed).not.toHaveBeenCalled();
+      // The drag saved the position and kept it collapsed
       expect(
-        screen.getByRole("button", { name: "Show call video (2)" }),
-      ).toBeTruthy();
+        JSON.parse(window.localStorage.getItem("wp-call-tiles")!),
+      ).toMatchObject({ collapsed: true });
     } finally {
       vi.useRealTimers();
     }

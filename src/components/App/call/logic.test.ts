@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   classifyMicError,
+  createDebouncedFlag,
   createStateThrottle,
   isPttKey,
   isTransmitting,
@@ -8,6 +9,8 @@ import {
   micConstraints,
   newCallSession,
   readRejoin,
+  wantsVideo,
+  WANTS_VIDEO_DELAY_MS,
   writeRejoin,
 } from "./logic";
 
@@ -113,5 +116,76 @@ describe("createStateThrottle", () => {
     t.push(true);
     vi.advanceTimersByTime(200);
     expect(sent).toEqual([false, true]);
+  });
+});
+
+describe("wantsVideo", () => {
+  it("only while the tiles show: not hidden, not collapsed, tab visible", () => {
+    const shown = { tilesHidden: false, tilesCollapsed: false };
+    expect(wantsVideo(shown, true)).toBe(true);
+    expect(wantsVideo(shown, false)).toBe(false);
+    expect(wantsVideo({ ...shown, tilesHidden: true }, true)).toBe(false);
+    expect(wantsVideo({ ...shown, tilesCollapsed: true }, true)).toBe(false);
+  });
+});
+
+describe("createDebouncedFlag", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("sends a value once it has held for its delay, and only when it changed", () => {
+    const send = vi.fn();
+    const flag = createDebouncedFlag(send, { show: 100, hide: 400 });
+    flag.reset(true);
+    flag.push(true);
+    vi.advanceTimersByTime(1000);
+    expect(send).not.toHaveBeenCalled();
+    // Off waits the longer delay; pushing it again doesn't restart it
+    flag.push(false);
+    vi.advanceTimersByTime(300);
+    flag.push(false);
+    vi.advanceTimersByTime(99);
+    expect(send).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(send).toHaveBeenLastCalledWith(false);
+    // On is quicker
+    flag.push(true);
+    vi.advanceTimersByTime(100);
+    expect(send).toHaveBeenLastCalledWith(true);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("a change back before the delay sends nothing (no flapping)", () => {
+    const send = vi.fn();
+    const flag = createDebouncedFlag(send);
+    flag.reset(true);
+    flag.push(false);
+    vi.advanceTimersByTime(WANTS_VIDEO_DELAY_MS.hide - 1);
+    flag.push(true);
+    flag.push(false);
+    flag.push(true);
+    vi.advanceTimersByTime(5000);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("reset and cancel drop a pending value; nothing sent yet means any value is new", () => {
+    const send = vi.fn();
+    const flag = createDebouncedFlag(send, { show: 10, hide: 10 });
+    flag.push(false);
+    flag.cancel();
+    vi.advanceTimersByTime(100);
+    expect(send).not.toHaveBeenCalled();
+    flag.push(false);
+    flag.reset(false);
+    vi.advanceTimersByTime(100);
+    expect(send).not.toHaveBeenCalled();
+    flag.push(true);
+    vi.advanceTimersByTime(10);
+    expect(send).toHaveBeenCalledWith(true);
+    const fresh = vi.fn();
+    const other = createDebouncedFlag(fresh, { show: 10, hide: 10 });
+    other.push(true);
+    vi.advanceTimersByTime(10);
+    expect(fresh).toHaveBeenCalledWith(true);
   });
 });

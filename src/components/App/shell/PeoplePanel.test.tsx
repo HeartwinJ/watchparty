@@ -35,6 +35,7 @@ const member = (clientId: string, over = {}) => ({
   camera: false,
   joinedAt: 1,
   reconnecting: false,
+  wantsVideo: true,
   ...over,
 });
 
