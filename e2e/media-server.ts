@@ -2,7 +2,8 @@
 // Supports Range requests and one test hook: a request with the header
 // `x-e2e-throttle: <token>:<bytes>` gets only the first <bytes> of the file, then the
 // rest is held back until `GET /__release?token=<token>`, so one browser can be made
-// to stall while the others keep playing.
+// to stall while the others keep playing. `?nocors` serves a file without CORS headers
+// (a video host that doesn't allow other sites to read its files).
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,9 +14,11 @@ const released = new Set<string>();
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
-  res.setHeader("access-control-allow-origin", "*");
-  res.setHeader("access-control-allow-headers", "*");
-  res.setHeader("access-control-expose-headers", "*");
+  if (!url.searchParams.has("nocors")) {
+    res.setHeader("access-control-allow-origin", "*");
+    res.setHeader("access-control-allow-headers", "*");
+    res.setHeader("access-control-expose-headers", "*");
+  }
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     res.end();

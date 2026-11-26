@@ -332,3 +332,34 @@ describe("ControlBar", () => {
     }
   });
 });
+
+describe("ControlBar volume boost badge", () => {
+  it("shows the boost while it's applied", () => {
+    const r = setup(
+      {},
+      {
+        state: {
+          audioBoost: { level: 2, night: true },
+          audioBoostStatus: "on",
+        },
+      },
+    );
+    expect(screen.getByText("200% · Night")).toBeTruthy();
+    r.setState({ audioBoostStatus: "unavailable" });
+    expect(screen.queryByText("200% · Night")).toBeNull();
+  });
+
+  it("not for YouTube", () => {
+    setup(
+      {},
+      {
+        media: { youtube: true, native: false },
+        state: {
+          audioBoost: { level: 2, night: false },
+          audioBoostStatus: "on",
+        },
+      },
+    );
+    expect(screen.queryByText("200%")).toBeNull();
+  });
+});

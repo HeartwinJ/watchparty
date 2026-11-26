@@ -256,6 +256,44 @@ describe("SubtitlesMenu audio tracks", () => {
   });
 });
 
+describe("SubtitlesMenu volume boost", () => {
+  const boost = () => screen.getByRole("group", { name: "Boost" });
+  const night = () => screen.getByRole("group", { name: "Night mode" });
+
+  it("picks a boost level and Night mode for this device", () => {
+    const r = setup({ state: { audioBoost: { level: 1.5, night: false } } });
+    expect(
+      within(boost())
+        .getByRole("button", { name: "150%" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(within(boost()).getByRole("button", { name: "300%" }));
+    expect(r.player.setAudioBoost).toHaveBeenCalledWith({ level: 3 });
+    fireEvent.click(within(boost()).getByRole("button", { name: "Off" }));
+    expect(r.player.setAudioBoost).toHaveBeenLastCalledWith({ level: 1 });
+    expect(
+      within(night())
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(within(night()).getByRole("button", { name: "On" }));
+    expect(r.player.setAudioBoost).toHaveBeenLastCalledWith({ night: true });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("explains when it's waiting for a click or can't be used", () => {
+    const r = setup({ state: { audioBoostStatus: "pending" } });
+    expect(screen.getByRole("status").textContent).toMatch(/next click/);
+    r.setState({ audioBoostStatus: "unavailable" });
+    expect(screen.getByRole("status").textContent).toMatch(/Not available/);
+  });
+
+  it("isn't offered for YouTube", () => {
+    setup({ media: { youtube: true, native: false } });
+    expect(screen.queryByRole("group", { name: "Boost" })).toBeNull();
+  });
+});
+
 describe("SubtitlesMenu timing", () => {
   it("nudges, resets and slides the offset", () => {
     const r = setup({ state: { roomSubtitleOffset: 1.5 } });

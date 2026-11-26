@@ -23,6 +23,7 @@ import {
 import type { SubtitleStyle } from "./useSubtitleStyle";
 import type { useTextTracks } from "./useTextTracks";
 import { AutoSyncButton } from "../subsync/AutoSyncButton";
+import { AudioBoostSection } from "./AudioBoostSection";
 import styles from "./Player.module.css";
 
 const SIZES: [SubtitleSize, string][] = [
@@ -55,7 +56,8 @@ async function uploadSubtitleFile(): Promise<string | undefined> {
 
 /**
  * The CC menu: track list (auto tracks from room state first, then the room/embedded tracks), loading a file or URL,
- * the audio track when the converter found several, the timing offset (6b) and the subtitle style.
+ * the audio track when the converter found several, volume boost / Night mode, the timing offset (6b) and the subtitle
+ * style.
  */
 export function SubtitlesMenu(props: {
   room: Room;
@@ -258,6 +260,8 @@ export function SubtitlesMenu(props: {
           </div>
         </div>
       )}
+
+      {!youtube && <AudioBoostSection room={room} />}
 
       {!youtube && (
         <div className={styles.menuSection}>

@@ -306,3 +306,57 @@ describe("HTML subtitles", () => {
     expect(video.srcObject).toBeNull();
   });
 });
+
+describe("HTML player with volume boost", () => {
+  const bind = (p: InstanceType<typeof HTML>) => {
+    Object.defineProperty(p.boost, "bound", { get: () => true });
+  };
+
+  it("loads normally while the boost isn't bound", async () => {
+    const p = new HTML("leftVideo");
+    const prepare = vi.spyOn(p.boost, "prepareLoad");
+    video.crossOrigin = "anonymous";
+    await p.setSrcAndTime("https://example.com/a.mp4", 0);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(video.crossOrigin).toBeNull();
+    expect(video.src).toBe("https://example.com/a.mp4");
+  });
+
+  it("prepares loads while the boost is on but not bound yet", async () => {
+    const p = new HTML("leftVideo");
+    p.boost.settings = { level: 2, night: false };
+    const prepare = vi.spyOn(p.boost, "prepareLoad").mockResolvedValue(true);
+    await p.setSrcAndTime("https://example.com/a.mp4", 0);
+    expect(prepare).toHaveBeenCalledWith(video, "https://example.com/a.mp4");
+    expect(video.src).toBe("https://example.com/a.mp4");
+  });
+
+  it("asks for a reload when the bound element can't play the source", async () => {
+    const p = new HTML("leftVideo");
+    bind(p);
+    vi.spyOn(p.boost, "prepareLoad").mockResolvedValue(false);
+    const blocked = vi.fn();
+    p.onBoostBlocked = blocked;
+    await p.setSrcAndTime("https://example.com/a.mp4", 0);
+    expect(blocked).toHaveBeenCalled();
+    expect(video.getAttribute("src")).toBeNull();
+    // Without a handler it just doesn't load
+    p.onBoostBlocked = null;
+    await p.setSrcAndTime("https://example.com/a.mp4", 0);
+    expect(video.getAttribute("src")).toBeNull();
+  });
+
+  it("loads after a successful check, unless a newer load started", async () => {
+    const p = new HTML("leftVideo");
+    bind(p);
+    let resolve!: (ok: boolean) => void;
+    vi.spyOn(p.boost, "prepareLoad")
+      .mockImplementationOnce(() => new Promise((r) => (resolve = r)))
+      .mockResolvedValue(true);
+    const first = p.setSrcAndTime("https://example.com/old.mp4", 0);
+    await p.setSrcAndTime("https://example.com/new.mp4", 0);
+    resolve(true);
+    await first;
+    expect(video.src).toBe("https://example.com/new.mp4");
+  });
+});

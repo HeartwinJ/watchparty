@@ -26,6 +26,7 @@ import type { PlaybackState } from "./usePlaybackState";
 import type { SubtitleStyle } from "./useSubtitleStyle";
 import type { useTextTracks } from "./useTextTracks";
 import { formatUnread } from "./chatPanel";
+import { describeBoost } from "../audioBoost";
 import styles from "./Player.module.css";
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -137,6 +138,14 @@ export function ControlBar(props: {
           >
             <VolumeIcon size={22} />
           </button>
+          {!youtube && state.audioBoostStatus === "on" && (
+            <span
+              className={styles.boostBadge}
+              title="Volume boost / Night mode (subtitles and audio menu)"
+            >
+              {describeBoost(state.audioBoost)}
+            </span>
+          )}
           <input
             type="range"
             className={`${styles.range} ${styles.volumeSlider}`}
