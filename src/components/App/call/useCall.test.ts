@@ -86,12 +86,18 @@ class FakeStream {
   };
 }
 const peers: FakePC[] = [];
-const fakeSender = (track: FakeTrack) => ({
-  track,
-  replaceTrack: vi.fn(async (_t: FakeTrack | null) => {}),
-  getParameters: () => ({ encodings: [{}] }),
-  setParameters: vi.fn(async (_p: any) => {}),
-});
+const fakeSender = (kind: string, track: FakeTrack | null) => {
+  const sender = {
+    kind,
+    track,
+    replaceTrack: vi.fn(async (t: FakeTrack | null) => {
+      sender.track = t;
+    }),
+    getParameters: () => ({ encodings: [{}] }),
+    setParameters: vi.fn(async (_p: any) => {}),
+  };
+  return sender;
+};
 class FakePC {
   senders: ReturnType<typeof fakeSender>[] = [];
   onsignalingstatechange: unknown = null;
@@ -105,10 +111,11 @@ class FakePC {
   constructor() {
     peers.push(this);
   }
-  addTrack(track: FakeTrack) {
-    const sender = fakeSender(track);
+  addTransceiver(trackOrKind: FakeTrack | string) {
+    const track = typeof trackOrKind === "string" ? null : trackOrKind;
+    const sender = fakeSender(track?.kind ?? (trackOrKind as string), track);
     this.senders.push(sender);
-    return sender;
+    return { sender };
   }
   getConfiguration() {
     return {};
@@ -173,6 +180,7 @@ const member = (clientId: string, session: string, muted = false) => ({
   reconnecting: false,
 });
 const BOB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const ME = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
 beforeEach(() => {
   sockets.length = 0;
@@ -180,6 +188,8 @@ beforeEach(() => {
   tracks = [];
   getUserMedia.mockClear();
   window.localStorage.clear();
+  // Sort after BOB, so we're the side that offers and creates the senders
+  window.localStorage.setItem("watchparty-clientid", ME);
   window.sessionStorage.clear();
   document.body.innerHTML = '<video id="leftVideo"></video>';
 });
@@ -347,7 +357,11 @@ describe("camera", () => {
       }),
     );
     const pc = peers[0];
-    expect(pc.senders.map((s) => s.track.kind)).toEqual(["audio"]);
+    // An audio and a video sender from the start (the video one sends nothing yet)
+    expect(pc.senders.map((s) => [s.kind, s.track?.kind ?? null])).toEqual([
+      ["audio", "audio"],
+      ["video", null],
+    ]);
 
     let on: boolean | undefined;
     await act(async () => {
@@ -360,8 +374,9 @@ describe("camera", () => {
     });
     const cam = tracks.at(-1)!;
     expect(cam.kind).toBe("video");
-    // The first camera-on adds a video sender (one renegotiation)
-    expect(pc.senders.map((s) => s.track.kind)).toEqual(["audio", "video"]);
+    // Camera on: the video sender gets the track (no new sender, no renegotiation)
+    expect(pc.senders).toHaveLength(2);
+    expect(pc.senders[1].replaceTrack).toHaveBeenLastCalledWith(cam);
     expect(socket.emits("CMD:call").at(-1)).toEqual([
       { action: "state", camera: true },
     ]);
@@ -432,7 +447,8 @@ describe("camera", () => {
         members: [member(BOB, "bobsession1"), member(me, join.session)],
       }),
     );
-    expect(peers[0].senders.map((s) => s.track.kind).sort()).toEqual([
+    // The camera's track is on the video sender from the first offer
+    expect(peers[0].senders.map((s) => s.track?.kind)).toEqual([
       "audio",
       "video",
     ]);

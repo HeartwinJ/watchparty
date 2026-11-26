@@ -171,6 +171,8 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   useEffect(() => {
     if (!panelOpen) {
       setHoveringPanel(false);
+      // A picker left open would show again on the next open
+      panelChatRef.current?.closePickers();
       return;
     }
     setQuickChat(false);
@@ -215,6 +217,8 @@ export const PlayerArea = ({ room }: { room: Room }) => {
             setShortcuts(false);
           } else if (quickChat) {
             setQuickChat(false);
+          } else if (panelOpen && panelChatRef.current?.closePickers()) {
+            // The panel's emoji or reaction picker was open (focus outside the panel): close only that
           } else if (panelOpen && menu === null) {
             // Outside fullscreen only: in fullscreen the browser takes Esc to exit it (which closes the panel too)
             closePanel();
@@ -327,6 +331,7 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     panelAllowed,
     togglePanel,
     closePanel,
+    panelChatRef,
     menu,
   ]);
 

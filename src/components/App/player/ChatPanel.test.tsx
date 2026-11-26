@@ -194,6 +194,39 @@ describe("chat panel over the player", () => {
     expect(playerEl().contains(picker)).toBe(true);
   });
 
+  it("Esc closes the emoji picker first, then the panel", async () => {
+    await renderRoom();
+    await pressShiftC();
+    const panel = panelEl()!;
+    const escape = (target: Element) =>
+      act(async () => {
+        fireEvent.keyDown(target, { key: "Escape" });
+      });
+
+    // Focus inside the panel (the picker's own search box sits there too)
+    await act(async () => {
+      fireEvent.click(within(panel).getByLabelText("Insert emoji"));
+    });
+    const input = within(panel).getByPlaceholderText("Message everyone");
+    await within(panel).findByTestId("emoji-mart");
+    await escape(input);
+    expect(within(panel).queryByTestId("emoji-mart")).toBeNull();
+    expect(panel.getAttribute("data-open")).toBe("true");
+
+    // Focus outside the panel: the player's Esc still closes only the picker
+    await act(async () => {
+      fireEvent.click(within(panel).getByLabelText("Insert emoji"));
+    });
+    await within(panel).findByTestId("emoji-mart");
+    await escape(document.body);
+    expect(within(panel).queryByTestId("emoji-mart")).toBeNull();
+    expect(panel.getAttribute("data-open")).toBe("true");
+
+    // Nothing else open: Esc closes the panel
+    await escape(document.body);
+    expect(panel.getAttribute("data-open")).toBe("false");
+  });
+
   it("clicking the video closes the panel without pausing", async () => {
     const socket = await renderRoom();
     await pressShiftC();

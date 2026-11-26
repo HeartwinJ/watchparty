@@ -198,6 +198,26 @@ export class Chat extends React.Component<ChatProps> {
     this.chatInputRef.current?.focus();
   };
 
+  /** Closes the emoji picker or the reaction picker. Returns whether one was open (Esc closes only that). */
+  closePickers = () => {
+    const { isPickerOpen, reactionMenu } = this.state;
+    if (!isPickerOpen && !reactionMenu.isOpen) {
+      return false;
+    }
+    this.setState({
+      isPickerOpen: false,
+      reactionMenu: { ...reactionMenu, isOpen: false },
+    });
+    return true;
+  };
+
+  onKeyDown = (e: React.KeyboardEvent) => {
+    // Esc with a picker open closes just the picker; preventDefault keeps it from the player shortcuts
+    if (e.key === "Escape" && !e.defaultPrevented && this.closePickers()) {
+      e.preventDefault();
+    }
+  };
+
   formatMessage = (cmd: string, msg?: string): React.ReactNode | string => {
     if (cmd === "host" && !parseShareUrl(msg)) {
       return (
@@ -236,6 +256,7 @@ export class Chat extends React.Component<ChatProps> {
       <div
         className={`${styles.chat} ${this.props.className ?? ""}`}
         style={this.props.hide ? { display: "none" } : undefined}
+        onKeyDown={this.onKeyDown}
       >
         <div
           className={styles.chatContainer}
