@@ -321,10 +321,14 @@ Voice, plus an optional camera (see **Camera** below).
   show in the panel with a hint and "Try again". The chosen mic is remembered (`wp-call-mic`).
 - **Transport** (`transport.ts`, `CallTransport` interface, mesh today): one RTCPeerConnection per other member, created
   when they appear (not while they're `reconnecting`), closed when they leave or their session changes. Perfect
-  negotiation (`negotiation.ts`: polite = smaller clientId, `offerDecision`), signals handled one at a time per peer,
+  negotiation (`negotiation.ts`: polite = smaller clientId, `offerDecision`), signals handled one at a time per peer.
+  **Only the impolite side offers**: it adds an audio and a video transceiver (sendrecv) when the connection is
+  created, and the polite side adopts them from that offer (`adoptTransceivers`) instead of adding its own. Two
+  colliding first offers made Chrome roll one back, and with a video m-line that connection never got ICE candidates
+  for its answer and its remote video stayed muted (no camera video). Rollback on collision stays as a safety net;
   `REC:callSignal` for another session is dropped. `PeerRecovery`: ICE restart when a connection stays
-  `disconnected` 3 s, `failed`, or never connects in 10 s; backoff 1–16 s with jitter; relay-only after 2 restarts
-  when TURN is configured; an unanswered offer is rolled back first. Opus gets DTX, FEC and 32 kbps (`tuneVoiceSdp`
+  `disconnected` 3 s, `failed`, or never connects in 10 s (only the offering side sends the restart offer); backoff
+  1–16 s with jitter; relay-only after 2 restarts when TURN is configured; an unanswered offer is rolled back first. Opus gets DTX, FEC and 32 kbps (`tuneVoiceSdp`
   on remote descriptions, plus `maxBitrate` on the sender).
 - **Audio** (`audio.ts`, `CallAudio`): remote audio plays through `<audio>` elements (autoplay blocked → toast "Play
   call audio"); AnalyserNodes measure every source each 60 ms; `SpeakingDetector` (`speaking.ts`: start above
@@ -350,9 +354,9 @@ Voice, plus an optional camera (see **Camera** below).
   desktop top-bar camera button, the call panel) open `openCamera()` (720p ideal, the remembered `wp-call-camera` or the
   front camera; a device that's gone falls back to the default). Before joining the panel's "Turn camera on" is a live
   mirrored preview and you join with it on (`join` carries `camera`); closing the panel turns it off. Off **stops**
-  the track (camera light off) and `setLocalTrack("video", null)` (`replaceTrack(null)`, no renegotiation); the first
-  camera-on per peer `addTrack`s a video sender (one renegotiation through perfect negotiation), later toggles and
-  device switches (`setCameraDevice`) are `replaceTrack`. Errors (`cameraError`, `CAMERA_ERROR_TEXT`) show in the
+  the track (camera light off) and `setLocalTrack("video", null)` (`replaceTrack(null)`); on, later toggles and
+  device switches (`setCameraDevice`) are `replaceTrack` on the video sender every connection has from the start, so
+  the camera never renegotiates. Errors (`cameraError`, `CAMERA_ERROR_TEXT`) show in the
   panel and as a toast and never block joining with audio. `devicechange`/`ended` turn the camera off with a toast. A
   socket reconnect keeps the camera; a reload rejoins with it off. An owner's "Turn off camera"
   (`REC:callModerated {action: "camera"}`) turns it off with a toast.

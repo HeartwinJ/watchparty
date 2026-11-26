@@ -12,6 +12,7 @@ import { tuneVoiceSdp, VOICE_MAX_BITRATE } from "./sdp";
 import { scaleDownBy, videoCapsFor } from "./video";
 
 export type CallMediaKind = "audio" | "video";
+const MEDIA_KINDS: CallMediaKind[] = ["audio", "video"];
 
 /** Encoding fields newer than TypeScript's DOM types (ignored by browsers that don't support them) */
 type Encoding = RTCRtpEncodingParameters & {
@@ -40,8 +41,8 @@ export interface CallTransportEvents {
 
 export interface CallTransport {
   /**
-   * Sends `track` (or nothing, with null) to everyone. The first track of a kind adds a sender (one renegotiation per
-   * peer); after that, switching devices or turning the camera off and on replaces the track, no renegotiation.
+   * Sends `track` (or nothing, with null) to everyone. Every connection has an audio and a video sender from the
+   * start, so switching devices or turning the camera on and off only replaces the track (no renegotiation).
    */
   setLocalTrack: (kind: CallMediaKind, track: MediaStreamTrack | null) => void;
   /** The other call members; connects to new ones, drops departed ones */
@@ -102,16 +103,43 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
     }
   };
 
-  const addTrack = (peer: MeshPeer, kind: CallMediaKind) => {
-    const track = localTracks.get(kind);
+  /** Puts our current track of `kind` (or nothing) on the peer's sender, once it has one */
+  const sendTrack = (peer: MeshPeer, kind: CallMediaKind) => {
     const sender = peer.senders.get(kind);
-    if (sender) {
-      sender.replaceTrack(track ?? null).catch((e) => {
-        console.warn("[call] replaceTrack failed", e);
-      });
-    } else if (track) {
-      // addTrack (not addTransceiver) so a colliding remote offer can reuse the transceiver
-      peer.senders.set(kind, peer.pc.addTrack(track, localStream));
+    if (!sender) {
+      // The answering side: it adopts the offer's transceivers (adoptTransceivers) and sends then
+      return;
+    }
+    const track = localTracks.get(kind) ?? null;
+    if (sender.track === track) {
+      return;
+    }
+    sender.replaceTrack(track).catch((e) => {
+      console.warn("[call] replaceTrack failed", e);
+    });
+  };
+
+  /**
+   * The answering side: takes the audio and video transceivers the offer created as our senders (sendrecv), before
+   * we answer. Adding our own instead would make both sides offer at once, and Chrome loses the connection when it
+   * rolls back a colliding offer with a video m-line (no ICE candidates for the answer, remote tracks stuck muted).
+   */
+  const adoptTransceivers = (peer: MeshPeer) => {
+    for (const t of peer.pc.getTransceivers()) {
+      const kind = t.receiver.track?.kind;
+      if (
+        (kind !== "audio" && kind !== "video") ||
+        peer.senders.has(kind) ||
+        t.mid === null ||
+        (t as { stopped?: boolean }).stopped
+      ) {
+        continue;
+      }
+      if (t.direction !== "sendrecv") {
+        t.direction = "sendrecv";
+      }
+      peer.senders.set(kind, t.sender);
+      sendTrack(peer, kind);
     }
   };
 
@@ -185,6 +213,10 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       paramsQueue: Promise.resolve(),
     };
     pc.onnegotiationneeded = async () => {
+      if (peer.polite && !pc.remoteDescription) {
+        // The other side makes the first offer (see below)
+        return;
+      }
       try {
         peer.makingOffer = true;
         await pc.setLocalDescription();
@@ -230,8 +262,16 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
       setStatus(peer);
     };
     peers.set(peer.id, peer);
-    for (const kind of localTracks.keys()) {
-      addTrack(peer, kind);
+    if (!peer.polite) {
+      // One side offers (the impolite one), with an audio and a video transceiver from the start, so turning the
+      // camera on or off later is only replaceTrack: no renegotiation, and never two offers at once
+      for (const kind of MEDIA_KINDS) {
+        const t = pc.addTransceiver(localTracks.get(kind) ?? kind, {
+          direction: "sendrecv",
+          streams: [localStream],
+        });
+        peer.senders.set(kind, t.sender);
+      }
     }
     events.onPeerStatus(peer.id, peer.status);
     return peer;
@@ -280,6 +320,7 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
         peer.settingRemoteAnswer = false;
       }
       if (type === "offer") {
+        adoptTransceivers(peer);
         await pc.setLocalDescription();
         if (pc.localDescription) {
           signal(peer, {
@@ -301,7 +342,8 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
     }
   };
 
-  // Recovery: restart ICE (with backoff) when a connection stays disconnected or fails, relay-only after a few tries
+  // Recovery: restart ICE (with backoff) when a connection stays disconnected or fails, relay-only after a few tries.
+  // Both sides go relay-only on the same schedule; only the offering (impolite) side sends the restart offer.
   const recoveryTimer = window.setInterval(() => {
     const now = Date.now();
     for (const peer of peers.values()) {
@@ -324,6 +366,10 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
               ...pc.getConfiguration(),
               iceTransportPolicy: "relay",
             });
+          }
+          if (peer.polite) {
+            // Only the offering side restarts ICE (two restart offers at once would collide); we answer its offer
+            return;
           }
           if (pc.signalingState === "have-local-offer") {
             // Our offer was never answered (the relay dropped it while they reconnected): start over
@@ -350,7 +396,7 @@ export function createMeshTransport(opts: MeshTransportOptions): CallTransport {
         localStream.addTrack(track);
       }
       for (const peer of peers.values()) {
-        addTrack(peer, kind);
+        sendTrack(peer, kind);
         if (kind === "video") {
           // A new camera may capture at another size
           applyParams(peer);
