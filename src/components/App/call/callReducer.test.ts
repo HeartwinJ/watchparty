@@ -5,6 +5,7 @@ import {
   initialCallState,
   memberConnection,
   remoteMembers,
+  videoMembers,
   type CallUiState,
 } from "./callReducer";
 
@@ -13,6 +14,7 @@ const member = (clientId: string, extra: Partial<CallMember> = {}) => ({
   clientId,
   session: `${clientId}-session`,
   muted: false,
+  camera: false,
   joinedAt: 1,
   reconnecting: false,
   ...extra,
@@ -118,5 +120,31 @@ describe("callReducer", () => {
     expect(memberConnection(s, s.members[2], ME)).toBe("reconnecting");
     s = callReducer(s, { type: "peer", clientId: "bob", status: null });
     expect(memberConnection(s, s.members[1], ME)).toBe("connecting");
+  });
+
+  it("gives tiles to members with their camera on, us by our own camera state, only in the call", () => {
+    const members = [
+      member(ME, { camera: false }),
+      member("bob", { camera: true }),
+      member("cat"),
+    ];
+    // Not in the call: no peer connections, no tiles
+    expect(videoMembers(server(start(), members), ME)).toEqual([]);
+    let s = server(
+      callReducer(start(), {
+        type: "joining",
+        session: "me-session",
+        muted: false,
+      }),
+      members,
+    );
+    expect(videoMembers(s, ME).map((m) => m.clientId)).toEqual(["bob"]);
+    // Our toggle shows at once, before the server echoes it
+    s = callReducer(s, { type: "patch", patch: { camera: true } });
+    expect(videoMembers(s, ME).map((m) => m.clientId)).toEqual([ME, "bob"]);
+    // Leaving turns our camera state off
+    s = callReducer(s, { type: "left" });
+    expect(s.camera).toBe(false);
+    expect(videoMembers(s, ME)).toEqual([]);
   });
 });

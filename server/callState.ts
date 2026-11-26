@@ -1,6 +1,6 @@
-// Voice call membership for one room: who's in the call, muted or not, and which socket speaks for them. Pure (no
-// Socket.IO): Room (room.ts) feeds it commands and broadcasts `snapshot()` as REC:callState. In memory only, never
-// serialized: a restart ends every call (clients rejoin on their own after a reload, see the grace period).
+// Call membership for one room: who's in the call, muted or not, camera on or not, and which socket speaks for them.
+// Pure (no Socket.IO): Room (room.ts) feeds it commands and broadcasts `snapshot()` as REC:callState. In memory only,
+// never serialized: a restart ends every call (clients rejoin on their own after a reload, see the grace period).
 //
 // The call is separate from the roster. A member whose socket drops stays in the call for `graceMs`
 // ("reconnecting"), so a reload or a flaky connection rejoins silently: the client sends `join` again (same or new
@@ -24,13 +24,16 @@ export const CALL_LIMITS = {
 
 /** CMD:call. `session` identifies the client's call instance (a new one per page load). */
 export type CallCommand =
-  | { action: "join"; session: string; muted: boolean }
+  | { action: "join"; session: string; muted: boolean; camera: boolean }
   | { action: "leave" }
-  | { action: "state"; muted: boolean };
+  | { action: "state"; muted?: boolean; camera?: boolean };
 
-/** CMD:callModerate (owners only): ask someone to mute (they mute themselves), or remove them from the call */
+/**
+ * CMD:callModerate (owners only): ask someone to mute or to turn their camera off (their own client does it), or
+ * remove them from the call
+ */
 export interface CallModeration {
-  action: "mute" | "remove";
+  action: "mute" | "camera" | "remove";
   clientId: string;
 }
 
@@ -63,20 +66,45 @@ export function parseCallCommand(raw: unknown): CallCommand | null {
   }
   const d = raw as Record<string, unknown>;
   if (d.action === "join") {
-    if (!isCallSession(d.session) || typeof d.muted !== "boolean") {
+    // `camera` is optional (an audio-only client): absent = off
+    if (
+      !isCallSession(d.session) ||
+      typeof d.muted !== "boolean" ||
+      (d.camera !== undefined && typeof d.camera !== "boolean")
+    ) {
       return null;
     }
-    return { action: "join", session: d.session, muted: d.muted };
+    return {
+      action: "join",
+      session: d.session,
+      muted: d.muted,
+      camera: d.camera === true,
+    };
   }
   if (d.action === "leave") {
     return { action: "leave" };
   }
   if (d.action === "state") {
-    // Room for `camera` later; for now only `muted`
-    if (typeof d.muted !== "boolean") {
+    // `muted` and/or `camera`: at least one, each a boolean when present
+    const hasMuted = d.muted !== undefined;
+    const hasCamera = d.camera !== undefined;
+    if (
+      (!hasMuted && !hasCamera) ||
+      (hasMuted && typeof d.muted !== "boolean") ||
+      (hasCamera && typeof d.camera !== "boolean")
+    ) {
       return null;
     }
-    return { action: "state", muted: d.muted };
+    const out: { action: "state"; muted?: boolean; camera?: boolean } = {
+      action: "state",
+    };
+    if (hasMuted) {
+      out.muted = d.muted as boolean;
+    }
+    if (hasCamera) {
+      out.camera = d.camera as boolean;
+    }
+    return out;
   }
   return null;
 }
@@ -87,7 +115,7 @@ export function parseCallModeration(raw: unknown): CallModeration | null {
   }
   const d = raw as Record<string, unknown>;
   if (
-    (d.action !== "mute" && d.action !== "remove") ||
+    (d.action !== "mute" && d.action !== "camera" && d.action !== "remove") ||
     !isClientId(d.clientId)
   ) {
     return null;
@@ -204,6 +232,7 @@ interface Member {
   clientId: string;
   session: string;
   muted: boolean;
+  camera: boolean;
   joinedAt: number;
   /** The socket that speaks for this member, null while it's gone (grace period) */
   socketId: string | null;
@@ -225,21 +254,23 @@ export class CallMembership {
 
   /**
    * Joins (or rejoins, keeping the original join time) from `socketId`. A member that's still listed (in its grace
-   * period, or from another socket of the same clientId) is taken over by this socket. `muted` is the client's
-   * state: it decides the join-muted rule itself and keeps its state across a rejoin.
+   * period, or from another socket of the same clientId) is taken over by this socket. `muted` and `camera` are the
+   * client's state: it decides the join-muted rule itself and keeps its state across a rejoin.
    */
   join(
     clientId: string,
     socketId: string,
-    cmd: { session: string; muted: boolean },
+    cmd: { session: string; muted: boolean; camera?: boolean },
     now: number,
   ): JoinOutcome {
+    const camera = cmd.camera === true;
     const existing = this.members.get(clientId);
     if (existing) {
       existing.socketId = socketId;
       existing.graceUntil = null;
       existing.session = cmd.session;
       existing.muted = cmd.muted;
+      existing.camera = camera;
       return "rejoined";
     }
     if (this.members.size >= this.maxMembers) {
@@ -249,6 +280,7 @@ export class CallMembership {
       clientId,
       session: cmd.session,
       muted: cmd.muted,
+      camera,
       joinedAt: now,
       socketId,
       graceUntil: null,
@@ -270,14 +302,31 @@ export class CallMembership {
     return this.members.delete(clientId);
   }
 
-  /** Returns whether anything changed */
-  setMuted(clientId: string, socketId: string, muted: boolean): boolean {
+  /** Mute and/or camera, from the member's own socket. Returns whether anything changed. */
+  setState(
+    clientId: string,
+    socketId: string,
+    patch: { muted?: boolean; camera?: boolean },
+  ): boolean {
     const m = this.members.get(clientId);
-    if (!m || m.socketId !== socketId || m.muted === muted) {
+    if (!m || m.socketId !== socketId) {
       return false;
     }
-    m.muted = muted;
-    return true;
+    let changed = false;
+    if (patch.muted !== undefined && patch.muted !== m.muted) {
+      m.muted = patch.muted;
+      changed = true;
+    }
+    if (patch.camera !== undefined && patch.camera !== m.camera) {
+      m.camera = patch.camera;
+      changed = true;
+    }
+    return changed;
+  }
+
+  /** Returns whether anything changed */
+  setMuted(clientId: string, socketId: string, muted: boolean): boolean {
+    return this.setState(clientId, socketId, { muted });
   }
 
   /** The member's socket disconnected: keep them for the grace period. Returns whether anything changed. */
@@ -352,6 +401,7 @@ export class CallMembership {
           clientId: m.clientId,
           session: m.session,
           muted: m.muted,
+          camera: m.camera,
           joinedAt: m.joinedAt,
           reconnecting: m.socketId === null,
         })),

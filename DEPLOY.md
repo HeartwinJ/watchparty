@@ -34,9 +34,9 @@ chmod 600 .env
    - Service type: **HTTP**, URL: **`app:8080`** (i.e. `http://app:8080`, the compose service name)
 5. Save. WebSockets are enabled by default on Cloudflare (Network → WebSockets for the zone); Socket.IO needs them, so leave that on.
 
-## 3. Create the TURN key (voice calls and screen/file share across strict networks)
+## 3. Create the TURN key (calls and screen/file share across strict networks)
 
-Voice calls and screen/file share are peer-to-peer WebRTC. Between some networks (mobile carriers, corporate NAT) P2P fails and traffic has to be relayed. Cloudflare Realtime TURN does that for free within its limits (check Cloudflare's pricing page).
+Voice/video calls and screen/file share are peer-to-peer WebRTC. Between some networks (mobile carriers, corporate NAT) P2P fails and traffic has to be relayed. Cloudflare Realtime TURN does that for free within its limits (check Cloudflare's pricing page).
 
 1. In the Cloudflare dashboard (account level, not Zero Trust) open **Realtime → TURN Server** and click **Create** (name it e.g. `watchparty`).
 2. Cloudflare shows a **Turn Token ID** and an **API Token** once. Put them in `.env`:
@@ -45,7 +45,7 @@ Voice calls and screen/file share are peer-to-peer WebRTC. Between some networks
    CF_TURN_API_TOKEN=<API Token>
    ```
 
-The API token stays on the server. Browsers only get short-lived credentials from `GET /iceServers`. If you skip this step, calls and screen share still work when P2P succeeds (STUN only). **For voice calls it's strongly recommended:** a call is a connection between every pair of people, so one person on mobile data or a strict NAT can otherwise drop out of the call for everyone. When a call connection keeps failing, the browser switches it to relay-only, which only helps with TURN configured.
+The API token stays on the server. Browsers only get short-lived credentials from `GET /iceServers`. If you skip this step, calls and screen share still work when P2P succeeds (STUN only). **For voice calls it's strongly recommended:** a call is a connection between every pair of people, so one person on mobile data or a strict NAT can otherwise drop out of the call for everyone. When a call connection keeps failing, the browser switches it to relay-only, which only helps with TURN configured. Cameras in a call use far more data than voice (up to ~1.2 Mbps per camera per person receiving it, capped lower as the call grows), so relayed video counts against Cloudflare's TURN allowance much faster than voice.
 
 ## 4. Fill in the rest of `.env`
 

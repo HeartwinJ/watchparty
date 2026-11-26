@@ -174,3 +174,28 @@
 .reconnecting {
   color: var(--wp-warning);
 }
+
+.cameraIcon {
+  flex: none;
+  color: var(--wp-accent-text);
+}
+
+.camera {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wp-sp-2);
+}
+
+/* Our camera before/while sending it: mirrored, like the tiles */
+.preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--wp-r-md);
+  background: var(--wp-stage);
+  transform: scaleX(-1);
+}
+
+.camOn {
+  color: var(--wp-accent-text);
+}

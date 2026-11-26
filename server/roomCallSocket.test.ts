@@ -93,6 +93,7 @@ describe("Room voice call", () => {
         clientId: a.id,
         session: sa,
         muted: true,
+        camera: false,
         joinedAt: expect.any(Number),
         reconnecting: false,
       },
@@ -101,6 +102,22 @@ describe("Room voice call", () => {
     a.socket.emit("CMD:call", { action: "state", muted: false });
     await settle();
     expect(last(b.states).members[0].muted).toBe(false);
+
+    // Camera on/off is broadcast the same way; a bad value changes nothing
+    a.socket.emit("CMD:call", { action: "state", camera: true });
+    await settle();
+    expect(last(b.states).members[0]).toMatchObject({
+      muted: false,
+      camera: true,
+    });
+    const count = b.states.length;
+    a.socket.emit("CMD:call", { action: "state", camera: "off" });
+    a.socket.emit("CMD:call", { action: "state", camera: true });
+    await settle();
+    expect(b.states.length).toBe(count);
+    a.socket.emit("CMD:call", { action: "state", camera: false });
+    await settle();
+    expect(last(b.states).members[0].camera).toBe(false);
 
     // Someone else's leave/state doesn't touch a's membership
     b.socket.emit("CMD:call", { action: "state", muted: true });
@@ -154,6 +171,7 @@ describe("Room voice call", () => {
         clientId: who.clientId,
         session: s2,
         muted: true,
+        camera: false,
         joinedAt,
         reconnecting: false,
       },
@@ -321,12 +339,23 @@ describe("Room voice call", () => {
     // Muting only asks: the member's state changes when they mute themselves
     expect(last(owner.states).members[0].muted).toBe(false);
 
+    // Same for the camera
+    guest.socket.emit("CMD:call", { action: "state", camera: true });
+    await settle();
+    owner.socket.emit("CMD:callModerate", {
+      action: "camera",
+      clientId: guest.id,
+    });
+    await settle();
+    expect(moderated[1]).toEqual({ action: "camera", by: { id: owner.id } });
+    expect(last(owner.states).members[0].camera).toBe(true);
+
     owner.socket.emit("CMD:callModerate", {
       action: "remove",
       clientId: guest.id,
     });
     await settle();
-    expect(moderated[1]).toEqual({ action: "remove", by: { id: owner.id } });
+    expect(moderated[2]).toEqual({ action: "remove", by: { id: owner.id } });
     expect(last(owner.states)).toEqual({ members: [] });
   });
 

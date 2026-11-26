@@ -16,6 +16,7 @@ import {
   IconHeadset,
   IconKey,
   IconMicrophoneOff,
+  IconVideoOff,
   IconPencil,
   IconPhoneOff,
   IconScreenShare,
@@ -204,7 +205,10 @@ export const PeoplePanel = ({ room }: { room: Room }) => {
                       member
                         ? {
                             muted: member.muted,
+                            camera: member.camera,
                             onMute: () => room.call.moderate(p.id, "mute"),
+                            onCameraOff: () =>
+                              room.call.moderate(p.id, "camera"),
                             onRemove: () => room.call.moderate(p.id, "remove"),
                           }
                         : undefined
@@ -229,7 +233,13 @@ const PersonMenu = ({
   name: string;
   onKick: () => void;
   /** Set while they're in the voice call */
-  call?: { muted: boolean; onMute: () => void; onRemove: () => void };
+  call?: {
+    muted: boolean;
+    camera: boolean;
+    onMute: () => void;
+    onCameraOff: () => void;
+    onRemove: () => void;
+  };
 }) => (
   <Menu position="bottom-end" width={220} zIndex={400} withinPortal>
     <Menu.Target>
@@ -253,6 +263,15 @@ const PersonMenu = ({
             Mute in call
             <div className={styles.menuHint}>They can unmute themselves</div>
           </Menu.Item>
+          {call.camera && (
+            <Menu.Item
+              leftSection={<IconVideoOff size={16} />}
+              onClick={call.onCameraOff}
+            >
+              Turn off camera
+              <div className={styles.menuHint}>They can turn it back on</div>
+            </Menu.Item>
+          )}
           <Menu.Item
             leftSection={<IconPhoneOff size={16} />}
             onClick={call.onRemove}

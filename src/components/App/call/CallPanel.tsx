@@ -7,17 +7,22 @@ import {
   IconMicrophoneOff,
   IconPhoneOff,
   IconRefresh,
+  IconVideo,
+  IconVideoOff,
 } from "@tabler/icons-react";
 import { UserAvatar } from "../../Avatar/Avatar";
 import { useAuth } from "../../AuthGate/AuthGate";
 import type { Room } from "../hooks/useRoom";
 import { inCall, memberConnection } from "./callReducer";
-import { joinMuted, MIC_ERROR_TEXT, PTT_KEY } from "./logic";
+import { CAMERA_KEY, joinMuted, MIC_ERROR_TEXT, PTT_KEY } from "./logic";
+import { CAMERA_ERROR_TEXT } from "./video";
+import { useCallVideo } from "./videoStreams";
 import styles from "./Call.module.css";
 
 /**
- * The call panel: who's in the call, the microphone (picker + live level), and either Join (pre-join: errors,
- * "headphones recommended") or the in-call controls (mute, ducking, push-to-talk, leave).
+ * The call panel: who's in the call, the microphone (picker + live level), the camera (picker + live preview, off
+ * until you turn it on), and either Join (pre-join: errors, "headphones recommended") or the in-call controls (mute,
+ * camera, ducking, push-to-talk, video tiles, leave).
  */
 export const CallPanel = ({ room }: { room: Room }) => {
   const { state, clientId, call } = room;
@@ -57,6 +62,7 @@ export const CallPanel = ({ room }: { room: Room }) => {
             const isMe = m.clientId === clientId;
             const conn = memberConnection(c, m, clientId);
             const muted = isMe && joined ? c.muted && !c.pttHeld : m.muted;
+            const camera = isMe && joined ? c.camera : m.camera;
             return (
               <li key={m.clientId} className={styles.member}>
                 <UserAvatar
@@ -77,6 +83,13 @@ export const CallPanel = ({ room }: { room: Room }) => {
                     </span>
                   )}
                 </span>
+                {camera && (
+                  <IconVideo
+                    size={16}
+                    className={styles.cameraIcon}
+                    aria-label="Camera on"
+                  />
+                )}
                 {muted && (
                   <IconMicrophoneOff
                     size={16}
@@ -88,7 +101,9 @@ export const CallPanel = ({ room }: { room: Room }) => {
                   <MemberMenu
                     name={memberName(m.clientId)}
                     muted={m.muted}
+                    camera={m.camera}
                     onMute={() => call.moderate(m.clientId, "mute")}
+                    onCameraOff={() => call.moderate(m.clientId, "camera")}
                     onRemove={() => call.moderate(m.clientId, "remove")}
                   />
                 )}
@@ -132,6 +147,8 @@ export const CallPanel = ({ room }: { room: Room }) => {
         </div>
       )}
 
+      <CameraSection room={room} />
+
       {!joined ? (
         <>
           <div className={styles.note}>
@@ -144,6 +161,9 @@ export const CallPanel = ({ room }: { room: Room }) => {
             <div className={styles.sub}>
               The video is playing, so you'll join muted.
             </div>
+          )}
+          {c.camera && (
+            <div className={styles.sub}>You'll join with your camera on.</div>
           )}
           <Button
             fullWidth
@@ -168,6 +188,12 @@ export const CallPanel = ({ room }: { room: Room }) => {
             description="Your mic is only on while you hold the key or the mic button"
             checked={c.pushToTalk}
             onChange={(e) => call.setPushToTalk(e.currentTarget.checked)}
+          />
+          <Switch
+            label="Show video tiles"
+            description="Cameras over the video, only on this device"
+            checked={!c.tilesHidden}
+            onChange={(e) => call.setTilesHidden(!e.currentTarget.checked)}
           />
           <div className={styles.actions}>
             {!c.pushToTalk && (
@@ -200,16 +226,23 @@ export const CallPanel = ({ room }: { room: Room }) => {
   );
 };
 
-/** Owners: ask someone to mute (they mute themselves; nobody can unmute you), or remove them from the call */
+/**
+ * Owners: ask someone to mute or turn their camera off (their client does it; nobody can turn yours on), or remove
+ * them from the call
+ */
 const MemberMenu = ({
   name,
   muted,
+  camera,
   onMute,
+  onCameraOff,
   onRemove,
 }: {
   name: string;
   muted: boolean;
+  camera: boolean;
   onMute: () => void;
+  onCameraOff: () => void;
   onRemove: () => void;
 }) => (
   <Menu position="bottom-end" width={220} withinPortal={false}>
@@ -230,6 +263,13 @@ const MemberMenu = ({
         onClick={onMute}
       >
         Mute in call
+      </Menu.Item>
+      <Menu.Item
+        leftSection={<IconVideoOff size={16} />}
+        disabled={!camera}
+        onClick={onCameraOff}
+      >
+        Turn off camera
       </Menu.Item>
       <Menu.Item
         color="var(--wp-danger)"
@@ -271,6 +311,124 @@ const LevelMeter = ({ room }: { room: Room }) => {
     </div>
   );
 };
+
+/**
+ * The camera: off until you turn it on (before joining that's a preview, and you join with it on). Picker, live
+ * mirrored preview, on/off, and why it couldn't start. A camera problem never stops you joining with audio.
+ */
+const CameraSection = ({ room }: { room: Room }) => {
+  const { call } = room;
+  const c = room.state.call;
+  const cameras = useCameras(room);
+  const { local } = useCallVideo(call.video);
+  const toggle = () => call.toggleCamera().then(cameras.refresh);
+  return (
+    <div className={styles.camera}>
+      {cameras.options.length > 1 && (
+        <Select
+          label="Camera"
+          size="sm"
+          data={cameras.options}
+          value={cameras.current}
+          placeholder="Default camera"
+          onChange={(v) => v && call.setCameraDevice(v).then(cameras.refresh)}
+          allowDeselect={false}
+          comboboxProps={{ withinPortal: false }}
+        />
+      )}
+      {c.camera && local && <Preview stream={local} />}
+      {c.cameraError && !c.camera && (
+        <div className={styles.error} role="alert">
+          <div className={styles.errorTitle}>
+            {CAMERA_ERROR_TEXT[c.cameraError].title}
+          </div>
+          <div className={styles.errorHint}>
+            {CAMERA_ERROR_TEXT[c.cameraError].hint}
+          </div>
+        </div>
+      )}
+      <Button
+        variant={c.camera ? "light" : "default"}
+        color={c.camera ? "copper" : undefined}
+        size="compact-sm"
+        leftSection={
+          c.camera ? <IconVideoOff size={14} /> : <IconVideo size={14} />
+        }
+        loading={c.cameraBusy}
+        onClick={toggle}
+        aria-keyshortcuts={inCall(c) ? CAMERA_KEY : undefined}
+      >
+        {c.camera
+          ? "Turn camera off"
+          : c.cameraError
+            ? "Try the camera again"
+            : inCall(c)
+              ? `Turn camera on (${CAMERA_KEY.toUpperCase()})`
+              : "Turn camera on"}
+      </Button>
+    </div>
+  );
+};
+
+/** Our camera, mirrored like the tiles */
+const Preview = ({ stream }: { stream: MediaStream }) => {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    el.srcObject = stream;
+    el.play?.()?.catch(() => {});
+    return () => {
+      el.srcObject = null;
+    };
+  }, [stream]);
+  return (
+    <video
+      ref={ref}
+      className={styles.preview}
+      aria-label="Your camera"
+      autoPlay
+      playsInline
+      muted
+    />
+  );
+};
+
+/** The cameras for the picker, refreshed when devices change (labels appear once camera access is granted) */
+function useCameras(room: Room) {
+  const { call } = room;
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [current, setCurrent] = useState<string | null>(null);
+  const refresh = async () => {
+    setDevices(await call.listCameras());
+    setCurrent(call.currentCameraId());
+  };
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    refreshRef.current();
+    const onChange = () => refreshRef.current();
+    navigator.mediaDevices?.addEventListener?.("devicechange", onChange);
+    return () =>
+      navigator.mediaDevices?.removeEventListener?.("devicechange", onChange);
+  }, []);
+  useEffect(() => {
+    refreshRef.current();
+  }, [room.state.call.camera]);
+  const options = devices
+    .filter((d) => d.deviceId)
+    .map((d, i) => ({
+      value: d.deviceId,
+      label: d.label || `Camera ${i + 1}`,
+    }));
+  return {
+    options,
+    current: options.some((o) => o.value === current) ? current : null,
+    refresh,
+  };
+}
 
 /** The microphones for the picker, refreshed when devices change (labels appear once mic access is granted) */
 function useMics(room: Room) {

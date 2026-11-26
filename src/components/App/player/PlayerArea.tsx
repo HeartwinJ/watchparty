@@ -28,6 +28,7 @@ import { useSubtitleStyle } from "./useSubtitleStyle";
 import { useTextTracks } from "./useTextTracks";
 import styles from "./Player.module.css";
 import { inCall } from "../call/callReducer";
+import { VideoTiles } from "../call/VideoTiles";
 
 /** Fired by the overflow menu to open the shortcuts overlay (shell/shortcuts.ts requestShortcutsOverlay) */
 const SHOW_SHORTCUTS_EVENT = "wp:show-shortcuts";
@@ -179,6 +180,21 @@ export const PlayerArea = ({ room }: { room: Room }) => {
             return;
           }
           break;
+        case "toggleCamera":
+          // V: only in a voice call
+          if (inCall(s.call)) {
+            e.preventDefault();
+            const turningOn = !(s.call.camera || s.call.cameraBusy);
+            if (!turningOn) {
+              showOsd("Camera off");
+            }
+            void room.call.toggleCamera().then((on) => {
+              if (turningOn) {
+                showOsd(on ? "Camera on" : "Camera unavailable");
+              }
+            });
+          }
+          return;
       }
       if (!media) {
         return;
@@ -489,6 +505,14 @@ export const PlayerArea = ({ room }: { room: Room }) => {
       )}
 
       <NextEpisodeCard room={room} />
+
+      <VideoTiles
+        room={room}
+        container={container}
+        fullscreen={fullscreen}
+        phone={phone}
+        controls={hasMedia}
+      />
 
       {hasMedia && (
         <ControlBar

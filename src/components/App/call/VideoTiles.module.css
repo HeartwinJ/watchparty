@@ -1,0 +1,202 @@
+/* Call video tiles: a floating strip over the player (positions come from call/tileLayout.ts) */
+
+.strip {
+  position: absolute;
+  /* Above the video and the gesture layer, below the control bar's menus and the chat overlay */
+  z-index: calc(var(--wp-z-controls) + 2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.strip[data-dragging] {
+  cursor: grabbing;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 2px 0 var(--wp-sp-2);
+  border-radius: var(--wp-r-full);
+  background: var(--wp-glass);
+  backdrop-filter: var(--wp-glass-blur);
+  -webkit-backdrop-filter: var(--wp-glass-blur);
+  align-self: flex-start;
+  opacity: 0;
+  transition: opacity var(--wp-dur-base) var(--wp-ease);
+}
+
+.strip:hover .header,
+.strip:focus-within .header,
+.strip[data-dragging] .header {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: keep the header visible */
+@media (hover: none) {
+  .header {
+    opacity: 1;
+  }
+}
+
+.grip {
+  width: 18px;
+  height: 8px;
+  margin-right: var(--wp-sp-1);
+  border-top: 2px solid var(--wp-on-video-2);
+  border-bottom: 2px solid var(--wp-on-video-2);
+}
+
+.headerBtn,
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--wp-on-video);
+  cursor: pointer;
+  font: inherit;
+}
+
+.headerBtn {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--wp-r-full);
+}
+
+.headerBtn:hover,
+.headerBtn:focus-visible {
+  background: var(--wp-scrim);
+}
+
+.headerBtn:focus-visible,
+.pill:focus-visible,
+.tile:focus-visible {
+  outline: 2px solid var(--wp-accent);
+  outline-offset: 2px;
+}
+
+.pill {
+  gap: var(--wp-sp-1);
+  height: 32px;
+  padding: 0 var(--wp-sp-3);
+  border-radius: var(--wp-r-full);
+  background: var(--wp-glass);
+  backdrop-filter: var(--wp-glass-blur);
+  -webkit-backdrop-filter: var(--wp-glass-blur);
+  font-size: var(--wp-fs-sm);
+}
+
+.grid {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  align-self: flex-start;
+}
+
+.big {
+  align-self: flex-start;
+}
+
+.tile {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--wp-r-md);
+  background: var(--wp-surface-2);
+  box-shadow: 0 0 0 1px var(--wp-border);
+  cursor: inherit;
+  transition:
+    box-shadow var(--wp-dur-fast) var(--wp-ease),
+    width var(--wp-dur-base) var(--wp-ease),
+    height var(--wp-dur-base) var(--wp-ease);
+}
+
+/* Speaking ring, like the avatars' */
+.tile[data-speaking] {
+  box-shadow:
+    0 0 0 2px var(--wp-surface-1),
+    0 0 0 4px var(--wp-success);
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--wp-stage);
+  pointer-events: none;
+}
+
+/* Enlarged: show the whole frame */
+.tile[data-enlarged] .video {
+  object-fit: contain;
+}
+
+/* Our own camera, like a mirror */
+.video[data-mirrored] {
+  transform: scaleX(-1);
+}
+
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.label {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  max-width: calc(100% - 8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--wp-r-sm);
+  background: var(--wp-scrim);
+  color: var(--wp-on-video);
+  font-size: var(--wp-fs-xs);
+  line-height: 16px;
+}
+
+.name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.muted {
+  flex: none;
+  color: var(--wp-danger);
+}
+
+.state {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  padding: 1px 6px;
+  border-radius: var(--wp-r-sm);
+  background: var(--wp-scrim);
+  color: var(--wp-warning);
+  font-size: var(--wp-fs-xs);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .header {
+    transition: none;
+  }
+}
