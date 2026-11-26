@@ -240,8 +240,8 @@ export function useRoom(roomId: string) {
       } else {
         await player.current().setSrcAndTime(src, time);
       }
-      // Start this video
-      if (!data.paused) {
+      // Start this video. Use the current room state: REC:play/pause may have arrived while the link was probed
+      if (!store.get().roomPaused) {
         player.localPlay();
       }
       // Do right before playing

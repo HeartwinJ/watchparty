@@ -465,6 +465,50 @@ describe("useRoom", () => {
     expect(video.src).toBe("https://example.com/movie.mkv");
   });
 
+  it("waits for the probe when the room plays while a link is still being probed", async () => {
+    let finishProbe!: () => void;
+    probeMedia.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          // Unreadable → the player tries the link directly
+          finishProbe = () => reject(new Error("unreadable"));
+        }),
+    );
+    const { result, socket } = await setup();
+    const video = document.getElementById("leftVideo") as HTMLVideoElement;
+    video.removeAttribute("src");
+    // Like a real <video>: play() without a source rejects with NotSupportedError
+    video.play = vi.fn(async () => {
+      if (!video.getAttribute("src")) {
+        throw Object.assign(new Error("no source"), {
+          name: "NotSupportedError",
+        });
+      }
+    });
+    act(() => {
+      socket.receive("REC:host", {
+        video: "https://example.com/slow.webm",
+        videoTS: 0,
+        subtitle: "",
+        paused: true,
+        playbackRate: 0,
+        loop: false,
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.state.playback).toEqual({ mode: "probing" }),
+    );
+    await act(async () => socket.receive("REC:play"));
+    expect(result.current.state.roomPaused).toBe(false);
+    expect(video.play).not.toHaveBeenCalled();
+    expect(result.current.state.nonPlayableMedia).toBe(false);
+
+    await act(async () => finishProbe());
+    await waitFor(() => expect(video.play).toHaveBeenCalled());
+    expect(video.src).toBe("https://example.com/slow.webm");
+    expect(result.current.state.nonPlayableMedia).toBe(false);
+  });
+
   it("plays directly without probing when auto-convert is off", async () => {
     window.localStorage.setItem("wp-auto-convert", "0");
     const { result, socket } = await setup();
