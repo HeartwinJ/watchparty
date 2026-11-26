@@ -274,7 +274,60 @@ describe("VideoTiles", () => {
     }
   });
 
-  it("hiding the tiles says where to get them back", () => {
+  it("keeps dragging when the pointer leaves the strip, and stops listening on release", () => {
+    const { room } = fakeRoom();
+    const { unmount } = renderTiles(room);
+    const strip = screen.getByRole("region", { name: "Call video" });
+    fireEvent.pointerDown(strip, {
+      button: 0,
+      pointerId: 1,
+      clientX: 20,
+      clientY: 20,
+    });
+    // A quick drag: the first move is already outside the strip
+    fireEvent.pointerMove(document.body, {
+      pointerId: 1,
+      clientX: 900,
+      clientY: 600,
+    });
+    expect(strip.getAttribute("data-dragging")).toBe("true");
+    fireEvent.pointerUp(document.body, { pointerId: 1 });
+    expect(strip.getAttribute("data-dragging")).toBeNull();
+    const saved = JSON.parse(window.localStorage.getItem("wp-call-tiles")!);
+    expect(saved.fx).toBeGreaterThan(0.5);
+    expect(saved.fy).toBeGreaterThan(0.5);
+    // Released: later moves don't drag
+    fireEvent.pointerMove(document.body, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    expect(strip.getAttribute("data-dragging")).toBeNull();
+    // Unmounting mid-drag removes the window listeners
+    fireEvent.pointerDown(strip, {
+      button: 0,
+      pointerId: 2,
+      clientX: 20,
+      clientY: 20,
+    });
+    const remove = vi.spyOn(window, "removeEventListener");
+    unmount();
+    expect(remove).toHaveBeenCalledWith("pointermove", expect.any(Function));
+    remove.mockRestore();
+  });
+
+  it("is only as tall as its tiles (no empty grid rows)", () => {
+    const { room } = fakeRoom({
+      members: [member(ME), member(BOB, { camera: false })],
+    });
+    renderTiles(room);
+    const grid = screen
+      .getByRole("region", { name: "Call video" })
+      .querySelector<HTMLElement>("[style*='grid-template-rows']")!;
+    expect(grid.style.gridTemplateRows).toMatch(/^repeat\(1,/);
+  });
+
+  it("hiding the tiles says where to get them back, with a button to undo", () => {
     const { room } = fakeRoom();
     renderTiles(room);
     fireEvent.click(
@@ -283,8 +336,12 @@ describe("VideoTiles", () => {
     expect(room.call.setTilesHidden).toHaveBeenCalledWith(true);
     expect(toast).toHaveBeenCalledWith(
       expect.stringContaining("Show them again in the call panel"),
-      expect.anything(),
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "Show again" }),
+      }),
     );
+    toast.mock.calls[0][1].action.onClick();
+    expect(room.call.setTilesHidden).toHaveBeenLastCalledWith(false);
   });
 
   it("re-measures when the player resizes", () => {

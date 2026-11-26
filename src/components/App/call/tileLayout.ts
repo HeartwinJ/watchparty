@@ -83,12 +83,19 @@ export function tileSize(
   return { width: Math.round(width), height: Math.round(height) };
 }
 
-/** How many tiles fit in one column of the safe area (at least one) */
-export function tilesPerColumn(tileHeight: number, availableHeight: number) {
-  return Math.max(
-    1,
-    Math.floor((availableHeight + TILE_GAP) / (tileHeight + TILE_GAP)),
+/**
+ * Rows in the tile grid: as many tiles as fit in one column of the safe area, but no more than there are tiles
+ * (empty rows would still take up height and make the strip too tall to drag). At least one.
+ */
+export function tilesPerColumn(
+  tileHeight: number,
+  availableHeight: number,
+  count: number,
+) {
+  const fit = Math.floor(
+    (availableHeight + TILE_GAP) / (tileHeight + TILE_GAP),
   );
+  return Math.max(1, Math.min(fit, count));
 }
 
 /** The strip's top-left corner in px (relative to the player) for a stored position */

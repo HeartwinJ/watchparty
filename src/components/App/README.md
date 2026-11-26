@@ -421,15 +421,16 @@ Voice, plus an optional camera (see **Camera** below).
 - **Tiles** (`VideoTiles.tsx`, `tileLayout.ts`, pure and tested): incoming video tracks go to `CallVideo` (mutable;
   `useCallVideo` re-renders on changes, with `live` = frames arriving). `VideoTiles` is rendered inside PlayerArea
   (the fullscreen target) and shows only while we're in the call and someone has `camera` on (`videoMembers`; our own
-  tile follows our local camera state). A column of 4:3 tiles (wrapping into more columns), draggable (5 px threshold
-  so a click still enlarges), collapsible into a pill, with a hover header (always visible on touch). Position is stored
+  tile follows our local camera state). A column of 4:3 tiles (wrapping into more columns; the grid never has more
+  rows than tiles, or the strip would be too tall to move), draggable (5 px threshold so a click still enlarges; the
+  move and release are followed on `window`, so a quick drag that leaves the strip keeps going), collapsible into a pill, with a hover header (always visible on touch). Position is stored
   per device (`wp-call-tiles`: fractions of the safe area, so it keeps its corner when resizing or going fullscreen);
   the default is top-left so a fullscreen chat panel sliding in from the right stays clear: change
   `DEFAULT_STRIP_POSITION`, or reserve an edge with `stripInsets({reserve})`. The safe area avoids the fullscreen title
   bar and the control bar. Tiles: speaking ring, muted icon, name, "Reconnecting…", mirrored self view, avatar until
   frames arrive; click to enlarge (`object-fit: contain`). Video elements are `muted playsInline autoPlay` (audio plays
-  through `CallAudio`, so autoplay never blocks them). "Hide video tiles" (strip header or the call panel's "Show
-  video tiles" switch) is per device (`wp-call-tiles-hidden`); hidden or collapsed tiles don't receive video (see
+  through `CallAudio`, so autoplay never blocks them). "Hide video tiles" (strip header, with a "Show again" button
+  on its toast, or the call panel's "Show video tiles" switch) is per device (`wp-call-tiles-hidden`); hidden or collapsed tiles don't receive video (see
   **Video only to viewers showing the tiles**). The People panel keeps
   avatars.
 
