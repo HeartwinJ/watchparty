@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRef } from "react";
+import { MantineProvider } from "@mantine/core";
 import { QuickChat } from "./QuickChat";
 import { ChatOverlay } from "./ChatOverlay";
 import { ChatPanel } from "./ChatPanel";
@@ -37,6 +38,7 @@ describe("QuickChat", () => {
       <div onKeyDown={outer}>
         <QuickChat onSend={onSend} onClose={onClose} />
       </div>,
+      { wrapper: MantineProvider },
     );
     const input = screen.getByLabelText("Message everyone");
     expect(document.activeElement).toBe(input);
@@ -51,7 +53,9 @@ describe("QuickChat", () => {
 
   it("blur closes it only when empty", () => {
     const onClose = vi.fn();
-    render(<QuickChat onSend={() => {}} onClose={onClose} />);
+    render(<QuickChat onSend={() => {}} onClose={onClose} />, {
+      wrapper: MantineProvider,
+    });
     const input = screen.getByLabelText("Message everyone");
     fireEvent.change(input, { target: { value: "draft" } });
     fireEvent.blur(input);
@@ -64,7 +68,9 @@ describe("QuickChat", () => {
   it("Enter on whitespace just closes", () => {
     const onClose = vi.fn();
     const onSend = vi.fn();
-    render(<QuickChat onSend={onSend} onClose={onClose} />);
+    render(<QuickChat onSend={onSend} onClose={onClose} />, {
+      wrapper: MantineProvider,
+    });
     const input = screen.getByLabelText("Message everyone");
     fireEvent.change(input, { target: { value: "  " } });
     fireEvent.submit(input.closest("form")!);
