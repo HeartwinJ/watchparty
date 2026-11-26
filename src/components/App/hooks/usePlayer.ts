@@ -430,8 +430,10 @@ export function usePlayer(opts: {
     }
     let lastDuration: DurationReport | null = null;
     const id = window.setInterval(() => {
-      const { roomMedia, isLiveStream } = store.get();
-      if (roomMedia) {
+      const { roomMedia, isLiveStream, loading } = store.get();
+      // Not while our media is loading: the player is still at ~0 (or the previous video's time), and reporting that
+      // would make us look like the room's position (a reload or re-join then restarted converted videos)
+      if (roomMedia && !loading) {
         cmd.reportTime(api.toRoomTime(api.current().getCurrentTime()));
         const now = Date.now();
         const report = nextDurationReport(lastDuration, {

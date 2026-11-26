@@ -9,6 +9,7 @@ import {
   stepOffset,
   toWebVtt,
   type CueLike,
+  cuesAt,
 } from "./subtitles";
 
 describe("toWebVtt", () => {
@@ -124,5 +125,25 @@ describe("parseOffsetInput", () => {
     for (const bad of ["", "abc", "1:75", "1..2", "--1", "1:2:3", "1e3"]) {
       expect(parseOffsetInput(bad)).toBeUndefined();
     }
+  });
+});
+
+describe("cuesAt", () => {
+  const cues = [
+    { startTime: 1, endTime: 2, text: "a" },
+    { startTime: 1.5, endTime: 3, text: "b" },
+    { startTime: 4, endTime: 5, text: "c" },
+  ];
+  it("returns the cues on screen at a time, in order (start inclusive, end exclusive)", () => {
+    expect(cuesAt(cues, 0.5)).toEqual([]);
+    expect(cuesAt(cues, 1).map((c) => c.text)).toEqual(["a"]);
+    expect(cuesAt(cues, 1.7).map((c) => c.text)).toEqual(["a", "b"]);
+    expect(cuesAt(cues, 2).map((c) => c.text)).toEqual(["b"]);
+    expect(cuesAt(cues, 4.99).map((c) => c.text)).toEqual(["c"]);
+    expect(cuesAt(cues, 5)).toEqual([]);
+  });
+  it("handles no cues and bad times", () => {
+    expect(cuesAt(null, 1)).toEqual([]);
+    expect(cuesAt(cues, NaN)).toEqual([]);
   });
 });

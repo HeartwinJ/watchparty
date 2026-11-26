@@ -85,7 +85,7 @@ describe("Room settings", () => {
     await settle();
     expect(initial).toEqual({
       title: "",
-      readyCheck: false,
+      readyCheck: true,
       nextEpisodeOffset: 25,
     });
   });
@@ -139,8 +139,8 @@ describe("Room settings", () => {
     a.emit("CMD:roomSettings", { nextEpisodeOffset: 27 });
     a.emit("CMD:roomSettings", { nextEpisodeOffset: 30 });
     a.emit("CMD:roomSettings", { title: "Friday" });
-    a.emit("CMD:roomSettings", { readyCheck: true });
     a.emit("CMD:roomSettings", { readyCheck: false });
+    a.emit("CMD:roomSettings", { readyCheck: true });
     await settle(300);
     expect(chat.map((m) => [m.cmd, JSON.parse(m.msg ?? "")])).toEqual([
       ["roomSettings", { title: "Friday" }],
@@ -157,11 +157,11 @@ describe("Room settings", () => {
     a.on("REC:chat", (m: ChatMessage) => chat.push(m));
     a.emit("CMD:roomSettings", { title: "Friday" });
     await settle(30);
-    b.emit("CMD:roomSettings", { readyCheck: true });
+    b.emit("CMD:roomSettings", { readyCheck: false });
     await settle(300);
     expect(chat.map((m) => JSON.parse(m.msg ?? ""))).toEqual([
       { title: "Friday" },
-      { readyCheck: true },
+      { readyCheck: false },
     ]);
     expect(chat[0].id).not.toBe(chat[1].id);
   });
@@ -170,14 +170,14 @@ describe("Room settings", () => {
     const t = await setup();
     cleanups.push(t.close);
     const a = await t.join();
-    const got = next<RoomSettings>(a, "REC:roomSettings", (s) => s.readyCheck);
-    a.emit("CMD:roomSettings", { title: "Saved", readyCheck: true });
+    const got = next<RoomSettings>(a, "REC:roomSettings", (s) => !s.readyCheck);
+    a.emit("CMD:roomSettings", { title: "Saved", readyCheck: false });
     await got;
     const data = t.room.serialize();
     const loaded = new Room(t.io, t.db, "/settings-copy", data);
     expect(loaded.roomSettings).toEqual({
       title: "Saved",
-      readyCheck: true,
+      readyCheck: false,
       nextEpisodeOffset: 25,
     });
     loaded.destroy();
@@ -185,9 +185,10 @@ describe("Room settings", () => {
     const old = JSON.parse(data);
     delete old.roomSettings;
     const legacy = new Room(t.io, t.db, "/settings-old", JSON.stringify(old));
+    // Rooms saved before room settings existed get the current default (ready check on)
     expect(legacy.roomSettings).toEqual({
       title: "",
-      readyCheck: false,
+      readyCheck: true,
       nextEpisodeOffset: 25,
     });
     legacy.destroy();

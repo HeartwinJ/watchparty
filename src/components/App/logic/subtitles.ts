@@ -127,6 +127,28 @@ export function retimeCues(
   return list.length;
 }
 
+/**
+ * The cues that should be on screen at `time`, in track order. Used instead of TextTrack.activeCues, which some
+ * browsers leave stale after cue times change in place (offset re-timing): passed lines then piled up above the
+ * current one. A cue is shown from its start up to (not including) its end.
+ */
+export function cuesAt<T extends { startTime: number; endTime: number }>(
+  cues: ArrayLike<T> | null | undefined,
+  time: number,
+): T[] {
+  const out: T[] = [];
+  if (!cues || !Number.isFinite(time)) {
+    return out;
+  }
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i];
+    if (c.startTime <= time && time < c.endTime) {
+      out.push(c);
+    }
+  }
+  return out;
+}
+
 /** Subtitle style (per device) */
 export type SubtitleSize = "s" | "m" | "l" | "xl";
 export type SubtitleBackground = "none" | "shadow" | "box";

@@ -23,6 +23,7 @@ import type { Chat } from "../../Chat/Chat";
 import { createInitialRoomState } from "../roomState";
 import { getMediaDisplayName } from "../logic/media";
 import { useStore } from "./useStore";
+import { getJoinSeekTarget } from "../logic/sync";
 import { useRoomSocket, type RoomSocketHandlers } from "./useRoomSocket";
 import { usePlayer } from "./usePlayer";
 import { getConvertStatus, useConvert } from "./useConvert";
@@ -211,6 +212,7 @@ export function useRoom(roomId: string) {
       }
       const src = data.video;
       const time = data.videoTS;
+      const hostReceivedAt = Date.now();
       if (isDash(src)) {
         if (!window.watchparty.dash) {
           const Dash = await import("dashjs");
@@ -261,8 +263,22 @@ export function useRoom(roomId: string) {
           if (isHls(src) || isDash(src) || store.get().isLiveStream) {
             ts = time;
           }
-          // Resync to leader since the loading might have taken some time
-          player.localSeek(ts);
+          // Resync since the loading might have taken some time: to the other viewers, or (alone) to where the room
+          // was, never to our own position, which was ~0 while loading (a reload used to restart converted videos)
+          const s = store.get();
+          player.localSeek(
+            ts ??
+              getJoinSeekTarget({
+                tsMap: s.tsMap,
+                selfId: clientId,
+                participantCount: s.participants.length,
+                hostTime: time,
+                hostReceivedAt,
+                now: Date.now(),
+                paused: s.roomPaused,
+                rate: s.roomPlaybackRate || 1,
+              }),
+          );
           if (data.playbackRate) {
             // Set playback rate again since it might have been lost
             console.log("setting playback rate again", data.playbackRate);

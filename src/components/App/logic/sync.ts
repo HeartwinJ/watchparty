@@ -13,6 +13,37 @@ export function getLeaderTime(participantCount: number, tsMap: NumberDict) {
   return Math.max(...times);
 }
 
+/**
+ * Where to put a video we just loaded (joined, reloaded, or a new video): with the other viewers if any are reporting,
+ * otherwise where the server said the room is (REC:host's videoTS), moved on by the time since then if it's playing.
+ * Our own tsMap entry is ignored: while our media was loading it reported ~0 (or a stale position), and following it
+ * would restart the video for someone who reloads alone.
+ */
+export function getJoinSeekTarget(opts: {
+  tsMap: NumberDict;
+  selfId: string;
+  participantCount: number;
+  hostTime: number;
+  hostReceivedAt: number;
+  now: number;
+  paused: boolean;
+  rate: number;
+}): number {
+  const others: NumberDict = {};
+  for (const [id, t] of Object.entries(opts.tsMap)) {
+    if (id !== opts.selfId && Number.isFinite(t)) {
+      others[id] = t;
+    }
+  }
+  if (Object.keys(others).length) {
+    return getLeaderTime(opts.participantCount, others);
+  }
+  const elapsed = opts.paused
+    ? 0
+    : (Math.max(0, opts.now - opts.hostReceivedAt) / 1000) * (opts.rate || 1);
+  return Math.max(0, opts.hostTime + elapsed);
+}
+
 /** Tuning for the drift controller. Drift is in seconds, positive = behind the leader. */
 export const DRIFT = {
   /** Start nudging the playback rate once we're this far off */

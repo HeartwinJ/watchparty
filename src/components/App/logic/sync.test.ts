@@ -13,6 +13,7 @@ import {
   shouldAutoSyncRate,
   toRoomTime,
   type DriftState,
+  getJoinSeekTarget,
 } from "./sync";
 
 describe("getLeaderTime", () => {
@@ -337,5 +338,42 @@ describe("getEffectiveDuration", () => {
       getEffectiveDuration(Infinity, true, { length: 0, end: () => 0 }),
     ).toBe(Infinity);
     expect(getEffectiveDuration(80, true)).toBe(80);
+  });
+});
+
+describe("getJoinSeekTarget", () => {
+  const base = {
+    selfId: "me",
+    participantCount: 1,
+    hostTime: 125,
+    hostReceivedAt: 1_000,
+    now: 4_000,
+    paused: false,
+    rate: 1,
+  };
+
+  it("alone: uses the room's position plus the time since, ignoring our own ~0 report", () => {
+    expect(getJoinSeekTarget({ ...base, tsMap: { me: 0.49 } })).toBe(128);
+    expect(getJoinSeekTarget({ ...base, tsMap: {} })).toBe(128);
+  });
+
+  it("alone and paused: exactly the room's position", () => {
+    expect(getJoinSeekTarget({ ...base, paused: true, tsMap: { me: 0 } })).toBe(
+      125,
+    );
+  });
+
+  it("scales the elapsed time by the room speed", () => {
+    expect(getJoinSeekTarget({ ...base, rate: 2, tsMap: {} })).toBe(131);
+  });
+
+  it("with others: follows them, not ourselves or the host time", () => {
+    expect(
+      getJoinSeekTarget({
+        ...base,
+        participantCount: 2,
+        tsMap: { me: 0.2, sam: 140 },
+      }),
+    ).toBe(140);
   });
 });
