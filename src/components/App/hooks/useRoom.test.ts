@@ -22,7 +22,12 @@ class FakeSocket {
   }
   /** Simulates an event from the server */
   receive(event: string, ...args: unknown[]) {
-    this.listeners.get(event)?.forEach((fn) => fn(...args));
+    const fns = this.listeners.get(event);
+    if (!fns?.length) {
+      // The real hook only subscribes to the events in SERVER_EVENTS, so an unknown event would be dropped silently
+      throw new Error(`nothing listens to ${event}`);
+    }
+    fns.forEach((fn) => fn(...args));
   }
   emits(event: string) {
     return this.emitted.filter(([e]) => e === event).map(([, ...a]) => a);
@@ -361,6 +366,24 @@ describe("useRoom", () => {
     });
     act(() => socket.receive("REC:videoMeta", null));
     expect(result.current.state.videoMeta).toBeNull();
+  });
+
+  it("stores REC:roomSettings and REC:readyCheck", async () => {
+    const { result, socket } = await setup();
+    const settings = {
+      title: "Movie night",
+      readyCheck: true,
+      nextEpisodeOffset: 30,
+    };
+    act(() => socket.receive("REC:roomSettings", settings));
+    expect(result.current.state.roomSettings).toEqual(settings);
+    act(() =>
+      socket.receive("REC:readyCheck", { active: true, waitingFor: ["x"] }),
+    );
+    expect(result.current.state.readyCheck).toMatchObject({
+      active: true,
+      waitingFor: ["x"],
+    });
   });
 
   it("restores queued metadata when playing a playlist item", async () => {

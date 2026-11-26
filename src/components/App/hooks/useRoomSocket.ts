@@ -15,32 +15,41 @@ export type RoomSocketHandlers = ServerToClientEvents & {
   disconnect: (reason: string) => void;
 };
 
-const SERVER_EVENTS: (keyof ServerToClientEvents)[] = [
-  "errorMessage",
-  "successMessage",
-  "kicked",
-  "REC:play",
-  "REC:pause",
-  "REC:seek",
-  "REC:playbackRate",
-  "REC:subtitle",
-  "REC:subtitleOffset",
-  "REC:loop",
-  "REC:host",
-  "REC:chat",
-  "REC:addReaction",
-  "REC:removeReaction",
-  "REC:tsMap",
-  "REC:nameMap",
-  "REC:pictureMap",
-  "roster",
-  "chatinit",
-  "playlist",
-  "REC:videoMeta",
-  "REC:playbackIssue",
-  "REC:nextEpisode",
-  "signalSS",
-];
+/**
+ * Every server event the room listens to. A Record (not an array) so TypeScript fails when an event is added to
+ * ServerToClientEvents but not here, which would otherwise silently drop it.
+ */
+const SERVER_EVENT_SET: Record<keyof ServerToClientEvents, true> = {
+  errorMessage: true,
+  successMessage: true,
+  kicked: true,
+  "REC:play": true,
+  "REC:pause": true,
+  "REC:seek": true,
+  "REC:playbackRate": true,
+  "REC:subtitle": true,
+  "REC:subtitleOffset": true,
+  "REC:loop": true,
+  "REC:host": true,
+  "REC:chat": true,
+  "REC:addReaction": true,
+  "REC:removeReaction": true,
+  "REC:tsMap": true,
+  "REC:nameMap": true,
+  "REC:pictureMap": true,
+  roster: true,
+  chatinit: true,
+  playlist: true,
+  "REC:videoMeta": true,
+  "REC:playbackIssue": true,
+  "REC:nextEpisode": true,
+  signalSS: true,
+  "REC:roomSettings": true,
+  "REC:readyCheck": true,
+};
+export const SERVER_EVENTS = Object.keys(
+  SERVER_EVENT_SET,
+) as (keyof ServerToClientEvents)[];
 
 /**
  * The room's Socket.IO connection (one namespace per room). Connects once `enabled`, disconnects on unmount.
