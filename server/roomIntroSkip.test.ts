@@ -201,9 +201,12 @@ describe("Room skip intro", () => {
     await settle();
     const seek = next<number>(b, "REC:seek");
     const cleared = next<IntroSkipInfo | null>(b, "REC:introSkip");
+    // Players that started past the end sit paused at it: the room resumes them
+    const resumed = next<string>(b, "REC:play");
     a.emit("CMD:duration", 200);
     expect(await seek).toBe(0);
     expect(await cleared).toBeNull();
+    expect(await resumed).toBe(EP2);
     expect(t.room.videoTS).toBe(0);
     // Not a person's seek: no chat line
     expect(t.room.serialize()).not.toContain('"cmd":"seek"');

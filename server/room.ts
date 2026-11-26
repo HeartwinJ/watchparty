@@ -980,6 +980,10 @@ export class Room {
     const ns = this.io.of(this.roomId);
     ns.emit("REC:tsMap", this.tsMap);
     ns.emit("REC:seek", 0);
+    if (!this.paused) {
+      // A start past the end of the video left players paused at its end ("ended"): resume them
+      ns.emit("REC:play", this.video);
+    }
   };
 
   private isValidChatMessage = (msg: string | undefined) => {

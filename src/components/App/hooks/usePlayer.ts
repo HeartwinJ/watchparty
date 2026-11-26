@@ -264,6 +264,12 @@ export function usePlayer(opts: {
       if (action.type === "ignore") {
         return;
       }
+      // Skip intro started this video past its end (shorter than the skip): it "ended" at once. Not a real end: the
+      // server puts everyone back to 0 and resumes (REC:seek + REC:play) once a viewer reports the duration.
+      const skip = store.get().introSkip;
+      if (skip && getDuration() <= skip.seconds + 1) {
+        return;
+      }
       localPause();
       if (action.type === "loop") {
         localSeek(0);
