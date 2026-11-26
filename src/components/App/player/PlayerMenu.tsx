@@ -42,10 +42,10 @@ export function PlayerMenu(props: {
     };
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey, true);
-    // Move focus into the menu so keyboard users land on the options
-    const first = ref.current?.querySelector<HTMLElement>(
-      '[aria-checked="true"], button, input',
-    );
+    // Move focus into the menu so keyboard users land on the options (the checked one first)
+    const first =
+      ref.current?.querySelector<HTMLElement>('[aria-checked="true"]') ??
+      ref.current?.querySelector<HTMLElement>("button, input");
     first?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("pointerdown", onDown, true);
