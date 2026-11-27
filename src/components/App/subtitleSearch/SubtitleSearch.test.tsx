@@ -394,3 +394,74 @@ describe("SubtitleSearch edge cases", () => {
     expect(await screen.findByText("Down")).toBeTruthy();
   });
 });
+
+describe("SubtitleSearch navigation", () => {
+  it("Esc goes back one level, then closes", async () => {
+    const props = renderSearch();
+    fireEvent.click(await screen.findByText("Breaking Bad"));
+    await screen.findByRole("button", { current: true });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(await screen.findByText("Breaking Bad")).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", { name: "Breadcrumbs" }),
+    ).toBeNull();
+    expect(props.onClose).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalled();
+  });
+
+  it("breadcrumbs go back, and typing deeper starts a new search", async () => {
+    renderSearch();
+    fireEvent.click(await screen.findByText("Breaking Bad"));
+    fireEvent.click(await screen.findByRole("button", { current: true }));
+    await screen.findByRole("region", { name: "English" });
+    const crumbs = screen.getByRole("navigation", { name: "Breadcrumbs" });
+    expect(within(crumbs).getByText("Subtitles")).toBeTruthy();
+    fireEvent.click(
+      within(crumbs).getByRole("button", { name: "Breaking Bad" }),
+    );
+    expect(await screen.findByRole("button", { current: true })).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "shaw" },
+    });
+    expect(
+      screen.queryByRole("navigation", { name: "Breadcrumbs" }),
+    ).toBeNull();
+    expect(await screen.findByText("The Shawshank Redemption")).toBeTruthy();
+  });
+
+  it("arrow keys move between the search field and the rows", async () => {
+    renderSearch();
+    await screen.findByText("Breaking Bad");
+    const input = screen.getByRole("searchbox");
+    const rows = screen
+      .getByRole("list", { name: "Titles" })
+      .querySelectorAll("button");
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[0]);
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(rows[1], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(rows[1]);
+    fireEvent.keyDown(rows[1], { key: "ArrowUp" });
+    fireEvent.keyDown(rows[0], { key: "ArrowUp" });
+    expect(document.activeElement).toBe(input);
+    // Up from the field and other keys do nothing
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    fireEvent.keyDown(input, { key: "a" });
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("submitting from a deeper level searches again from the top", async () => {
+    renderSearch();
+    fireEvent.click(await screen.findByText("Breaking Bad"));
+    await screen.findByRole("button", { current: true });
+    fireEvent.submit(screen.getByRole("searchbox").closest("form")!);
+    expect(await screen.findByText("The Shawshank Redemption")).toBeTruthy();
+    expect(
+      screen.queryByRole("navigation", { name: "Breadcrumbs" }),
+    ).toBeNull();
+  });
+});
