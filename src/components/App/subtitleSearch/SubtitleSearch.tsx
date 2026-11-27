@@ -5,17 +5,12 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ActionIcon, Loader, Modal } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { Loader } from "@mantine/core";
 import {
-  IconAlertTriangle,
-  IconChevronLeft,
   IconChevronRight,
   IconFileSearch,
   IconMovie,
-  IconSearch,
   IconSubtitles,
-  IconX,
 } from "@tabler/icons-react";
 import {
   AddonApiError,
@@ -32,9 +27,7 @@ import {
   type TitleRef,
 } from "../../../api/addons";
 import { toast } from "../ui/toast";
-import { cx } from "../picker/RootViews";
 import { formatAirDate } from "../picker/pickerLogic";
-import picker from "../picker/SourcePicker.module.css";
 import {
   episodeCode,
   findGuessedEpisode,
@@ -46,7 +39,20 @@ import {
 } from "./guessTitle";
 import { useOpenSubtitlesAvailable } from "./openSubtitlesStatus";
 import { shareSubtitleFromUrl } from "./shareSubtitle";
-import styles from "./SubtitleSearch.module.css";
+import {
+  ErrorState,
+  LoadHint,
+  LoadingState,
+  PaletteFoot,
+  PaletteHead,
+  PaletteModal,
+  arrowKeysBetweenRows,
+  cx,
+  picker,
+  styles,
+  useEscape,
+  usePhone,
+} from "./palette";
 
 type SubtitlesTarget = {
   type: ContentType;
@@ -161,7 +167,7 @@ function useTitleSearch() {
  * /addon/search), pick a series' season/episode, then a subtitle (OpenSubtitles v3 via /addon/subtitles). The chosen
  * file is stored on our server (POST /subtitle) and set as the room subtitle for everyone (`setRoomSubtitle`, i.e.
  * CMD:subtitle). Pre-filled from what's playing (guessSubtitleSearch); AIOStreams picks open on their subtitles.
- * Built from the source picker's parts (SourcePicker.module.css): search header, breadcrumbs, scrolling list, footer.
+ * Built on the shared palette (palette.tsx, the source picker's parts).
  */
 export function SubtitleSearch(props: {
   opened: boolean;
@@ -174,41 +180,16 @@ export function SubtitleSearch(props: {
   /** Opens the OpenSubtitles API (file name) search; only offered when the server has a key */
   openFileNameSearch?: () => void;
 }) {
-  const phone =
-    useMediaQuery("(max-width: 768px)", false, {
-      getInitialValueInEffect: false,
-    }) ?? false;
+  const phone = usePhone();
   return (
-    <Modal.Root
+    <PaletteModal
       opened={props.opened}
       onClose={props.onClose}
-      size={640}
-      yOffset="10vh"
-      fullScreen={phone}
-      closeOnEscape={false}
-      trapFocus
-      returnFocus
-      zIndex={400}
-      transitionProps={{
-        transition: phone ? "slide-up" : "pop",
-        duration: 180,
-      }}
-      classNames={{
-        overlay: picker.overlay,
-        content: cx(picker.content, styles.content),
-        body: picker.modalBody,
-      }}
+      label="Search subtitles"
+      phone={phone}
     >
-      <Modal.Overlay />
-      <Modal.Content
-        aria-label="Search subtitles"
-        data-full-screen={phone || undefined}
-      >
-        <Modal.Body>
-          {props.opened && <SubtitleSearchBody {...props} phone={phone} />}
-        </Modal.Body>
-      </Modal.Content>
-    </Modal.Root>
+      <SubtitleSearchBody {...props} phone={phone} />
+    </PaletteModal>
   );
 }
 
@@ -291,50 +272,9 @@ function SubtitleSearchBody({
     inputRef.current?.focus();
   }, [view]);
 
-  // Esc goes back one level, then closes (wherever focus is inside the dialog)
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      if (!back()) {
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener("keydown", onEsc, true);
-    return () => window.removeEventListener("keydown", onEsc, true);
-  }, [back]);
-
-  // ↑/↓ move between the rows (and from the search field into the list)
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
-      return;
-    }
-    const rows = Array.from(
-      listRef.current?.querySelectorAll<HTMLButtonElement>(
-        "button[data-row]:not(:disabled)",
-      ) ?? [],
-    );
-    if (!rows.length) {
-      return;
-    }
-    e.preventDefault();
-    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
-    const down = e.key === "ArrowDown";
-    if (at < 0) {
-      if (down) {
-        rows[0].focus();
-      }
-    } else if (!down && at === 0) {
-      inputRef.current?.focus();
-    } else {
-      rows[Math.min(rows.length - 1, at + (down ? 1 : -1))].focus();
-    }
-  };
+  // Esc goes back one level, then closes; ↑/↓ move between the rows
+  useEscape(back, onClose);
+  const onKeyDown = arrowKeysBetweenRows(listRef, inputRef);
 
   const onInput = (value: string) => {
     setQuery(value);
@@ -374,61 +314,22 @@ function SubtitleSearchBody({
 
   return (
     <div className={picker.modalBody} onKeyDown={onKeyDown}>
-      <form
-        className={picker.head}
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault();
+      <PaletteHead
+        inputRef={inputRef}
+        value={query}
+        onChange={onInput}
+        onSubmit={() => {
           if (viewsRef.current.length > 1) {
             setViews([{ kind: "search" }]);
           }
           titleSearch.run(query, true);
         }}
-      >
-        {views.length > 1 ? (
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            aria-label="Back"
-            onClick={back}
-            size="lg"
-          >
-            <IconChevronLeft size={20} />
-          </ActionIcon>
-        ) : (
-          <span className={picker.headIcon} aria-hidden>
-            {searching ? (
-              <Loader size={18} color="gray" />
-            ) : (
-              <IconSearch size={20} />
-            )}
-          </span>
-        )}
-        <input
-          ref={inputRef}
-          data-autofocus
-          className={cx(picker.input, styles.input)}
-          type="search"
-          aria-label="Movie or show title"
-          placeholder="Search subtitles by movie or show title"
-          value={query}
-          maxLength={100}
-          onChange={(e) => onInput(e.currentTarget.value)}
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          enterKeyHint="search"
-        />
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          aria-label="Close"
-          onClick={onClose}
-          size="lg"
-        >
-          <IconX size={20} />
-        </ActionIcon>
-      </form>
+        onBack={views.length > 1 ? back : undefined}
+        onClose={onClose}
+        busy={searching}
+        label="Movie or show title"
+        placeholder="Search subtitles by movie or show title"
+      />
       {crumbs.length > 0 && (
         <nav className={picker.crumbs} aria-label="Breadcrumbs">
           {crumbs.map((c, i) => {
@@ -504,25 +405,10 @@ function SubtitleSearchBody({
         )}
       </div>
       {(!phone || fileNameLink) && (
-        <div className={cx(picker.foot, styles.foot)}>
-          {!phone && (
-            <>
-              <span>
-                <kbd className={picker.kbd}>↑</kbd>
-                <kbd className={picker.kbd}>↓</kbd> move
-              </span>
-              <span>
-                <kbd className={picker.kbd}>↵</kbd> choose
-              </span>
-              <span>
-                <kbd className={picker.kbd}>esc</kbd> back / close
-              </span>
-            </>
-          )}
-          <span className={picker.footRight}>
-            {fileNameLink || "Subtitles from OpenSubtitles"}
-          </span>
-        </div>
+        <PaletteFoot
+          phone={phone}
+          right={fileNameLink || "Subtitles from OpenSubtitles"}
+        />
       )}
     </div>
   );
@@ -878,11 +764,7 @@ function SubtitlesView({
                     <span className={picker.title}>{s.label}</span>
                     <span className={picker.meta}>OpenSubtitles</span>
                   </span>
-                  {busyId === s.id ? (
-                    <Loader size="xs" />
-                  ) : (
-                    <span className={styles.hint}>Load for everyone</span>
-                  )}
+                  {busyId === s.id ? <Loader size="xs" /> : <LoadHint />}
                 </button>
               </li>
             ))}
@@ -890,32 +772,5 @@ function SubtitlesView({
         </section>
       ))}
     </>
-  );
-}
-
-function LoadingState({ text }: { text: string }) {
-  return (
-    <div className={styles.state} role="status">
-      <Loader size="sm" color="gray" />
-      <span>{text}</span>
-    </div>
-  );
-}
-
-function ErrorState({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
-  return (
-    <div className={picker.errorBox} role="alert">
-      <IconAlertTriangle size={18} className={styles.danger} aria-hidden />
-      <span className={cx(picker.grow, styles.lines)}>{message}</span>
-      <button type="button" className={styles.retry} onClick={onRetry}>
-        Try again
-      </button>
-    </div>
   );
 }

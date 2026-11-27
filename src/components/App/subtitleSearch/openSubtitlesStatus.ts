@@ -6,7 +6,7 @@ let openSubtitlesProbe: Promise<boolean> | undefined;
 /**
  * Whether the server has an OpenSubtitles API key (the file-name search routes answer 503
  * opensubtitles_not_configured without one). Checked once per page load; errors from an actual search still show as
- * toasts from SubtitleModal.
+ * errors in FileNameSearch.
  */
 export function isOpenSubtitlesConfigured(): Promise<boolean> {
   openSubtitlesProbe ??= apiFetch("/searchSubtitles/status")

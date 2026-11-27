@@ -325,7 +325,7 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   or from the current position when the boost is turned on mid-video (`repackForBoost`, an effect in `useRoom`).
 - **Search subtitles** (`subtitleSearch/`): the menu's "Search subtitles…" (non-YouTube) calls
   `room.subtitles.openSearch()` (`state.isSubtitleSearchOpen`; `SubtitleSearch` is mounted in `RoomMessages`). It looks
-  and works like the source picker and is built from its parts (`picker/SourcePicker.module.css`: opaque palette over
+  and works like the source picker and is built from its parts (`palette.tsx` over `picker/SourcePicker.module.css`: opaque palette over
   the scrim, full screen on phones, search field in the header with Back/Close, breadcrumbs, a scrolling list of rows
   at a fixed height, the poster header, pill season filters, the key-hint footer; ↑/↓ move between rows, Esc goes
   back one level then closes, typing or Enter from a deeper level searches again from the top). Search (pre-filled by `guessSubtitleSearch()` in
@@ -333,7 +333,12 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   pre-selected) → subtitles grouped by language (language chip, "Load for everyone"). AIOStreams picks open straight on their episode's subtitles (Back
   searches the title). Picking one goes through `shareSubtitleFromUrl` (`shareSubtitle.ts`: download, `POST /subtitle`)
   and `cmd.setSubtitle`, with a toast either way. "Search by file name (OpenSubtitles API)" (in the footer, also on
-  phones) opens the old `SubtitleModal` (`subtitles.openModal()`), only when the server has `OPENSUBTITLES_KEY`.
+  phones) opens `FileNameSearch` (`subtitles.openModal()`, `state.isSubtitleModalOpen`), only when the server has
+  `OPENSUBTITLES_KEY`: the same palette (`palette.tsx`, shared by both dialogs), pre-filled with the video's name and
+  searched on open (`GET /searchSubtitles`), release rows with language, hearing impaired / machine translated, fps
+  and download count; a pick goes through `GET /downloadSubtitles` (counts against the key's daily quota),
+  `cmd.setSubtitle` and closes. Back, its breadcrumb and Esc return to the title search. Turning subtitles off,
+  loading a URL and uploading a file are in the subtitles menu (Off / URL / File), not here.
 - **Sync (6d):** `usePlayer.onTsMap` runs `nextDriftAction` on every `REC:tsMap`: drift under 2 s nudges the playback
   rate proportionally (0.95–1.05× the room speed, start at 0.3 s, stop under 0.1 s), more seeks (3 s cooldown). A
   seek resets the server's `tsMap` (`REC:tsMap {}`) and ignores `CMD:ts` for 1 s, so nobody is pulled back to the old
