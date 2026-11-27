@@ -284,6 +284,19 @@ describe("HTML subtitles", () => {
     vi.unstubAllGlobals();
   });
 
+  it("a subtitle download that finishes after a newer load or a clear is dropped", async () => {
+    let finish!: (r: Response) => void;
+    apiFetch.mockImplementationOnce(
+      () => new Promise<Response>((resolve) => (finish = resolve)),
+    );
+    const p = new HTML("leftVideo");
+    const slow = p.loadSubtitles("/subtitle/old");
+    p.clearState();
+    finish(new Response("1\n00:00:01,000 --> 00:00:02,000\nHi\n"));
+    await slow;
+    expect(video.querySelector("track")).toBeNull();
+  });
+
   it("an empty subtitle URL removes the room track and turns subtitles off", async () => {
     tracks = [track("A")];
     const p = new HTML("leftVideo");

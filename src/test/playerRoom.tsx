@@ -162,6 +162,7 @@ export function createPlayerRoomMocks(
       setScope: vi.fn(),
       openSearch: vi.fn(),
       getTiming: vi.fn(() => ({ offset: 0, scale: 1 })),
+      applyCarry: vi.fn(),
     },
     subsync: {
       unavailableReason: vi.fn(() => null),

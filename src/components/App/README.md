@@ -95,6 +95,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks                            |
 | `subtitleSearch/`                         | "Search subtitles…" modal, title/episode guessing from file names, sharing a found subtitle                         |
 | `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes                                      |
+| `logic/subtitleCarry.ts`                  | Keeping a viewer's subtitles on (same language) or off when the video changes to the next episode                   |
 | `logic/subtitleText.ts`                   | Subtitle file decoding (UTF-8/UTF-16/Windows-1252) and clean-up: mojibake repair (`â™ª` → `♪`), ASS tags stripped   |
 | `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat, chat panel)                               |
 | `logic/gestures.ts`                       | Tap zones (40/20/40) and `TapDetector` (single vs double tap/click)                                                 |
@@ -288,6 +289,17 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   (`SubtitleChoiceList.tsx`, grouping in `subtitleChoices.ts`: auto and embedded tracks with the same language name
   share a row, which folds its subtitles and is open while it holds the selected one); Search / File / URL are one
   row of buttons under the list.
+- **Subtitles carry over to the next episode** (`logic/subtitleCarry.ts`, pure; `useSubtitles.captureCarry`/`applyCarry`):
+  on every `REC:host`, before the old video is cleared, each device remembers whether it was showing subtitles, which
+  kind (the room subtitle or a track in the file) and in which language (the room subtitle's language comes from the
+  auto track it was picked from; unknown otherwise, which takes the first, preferred one). Once `REC:videoMeta` says
+  the new video is the same show (same series id or IMDb id; two plain links count too) and its tracks are in
+  (`PlayerArea` calls `applyCarry` as tracks and state change), it picks the same language: the room subtitle via
+  `CMD:subtitle` from the new title's auto subtitles (`state.subtitleTracksFor` must be the new `videoMeta.id`; not if
+  someone already set one), or an embedded track on this device only (falling back to the other kind). A viewer who
+  had the room subtitle off gets the next one turned off again. One try, within 60 s, never on YouTube or when joining.
+  Several viewers may send the same `CMD:subtitle`; `onSubtitle` only re-selects an already loaded room track for the
+  same URL, and `HTML.loadSubtitles` drops a download that a newer load or `clearState` overtook.
 - **Audio menu** (headphones button, `player/AudioMenu.tsx`; hidden for YouTube unless there are several audio
   tracks): the converter's audio tracks, then volume boost / Night mode. The button shows pressed while the boost is on.
 - **Volume boost / Night mode** (`audioBoost.ts`, `player/AudioBoostSection.tsx` in the Audio menu, non-YouTube): per

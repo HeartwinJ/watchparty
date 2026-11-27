@@ -185,6 +185,8 @@ export function useRoom(roomId: string) {
         return;
       }
       subsync.onVideoChange();
+      // Before the old video and its tracks are cleared
+      subtitles.captureCarry();
       store.set({
         roomMedia: currentMedia,
         roomPaused: data.paused,
@@ -425,7 +427,10 @@ export function useRoom(roomId: string) {
       },
       chatinit: chat.onInit,
       playlist: (items) => store.set({ playlist: items }),
-      "REC:videoMeta": (videoMeta) => store.set({ videoMeta }),
+      "REC:videoMeta": (videoMeta) => {
+        store.set({ videoMeta });
+        subtitles.onVideoMeta();
+      },
       "REC:introSkip": (info) => {
         const skipped =
           info && typeof info.seconds === "number" && info.seconds > 0;

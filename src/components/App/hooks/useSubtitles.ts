@@ -10,6 +10,13 @@ import {
   stepOffset,
   type SubtitleScope,
 } from "../logic/subtitles";
+import {
+  CARRY_MS,
+  captureCarry,
+  pickCarry,
+  sameShow,
+  type SubtitleCarry,
+} from "../logic/subtitleCarry";
 
 /**
  * Room subtitles: REC:subtitle, keeping them in sync with a screen sharer, the subtitle modal, and the subtitle timing.
@@ -25,6 +32,11 @@ export function useSubtitles(opts: {
 }) {
   const { store, player, clientId, cmd } = opts;
   return useMemo(() => {
+    /** This device's subtitles from before the last video change, kept on (or off) for the next one */
+    let carry: SubtitleCarry | null = null;
+    /** REC:videoMeta arrived since the video changed (until then store.videoMeta is the old video's) */
+    let metaSeen = false;
+
     /** The timing in effect on this device: the "Just me" override, else the room's */
     const getTiming = () => {
       const s = store.get();
@@ -90,8 +102,93 @@ export function useSubtitles(opts: {
 
     return {
       onSubtitle: (url: string) => {
+        if (url && url === store.get().roomSubtitle && !player.usingYoutube()) {
+          // The same subtitle again (e.g. several viewers kept it on for the next episode): no reload, just show it
+          const html = player.html();
+          const loaded = html.getSubtitleTracks().find((t) => t.fromRoom);
+          if (loaded) {
+            html.selectSubtitleTrack(loaded.index);
+            return;
+          }
+        }
         store.set({ roomSubtitle: url });
         player.current().loadSubtitles(url);
+      },
+      /**
+       * REC:host, before the old video is cleared: remember whether this device was showing subtitles, and in which
+       * language, so the next episode gets them too (applyCarry). Not when joining.
+       */
+      captureCarry: () => {
+        metaSeen = false;
+        const s = store.get();
+        const html = player.html();
+        carry =
+          s.roomMedia && !player.usingYoutube()
+            ? captureCarry({
+                selected: html.getSelectedSubtitleTrack(),
+                tracks: html.getSubtitleTracks(),
+                roomSubtitle: s.roomSubtitle,
+                autoTracks:
+                  s.subtitleTracksFor === s.videoMeta?.id
+                    ? s.subtitleTracks
+                    : undefined,
+                meta: s.videoMeta,
+                now: Date.now(),
+              })
+            : null;
+      },
+      /** REC:videoMeta: the new video's metadata is known */
+      onVideoMeta: () => {
+        metaSeen = true;
+      },
+      /** Applies a carried choice once the new video's subtitles are known (called as tracks and state change) */
+      applyCarry: () => {
+        if (!carry || !metaSeen) {
+          return;
+        }
+        if (Date.now() - carry.at > CARRY_MS || player.usingYoutube()) {
+          carry = null;
+          return;
+        }
+        const s = store.get();
+        const meta = s.videoMeta;
+        if (!sameShow(carry.prevMeta, meta)) {
+          // A pick sends the stream first and its metadata right after: wait for it
+          if (!meta) {
+            return;
+          }
+          carry = null;
+          return;
+        }
+        const html = player.html();
+        const selected = html.getSelectedSubtitleTrack();
+        if (carry.on && selected >= 0) {
+          // Something is showing already (e.g. someone else's pick of the room subtitle)
+          carry = null;
+          return;
+        }
+        const pick = pickCarry(carry, {
+          selected,
+          tracks: html.getSubtitleTracks(),
+          roomSubtitle: s.roomSubtitle,
+          autoTracks: !meta
+            ? []
+            : s.subtitleTracksFor === meta.id
+              ? s.subtitleTracks
+              : undefined,
+          mediaReady: !s.loading,
+        });
+        if (!pick) {
+          return;
+        }
+        carry = null;
+        if (pick.action === "room") {
+          cmd.setSubtitle(pick.url);
+        } else if (pick.action === "track") {
+          html.selectSubtitleTrack(pick.index);
+        } else {
+          html.selectSubtitleTrack(-1);
+        }
       },
       /** When someone else shares their screen, follow their subtitle timing (called on every REC:tsMap) */
       syncToSharer: () => {

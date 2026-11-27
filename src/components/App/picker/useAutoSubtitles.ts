@@ -26,7 +26,7 @@ export function useAutoSubtitles(
   const type = videoMeta?.type;
   const id = videoMeta?.id;
   useEffect(() => {
-    store.set({ subtitleTracks: undefined });
+    store.set({ subtitleTracks: undefined, subtitleTracksFor: undefined });
     if (!type || !id) {
       return;
     }
@@ -34,7 +34,10 @@ export function useAutoSubtitles(
     getSubtitles(type, id, controller.signal).then(
       (subs) => {
         if (!controller.signal.aborted) {
-          store.set({ subtitleTracks: toSubtitleTracks(subs) });
+          store.set({
+            subtitleTracks: toSubtitleTracks(subs),
+            subtitleTracksFor: id,
+          });
         }
       },
       () => {

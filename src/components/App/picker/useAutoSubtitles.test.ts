@@ -50,6 +50,7 @@ describe("useAutoSubtitles", () => {
             source: "auto",
           },
         ],
+        subtitleTracksFor: "tt0000002:1:2",
       }),
     );
     expect(String(fetch.mock.calls[0][0])).toBe(
@@ -57,7 +58,10 @@ describe("useAutoSubtitles", () => {
     );
     store.set.mockClear();
     rerender({ m: null });
-    expect(store.set).toHaveBeenCalledWith({ subtitleTracks: undefined });
+    expect(store.set).toHaveBeenCalledWith({
+      subtitleTracks: undefined,
+      subtitleTracksFor: undefined,
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
