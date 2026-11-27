@@ -299,7 +299,12 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   `sessionStorage` `wp-boost-reload`); a second one within 30 s turns the boost off first, so it can't loop.
   `state.audioBoostStatus`: `off`/`on`/`idle` (no video yet)/`pending` (waits for a click or key)/`unavailable`;
   the control bar shows a badge ("200% · Night") while `on`. `e2e/volume-boost.spec.ts` covers it in Chromium
-  (`?nocors` on the e2e media server drops its CORS headers).
+  (`?nocors` on the e2e media server drops its CORS headers). **Firefox** (and forks like Zen) leaves gaps in
+  _laced_ Matroska audio (several AAC frames per block) once the element goes through Web Audio, so the audio
+  stutters. While the boost is on there (`stuttersOnLacedAudio()`), `useConvert` checks MKV/WebM links whose tracks
+  copy as-is with `hasLacedAudio` (`utils/matroskaLacing.ts`, a few range reads) and plays laced ones through the
+  converter (a copy into fragmented MP4, reason `REPACK_REASON`): at load in `playUrl` (even with auto-convert off),
+  or from the current position when the boost is turned on mid-video (`repackForBoost`, an effect in `useRoom`).
 - **Search subtitles** (`subtitleSearch/`): the menu's "Search subtitles…" (non-YouTube) calls
   `room.subtitles.openSearch()` (`state.isSubtitleSearchOpen`; `SubtitleSearch` is mounted in `RoomMessages`). It's a
   Mantine modal (bottom sheet on phones, dark glass): search (pre-filled by `guessSubtitleSearch()` in

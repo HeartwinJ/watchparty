@@ -6,7 +6,13 @@ import {
   type RoomState,
   type RoomStore,
 } from "../roomState";
-import { decidePlayback } from "../logic/playback";
+import {
+  decidePlayback,
+  type PlaybackDecision,
+  type ProbeResult,
+} from "../logic/playback";
+import { hasLacedAudio, urlRangeReader } from "../../../utils/matroskaLacing";
+import { isBoostActive, stuttersOnLacedAudio } from "../audioBoost";
 import type { PlayerApi } from "./usePlayer";
 
 /** What the player/top bar can show while this device converts the room's video */
@@ -38,6 +44,11 @@ export function getConvertStatus(
   };
 }
 
+/** Why a file plays through the converter only because of Volume boost / Night mode (see needsRepack) */
+export const REPACK_REASON =
+  "Volume boost needs this file's audio re-packed in this browser";
+const LACING_TIMEOUT_MS = 8000;
+
 /**
  * In-browser conversion of media the browser can't play natively (clientTranscode.ts: WebCodecs + mediabunny, both
  * loaded lazily). playUrl() probes every direct link this device is asked to play and picks direct play, conversion
@@ -57,6 +68,8 @@ export function useConvert(opts: {
   const transcoderRef = useRef<ClientTranscoder | undefined>(undefined);
   // Invalidates an in-flight probe/playback when the media changes
   const playGenRef = useRef(0);
+  // The link playing directly, and the load (playGenRef) it belongs to
+  const directRef = useRef<{ src: string; gen: number } | null>(null);
   const callbacksRef = useRef(opts);
   callbacksRef.current = opts;
 
@@ -116,6 +129,37 @@ export function useConvert(opts: {
       return transcoder;
     };
 
+    // Volume boost / Night mode is on in a browser that stutters on laced Matroska audio (audioBoost.ts)
+    const wantsRepack = () =>
+      isBoostActive(store.get().audioBoost) && stuttersOnLacedAudio();
+
+    /** A copy into fragmented MP4 is enough (video and the audio track copy as-is) and the audio is laced */
+    const needsRepack = async (
+      src: string,
+      probe: ProbeResult,
+      audioTrackId: number | undefined,
+    ) => {
+      if (
+        !probe.transcodeSupported ||
+        (probe.container !== "matroska" && probe.container !== "webm") ||
+        (probe.video && !probe.video.copy)
+      ) {
+        return false;
+      }
+      const track =
+        probe.audio.find((t) => t.id === audioTrackId) ?? probe.audio[0];
+      if (!track?.copy) {
+        return false;
+      }
+      const abort = new AbortController();
+      const timer = window.setTimeout(() => abort.abort(), LACING_TIMEOUT_MS);
+      try {
+        return await hasLacedAudio(urlRangeReader(src, abort.signal));
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
     const report = (reason: string) => {
       console.warn("[playback] can't play:", reason);
       callbacksRef.current.reportIssue?.(reason);
@@ -131,6 +175,7 @@ export function useConvert(opts: {
       gen: number,
       fallback?: () => void,
     ) => {
+      directRef.current = { src, gen };
       const video = player.html().getVideoEl();
       const onError = () => {
         const err = video.error;
@@ -204,18 +249,33 @@ export function useConvert(opts: {
      */
     const playUrl = async (src: string, time: number) => {
       const gen = ++playGenRef.current;
-      if (!store.get().convertEnabled) {
+      const { convertEnabled } = store.get();
+      const repack = wantsRepack();
+      if (!convertEnabled && !repack) {
         setPlayback({ mode: "direct" });
         await playDirect(src, time, gen);
         return;
       }
       setPlayback({ mode: "probing" });
-      let decision;
+      let decision: PlaybackDecision;
       let canConvert = false;
       try {
         const probe = await probeMedia(src);
         canConvert = probe.transcodeSupported;
-        decision = decidePlayback(probe, { autoConvert: true });
+        decision = decidePlayback(probe, { autoConvert: convertEnabled });
+        if (
+          decision.mode === "direct" &&
+          repack &&
+          (await needsRepack(src, probe, decision.audioTrackId))
+        ) {
+          const { audioTrackId } = decision;
+          decision = {
+            mode: "convert",
+            audioTrackId,
+            heavy: false,
+            reason: REPACK_REASON,
+          };
+        }
       } catch (e) {
         // Not readable from here (no CORS, not a media file, timeout): let the <video> element try
         console.warn(
@@ -262,6 +322,55 @@ export function useConvert(opts: {
       }
     };
 
+    /**
+     * Volume boost / Night mode was just turned on. In Firefox, a laced Matroska file playing directly would stutter
+     * through Web Audio, so play it through the converter (a copy into fragmented MP4) from where it is.
+     */
+    const repackForBoost = async () => {
+      const direct = directRef.current;
+      const gen = playGenRef.current;
+      if (
+        !direct ||
+        direct.gen !== gen ||
+        store.get().playback?.mode !== "direct" ||
+        !wantsRepack()
+      ) {
+        return;
+      }
+      let probe: ProbeResult;
+      try {
+        probe = await probeMedia(direct.src);
+      } catch {
+        return;
+      }
+      const decision = decidePlayback(probe, { autoConvert: false });
+      if (
+        playGenRef.current !== gen ||
+        decision.mode !== "direct" ||
+        !(await needsRepack(direct.src, probe, decision.audioTrackId)) ||
+        playGenRef.current !== gen ||
+        !wantsRepack()
+      ) {
+        return;
+      }
+      // A new load: the direct link's error handler no longer applies
+      const fresh = ++playGenRef.current;
+      setPlayback({ mode: "convert", heavy: false, reason: REPACK_REASON });
+      callbacksRef.current.onConvertStart?.(REPACK_REASON, false);
+      const video = player.html().getVideoEl();
+      await convertAndPlay(
+        direct.src,
+        video.currentTime,
+        decision.audioTrackId,
+      );
+      if (playGenRef.current === fresh && !store.get().roomPaused) {
+        await player
+          .html()
+          .playVideo()
+          .catch(() => {});
+      }
+    };
+
     // Switches the audio track of the file being converted (e.g. another language). Local to this device for links,
     // for a shared file it changes what everyone hears since viewers receive the converted stream.
     const setAudioTrack = async (id: number) => {
@@ -294,6 +403,7 @@ export function useConvert(opts: {
       createTranscoder,
       convertAndPlay,
       playUrl,
+      repackForBoost,
       setAudioTrack,
       setConvertEnabled,
     };

@@ -27,6 +27,7 @@ import { getJoinSeekTarget } from "../logic/sync";
 import { useRoomSocket, type RoomSocketHandlers } from "./useRoomSocket";
 import { usePlayer } from "./usePlayer";
 import { getConvertStatus, useConvert } from "./useConvert";
+import { isBoostActive } from "../audioBoost";
 import { createShareSession, useShare } from "./useShare";
 import { useChat } from "./useChat";
 import { usePlaylist } from "./usePlaylist";
@@ -514,6 +515,14 @@ export function useRoom(roomId: string) {
       document.onfullscreenchange = null;
     };
   }, [store]);
+
+  // Volume boost turned on: Firefox needs laced Matroska re-packed to play it smoothly (useConvert.repackForBoost)
+  const boostActive = isBoostActive(state.audioBoost);
+  useEffect(() => {
+    if (boostActive) {
+      void convertApi.repackForBoost();
+    }
+  }, [boostActive, convertApi]);
 
   // room.convert also carries the live "Converting · 34% buffered" status for the player/top bar
   const convertStatus = getConvertStatus(state);
