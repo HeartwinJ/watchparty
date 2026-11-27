@@ -194,21 +194,15 @@ describe("ControlBar", () => {
 
   it("subtitles menu: Esc closes it, and so does picking Search subtitles…", () => {
     const r = setup();
-    const cc = btn("Subtitles and audio");
+    const cc = btn("Subtitles");
     fireEvent.click(cc);
-    expect(
-      screen.getByRole("dialog", { name: "Subtitles and audio" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Subtitles" })).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(
-      screen.queryByRole("dialog", { name: "Subtitles and audio" }),
-    ).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Subtitles" })).toBeNull();
     fireEvent.click(cc);
-    fireEvent.click(screen.getByRole("menuitem", { name: /Search subtitles/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Search subtitles/ }));
     expect(r.subtitles.openSearch).toHaveBeenCalled();
-    expect(
-      screen.queryByRole("dialog", { name: "Subtitles and audio" }),
-    ).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Subtitles" })).toBeNull();
   });
 
   it("pointer and click events on the controls don't reach the video", () => {
@@ -235,8 +229,8 @@ describe("ControlBar", () => {
 
   it("menus open as a bottom sheet in the body on a phone outside fullscreen", () => {
     setup({ phone: true });
-    fireEvent.click(btn("Subtitles and audio"));
-    const menu = screen.getByRole("dialog", { name: "Subtitles and audio" });
+    fireEvent.click(btn("Subtitles"));
+    const menu = screen.getByRole("dialog", { name: "Subtitles" });
     expect(menu.getAttribute("data-sheet")).toBe("true");
     expect(screen.getByTestId("player").contains(menu)).toBe(false);
   });
@@ -317,9 +311,7 @@ describe("ControlBar", () => {
       });
       const r = setup({}, { media: { youtube: true, native: false } });
       expect(screen.queryByLabelText("Picture in picture")).toBeNull();
-      expect(btn("Subtitles and audio").getAttribute("aria-pressed")).toBe(
-        "false",
-      );
+      expect(btn("Subtitles").getAttribute("aria-pressed")).toBe("false");
       // Polled 4×/s: a time change shows up without media events
       r.media.time = 95;
       act(() => {
@@ -330,6 +322,35 @@ describe("ControlBar", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("ControlBar audio menu", () => {
+  it("opens the Audio menu with the boost, and shows when the boost is on", () => {
+    const r = setup(
+      {},
+      {
+        state: {
+          audioBoost: { level: 2, night: false },
+          audioBoostStatus: "on",
+        },
+      },
+    );
+    const audio = screen.getByRole("button", { name: "Audio" });
+    expect(audio.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(audio);
+    const menu = screen.getByRole("dialog", { name: "Audio" });
+    expect(within(menu).getByRole("group", { name: "Boost" })).toBeTruthy();
+    // The subtitles menu no longer has it
+    fireEvent.click(screen.getByRole("button", { name: "Subtitles" }));
+    const subs = screen.getByRole("dialog", { name: "Subtitles" });
+    expect(within(subs).queryByRole("group", { name: "Boost" })).toBeNull();
+    r.unmount();
+  });
+
+  it("isn't offered for YouTube with a single audio track", () => {
+    setup({}, { media: { youtube: true, native: false } });
+    expect(screen.queryByRole("button", { name: "Audio" })).toBeNull();
   });
 });
 

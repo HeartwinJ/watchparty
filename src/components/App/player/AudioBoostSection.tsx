@@ -7,7 +7,7 @@ const NOTES: Partial<Record<BoostStatus, string>> = {
   unavailable: "Not available for this video: its server doesn't allow it.",
 };
 
-/** Volume boost and Night mode in the CC menu (per device; <video> only). See audioBoost.ts. */
+/** Volume boost and Night mode in the Audio menu (per device; <video> only). See audioBoost.ts. */
 export function AudioBoostSection({ room }: { room: Room }) {
   const { state, player } = room;
   const { level, night } = state.audioBoost;
