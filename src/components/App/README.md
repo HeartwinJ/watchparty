@@ -95,6 +95,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `logic/sync.ts`                           | Leader time, drift controller (`nextDriftAction`), sync status, live-edge offsets, seeks                            |
 | `subtitleSearch/`                         | "Search subtitles…" modal, title/episode guessing from file names, sharing a found subtitle                         |
 | `logic/subtitles.ts`                      | Offset step/format/normalize, `retimeCues`, SRT → WebVTT, subtitle style sizes                                      |
+| `logic/subtitleText.ts`                   | Subtitle file decoding (UTF-8/UTF-16/Windows-1252) and clean-up: mojibake repair (`â™ª` → `♪`), ASS tags stripped   |
 | `logic/autoHide.ts`                       | `IdleTimer`: 2.5 s auto-hide with holds (paused, hover, menu, quick chat, chat panel)                               |
 | `logic/gestures.ts`                       | Tap zones (40/20/40) and `TapDetector` (single vs double tap/click)                                                 |
 | `logic/shortcuts.ts`                      | `resolveShortcut(event)` (ignored while typing / in modals) and the overlay's rows                                  |

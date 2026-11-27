@@ -1,12 +1,17 @@
 // Subtitle offset: pure helpers for stepping/formatting offsets and re-timing TextTrack cues.
 
+import { cleanSubtitleText } from "./subtitleText";
+
 /**
  * Converts SRT text to WebVTT (WebVTT input is returned as-is). Strips a BOM, normalizes line endings and turns SRT's
  * `00:00:01,500` timestamps into `00:00:01.500`. Replaces the srt-webvtt package, whose CommonJS default export
- * doesn't resolve under Vite 8 (room subtitles silently failed to load).
+ * doesn't resolve under Vite 8 (room subtitles silently failed to load). Also repairs mojibake and strips ASS tags
+ * (cleanSubtitleText).
  */
 export function toWebVtt(text: string): string {
-  const clean = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  const clean = cleanSubtitleText(
+    text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n"),
+  );
   if (/^WEBVTT/.test(clean)) {
     return clean;
   }

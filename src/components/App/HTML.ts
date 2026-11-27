@@ -1,6 +1,7 @@
 import { Player } from "./Player";
 import { apiFetch } from "../../utils/api";
 import { retimeCues, toWebVtt, type CueLike } from "./logic/subtitles";
+import { decodeSubtitleBytes } from "./logic/subtitleText";
 import { AudioBoost, isBoostActive } from "./audioBoost";
 
 export interface SubtitleTrackInfo {
@@ -295,7 +296,7 @@ export class HTML implements Player {
       let subtitleSrc = src;
       if (subtitleSrc) {
         const response = await apiFetch(subtitleSrc);
-        const vtt = toWebVtt(await response.text());
+        const vtt = toWebVtt(decodeSubtitleBytes(await response.arrayBuffer()));
         const url = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
         const track = document.createElement("track");
         track.kind = "captions";
