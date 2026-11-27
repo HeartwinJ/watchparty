@@ -63,15 +63,26 @@ export function useSubtitles(opts: {
       return offset;
     };
 
-    /** Sets offset and time scale together in the current scope (auto-sync results, Reset) */
-    const setTiming = (offsetValue: number, scaleValue: number) => {
+    /**
+     * Sets offset and time scale together in the current scope (auto-sync results, Reset). `auto`: an auto-sync wand
+     * result, so the room's chat line says it was auto-synced.
+     */
+    const setTiming = (
+      offsetValue: number,
+      scaleValue: number,
+      opts: { auto?: boolean } = {},
+    ) => {
       const offset = normalizeOffset(offsetValue);
       const scale = normalizeScale(scaleValue);
       if (store.get().subtitleScope === "me") {
         store.set({ localSubtitleOffset: offset, localSubtitleScale: scale });
       } else {
         store.set({ roomSubtitleOffset: offset, roomSubtitleScale: scale });
-        cmd.setSubtitleTiming({ offset, scale });
+        cmd.setSubtitleTiming({
+          offset,
+          scale,
+          ...(opts.auto ? { auto: true } : {}),
+        });
       }
       applyOffset();
       return { offset, scale };

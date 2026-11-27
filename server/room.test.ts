@@ -283,6 +283,40 @@ describe("CMD:subtitleTiming (offset + time scale)", () => {
     });
   });
 
+  it("announces an auto-sync wand result as an auto-sync line", async () => {
+    const alex = await connect("Alex");
+    const sam = await connect();
+    const chats: ChatMessage[] = [];
+    sam.socket.on("REC:chat", (m: ChatMessage) => chats.push(m));
+    const rec = next<{ offset: number; auto?: boolean }>(
+      sam.socket,
+      "REC:subtitleOffset",
+    );
+    alex.socket.emit("CMD:subtitleTiming", {
+      offset: 3.2,
+      scale: 1,
+      auto: true,
+    });
+    expect((await rec)[0]).toMatchObject({ offset: 3.2, auto: true });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(chats).toHaveLength(1);
+    expect(chats[0]).toMatchObject({
+      id: alex.clientId,
+      cmd: "subtitleAutoSync",
+      msg: "3.2",
+    });
+
+    // A later hand nudge is announced as a normal offset change
+    const rec2 = next<{ offset: number; auto?: boolean }>(
+      sam.socket,
+      "REC:subtitleOffset",
+    );
+    alex.socket.emit("CMD:subtitleTiming", { offset: 3.3, scale: 1 });
+    expect((await rec2)[0].auto).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(chats[1]).toMatchObject({ cmd: "subtitleOffset", msg: "3.3" });
+  });
+
   it("is serialized with the room", () => {
     room.subtitleScale = 1.001;
     const loaded = new Room(io, db, "/scale-room", room.serialize());

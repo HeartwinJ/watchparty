@@ -139,7 +139,12 @@ export interface ClientToServerEvents {
   /** Room-wide subtitle offset in seconds (server clamps to ±24 h, rounds to 0.05 s) */
   "CMD:subtitleOffset": (offset: number) => void;
   /** Room-wide offset and time scale together (scale 0.9–1.1); Reset sends {offset: 0, scale: 1} */
-  "CMD:subtitleTiming": (timing: { offset: number; scale: number }) => void;
+  /** `auto`: the result of this person's auto-sync wand (announced as an auto-sync chat line) */
+  "CMD:subtitleTiming": (timing: {
+    offset: number;
+    scale: number;
+    auto?: boolean;
+  }) => void;
   /** Room auto-sync: claim the job, report its result, or give it back */
   "CMD:subtitleSync": (cmd: SubtitleSyncCommand) => void;
   "CMD:askHost": () => void;
@@ -219,8 +224,11 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     leaveScreenShare: () => emit("CMD:leaveScreenShare"),
     setSubtitle: (url: string) => emit("CMD:subtitle", url),
     setSubtitleOffset: (offset: number) => emit("CMD:subtitleOffset", offset),
-    setSubtitleTiming: (timing: { offset: number; scale: number }) =>
-      emit("CMD:subtitleTiming", timing),
+    setSubtitleTiming: (timing: {
+      offset: number;
+      scale: number;
+      auto?: boolean;
+    }) => emit("CMD:subtitleTiming", timing),
     subtitleSync: (cmd: SubtitleSyncCommand) => emit("CMD:subtitleSync", cmd),
     askHost: () => emit("CMD:askHost"),
     playlistNext: (endedUrl: string) => emit("CMD:playlistNext", endedUrl),

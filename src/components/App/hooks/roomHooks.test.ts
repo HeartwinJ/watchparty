@@ -341,6 +341,15 @@ describe("useSubtitles", () => {
     expect(html.setSubtitleOffset).toHaveBeenLastCalledWith(1, 1.04);
     act(() => result.current.subs.setScope("everyone"));
     expect(result.current.state.subtitleScope).toBe("everyone");
+    // An auto-sync wand result for everyone is marked as such
+    act(() => {
+      result.current.subs.setTiming(3.2, 1, { auto: true });
+    });
+    expect(cmd.setSubtitleTiming).toHaveBeenLastCalledWith({
+      offset: 3.2,
+      scale: 1,
+      auto: true,
+    });
   });
 
   it("a local override without a scale uses 1", () => {

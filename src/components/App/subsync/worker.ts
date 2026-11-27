@@ -31,6 +31,8 @@ self.onmessage = async (e: MessageEvent<SyncRequest>) => {
         return isClearMatch(result, sofar.length);
       },
     });
+    // Reading stops early on a clear match (after 3 of 4 windows): show the bar complete, not stuck at ~70%
+    post({ type: "progress", fraction: 1 });
     const t1 = performance.now();
     const done = last as { result: SyncResult; windows: number } | null;
     const result =

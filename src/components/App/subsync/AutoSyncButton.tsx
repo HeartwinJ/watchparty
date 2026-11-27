@@ -8,7 +8,7 @@ import styles from "./AutoSync.module.css";
 /**
  * "Auto-sync" in the subtitles menu's Timing offset section: aligns the selected track to the audio (useSubtitleSync)
  * and shows progress while it listens. Disabled with the reason underneath when it can't run here (YouTube, screen
- * share, live, no track, ...). Closing the menu cancels a manual sync.
+ * share, live, no track, ...). Closing the menu cancels a manual sync. The last outcome stays underneath for a while.
  */
 export function AutoSyncButton({
   room,
@@ -21,6 +21,7 @@ export function AutoSyncButton({
   const { subsync, state } = room;
   const job = state.subtitleSyncJob;
   const remote = state.subtitleSyncRemote;
+  const outcome = state.subtitleSyncOutcome;
   useEffect(() => () => subsync.cancel("manual"), [subsync]);
 
   const reason =
@@ -63,12 +64,19 @@ export function AutoSyncButton({
       <IconWand size={16} className={styles.icon} />
       <span className={menu.grow}>
         Auto-sync
-        <small>
-          {reason ??
-            (remote
-              ? `${remote.by} is syncing subtitles for the room…`
-              : "Match the subtitles to the speech")}
-        </small>
+        {!reason && !remote && outcome ? (
+          // The last result (toasts don't show in fullscreen)
+          <small className={styles[outcome.tone]} role="status">
+            {outcome.text}
+          </small>
+        ) : (
+          <small>
+            {reason ??
+              (remote
+                ? `${remote.by} is syncing subtitles for the room…`
+                : "Match the subtitles to the speech")}
+          </small>
+        )}
       </span>
     </button>
   );

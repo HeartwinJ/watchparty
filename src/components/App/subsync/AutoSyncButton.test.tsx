@@ -10,6 +10,7 @@ function fakeRoom(
     reason?: string | null;
     job?: { auto: boolean; progress: number } | null;
     remote?: { by: string } | null;
+    outcome?: { text: string; tone: "success" | "warning" | "danger" } | null;
   } = {},
 ) {
   const subsync = {
@@ -22,6 +23,7 @@ function fakeRoom(
     state: {
       subtitleSyncJob: opts.job ?? null,
       subtitleSyncRemote: opts.remote ?? null,
+      subtitleSyncOutcome: opts.outcome ?? null,
     },
   } as unknown as Room;
   return { room, subsync };
@@ -45,6 +47,16 @@ describe("AutoSyncButton", () => {
     expect(btn.textContent).toContain("Not available for YouTube videos");
     fireEvent.click(btn);
     expect(subsync.syncNow).not.toHaveBeenCalled();
+  });
+
+  it("shows the last outcome underneath", () => {
+    const { room } = fakeRoom({
+      outcome: { text: "Subtitles synced: +3.2 s", tone: "success" },
+    });
+    render(<AutoSyncButton room={room} hasTrack />);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Subtitles synced: +3.2 s",
+    );
   });
 
   it("needs a subtitle track", () => {
