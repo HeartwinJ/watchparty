@@ -370,3 +370,246 @@ describe("useSubtitles", () => {
     expect(html.setSubtitleOffset).toHaveBeenLastCalledWith(0, 1);
   });
 });
+
+describe("useSubtitles: keeping subtitles for the next episode", () => {
+  const ep = (n: number): VideoMeta => ({
+    source: "aiostreams",
+    type: "series",
+    id: `tt1:1:${n}`,
+    imdbId: "tt1",
+    season: 1,
+    episode: n,
+    title: "Show",
+    episodeTitle: null,
+    poster: null,
+    bingeGroup: null,
+  });
+  type T = {
+    index: number;
+    label: string;
+    language: string;
+    fromRoom: boolean;
+  };
+
+  function setup(init: Partial<RoomState> = {}, youtube = false) {
+    let tracks: T[] = [];
+    let selected = -1;
+    const html = {
+      setSubtitleOffset: vi.fn(),
+      getSubtitleTracks: () => tracks,
+      getSelectedSubtitleTrack: () => selected,
+      selectSubtitleTrack: vi.fn((i: number) => (selected = i)),
+    };
+    const current = { loadSubtitles: vi.fn() };
+    const player = {
+      html: () => html,
+      current: () => current,
+      usingNative: () => !youtube,
+      usingYoutube: () => youtube,
+    };
+    const cmd = { setSubtitle: vi.fn() };
+    const hook = renderHook(() => {
+      const [state, store] = useRoomStore(init);
+      return {
+        state,
+        store,
+        subs: useSubtitles({
+          store,
+          player: player as any,
+          clientId: "me",
+          cmd: cmd as any,
+        }),
+      };
+    });
+    const r = () => hook.result.current;
+    /** REC:host + REC:videoMeta for the next video, as useRoom does it */
+    const change = (meta: VideoMeta | null) => {
+      r().subs.captureCarry();
+      tracks = [];
+      selected = -1;
+      act(() =>
+        r().store.set({
+          roomMedia: "https://cdn/next",
+          roomSubtitle: "",
+          loading: true,
+        }),
+      );
+      r().subs.applyCarry();
+      act(() => r().store.set({ videoMeta: meta }));
+      r().subs.onVideoMeta();
+      r().subs.applyCarry();
+    };
+    return {
+      r,
+      html,
+      current,
+      cmd,
+      change,
+      setTracks: (t: T[], sel = selected) => {
+        tracks = t;
+        selected = sel;
+      },
+    };
+  }
+
+  const roomTrack: T = {
+    index: 0,
+    label: "English",
+    language: "en",
+    fromRoom: true,
+  };
+
+  it("picks the next episode's auto subtitle in the same language", () => {
+    const { r, cmd, change, setTracks } = setup({
+      roomMedia: "https://cdn/1",
+      roomSubtitle: "https://subs/de1",
+      videoMeta: ep(1),
+      subtitleTracks: [
+        { id: "a", label: "English", lang: "en", url: "https://subs/en1" },
+        { id: "b", label: "German", lang: "de", url: "https://subs/de1" },
+      ],
+      subtitleTracksFor: ep(1).id,
+    });
+    setTracks([roomTrack], 0);
+    change(ep(2));
+    // The old title's auto subtitles are still in the store: not used
+    expect(cmd.setSubtitle).not.toHaveBeenCalled();
+    act(() =>
+      r().store.set({
+        subtitleTracks: [
+          { id: "c", label: "English", lang: "en", url: "https://subs/en2" },
+          { id: "d", label: "German", lang: "de", url: "https://subs/de2" },
+        ],
+        subtitleTracksFor: ep(2).id,
+      }),
+    );
+    r().subs.applyCarry();
+    expect(cmd.setSubtitle).toHaveBeenCalledWith("https://subs/de2");
+    // Done: once only
+    r().subs.applyCarry();
+    expect(cmd.setSubtitle).toHaveBeenCalledTimes(1);
+  });
+
+  it("selects the same embedded track language again", () => {
+    const { r, html, change, setTracks } = setup({
+      roomMedia: "https://cdn/1.mkv",
+    });
+    setTracks(
+      [
+        { index: 0, label: "Deutsch", language: "de", fromRoom: false },
+        { index: 1, label: "English", language: "en", fromRoom: false },
+      ],
+      1,
+    );
+    change(null);
+    setTracks([
+      { index: 0, label: "English", language: "eng", fromRoom: false },
+    ]);
+    r().subs.applyCarry();
+    expect(html.selectSubtitleTrack).toHaveBeenLastCalledWith(0);
+  });
+
+  it("keeps the room subtitle off for a viewer who had it off", () => {
+    const { r, html, change, setTracks } = setup({
+      roomMedia: "https://cdn/1",
+      roomSubtitle: "https://subs/en1",
+      videoMeta: ep(1),
+    });
+    setTracks([roomTrack], -1);
+    change(ep(2));
+    // Someone else's carry loads the new room subtitle, which selects itself
+    setTracks([roomTrack], 0);
+    act(() => r().store.set({ roomSubtitle: "https://subs/en2" }));
+    r().subs.applyCarry();
+    expect(html.selectSubtitleTrack).toHaveBeenLastCalledWith(-1);
+  });
+
+  it("waits for the metadata, and forgets the choice for another title", () => {
+    const { r, cmd, change, setTracks } = setup({
+      roomMedia: "https://cdn/1",
+      roomSubtitle: "/subtitle/x",
+      videoMeta: ep(1),
+    });
+    setTracks([roomTrack], 0);
+    // A pick sends REC:videoMeta null first, then the metadata
+    change(null);
+    act(() =>
+      r().store.set({
+        videoMeta: { ...ep(1), id: "tt7:1:1", imdbId: "tt7" },
+        subtitleTracks: [{ id: "a", label: "English", url: "https://s" }],
+        subtitleTracksFor: "tt7:1:1",
+      }),
+    );
+    r().subs.applyCarry();
+    act(() => r().store.set({ videoMeta: ep(2), subtitleTracksFor: ep(2).id }));
+    r().subs.applyCarry();
+    expect(cmd.setSubtitle).not.toHaveBeenCalled();
+  });
+
+  it("does nothing once something shows, after a minute, when joining or on YouTube", () => {
+    vi.useFakeTimers();
+    try {
+      const a = setup({ roomMedia: "https://cdn/1" });
+      a.setTracks(
+        [{ index: 0, label: "En", language: "en", fromRoom: false }],
+        0,
+      );
+      a.change(null);
+      a.setTracks(
+        [{ index: 0, label: "Fr", language: "fr", fromRoom: false }],
+        0,
+      );
+      a.r().subs.applyCarry();
+      a.setTracks(
+        [{ index: 1, label: "En", language: "en", fromRoom: false }],
+        -1,
+      );
+      a.r().subs.applyCarry();
+      expect(a.html.selectSubtitleTrack).not.toHaveBeenCalled();
+
+      const b = setup({ roomMedia: "https://cdn/1" });
+      b.setTracks(
+        [{ index: 0, label: "En", language: "en", fromRoom: false }],
+        0,
+      );
+      b.change(null);
+      vi.advanceTimersByTime(61_000);
+      b.setTracks([{ index: 0, label: "En", language: "en", fromRoom: false }]);
+      b.r().subs.applyCarry();
+      expect(b.html.selectSubtitleTrack).not.toHaveBeenCalled();
+
+      // Joining: no previous video
+      const c = setup();
+      c.setTracks(
+        [{ index: 0, label: "En", language: "en", fromRoom: false }],
+        0,
+      );
+      c.change(null);
+      c.r().subs.applyCarry();
+      expect(c.html.selectSubtitleTrack).not.toHaveBeenCalled();
+
+      const d = setup({ roomMedia: "https://youtu.be/x" }, true);
+      d.setTracks(
+        [{ index: 0, label: "En", language: "en", fromRoom: false }],
+        0,
+      );
+      d.change(null);
+      d.r().subs.applyCarry();
+      expect(d.html.selectSubtitleTrack).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the same room subtitle again just shows the loaded track", () => {
+    const { r, html, current, setTracks } = setup({ roomSubtitle: "/s/a" });
+    setTracks([roomTrack], -1);
+    act(() => r().subs.onSubtitle("/s/a"));
+    expect(html.selectSubtitleTrack).toHaveBeenCalledWith(0);
+    expect(current.loadSubtitles).not.toHaveBeenCalled();
+    // Not loaded yet (e.g. a failed download): load it
+    setTracks([]);
+    act(() => r().subs.onSubtitle("/s/a"));
+    expect(current.loadSubtitles).toHaveBeenCalledWith("/s/a");
+  });
+});

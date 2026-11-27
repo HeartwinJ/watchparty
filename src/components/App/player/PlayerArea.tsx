@@ -74,6 +74,19 @@ export const PlayerArea = ({ room }: { room: Room }) => {
   const [subtitleStyle, setSubtitleStyle] = useSubtitleStyle();
   const playback = usePlaybackState(room);
   const tracks = useTextTracks(room);
+  // Keep this viewer's subtitles on (or off) for the next episode, once its tracks are in
+  useEffect(() => {
+    subtitles.applyCarry();
+  }, [
+    subtitles,
+    tracks.tracks,
+    tracks.selected,
+    state.subtitleTracks,
+    state.subtitleTracksFor,
+    state.videoMeta,
+    state.roomSubtitle,
+    state.loading,
+  ]);
 
   const idleRef = useRef<IdleTimer | null>(null);
   if (!idleRef.current) {

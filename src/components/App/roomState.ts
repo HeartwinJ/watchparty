@@ -134,6 +134,8 @@ export interface RoomState {
   } | null;
   /** Extra subtitle tracks for the menu (slot for auto subtitles; optional) */
   subtitleTracks?: SubtitleTrackOption[];
+  /** The videoMeta id `subtitleTracks` were found for (useAutoSubtitles) */
+  subtitleTracksFor?: string;
   /** A short message for the player's on-screen display (e.g. "Alex paused" in fullscreen) */
   playerNotice: { text: string; at: number } | null;
   /** Room-wide settings (REC:roomSettings), the default until the server sends them */

@@ -30,6 +30,8 @@ export class HTML implements Player {
   private subtitleScale = 1;
   private sharerShift = 0;
   private cueOriginals = new WeakMap<CueLike, { start: number; end: number }>();
+  /** Bumped by every subtitle load and clear, so a slow download can't add a stale track */
+  private subtitleGen = 0;
   /** The <track> element we added for the room subtitle */
   private roomTrack: TextTrack | null = null;
   /** Voice call ducking factor and the viewer's own volume while ducked (see setDuck) */
@@ -273,6 +275,7 @@ export class HTML implements Player {
     leftVideo.srcObject = null;
 
     // Clear subtitles
+    this.subtitleGen++;
     this.subtitlesEnabled = false;
     this.selectedTrack = 0;
     this.sharerShift = 0;
@@ -286,6 +289,7 @@ export class HTML implements Player {
       return;
     }
     // Clear subtitles and put new ones in
+    const gen = ++this.subtitleGen;
     leftVideo.innerHTML = "";
     this.roomTrack = null;
     if (!src) {
@@ -297,6 +301,10 @@ export class HTML implements Player {
       if (subtitleSrc) {
         const response = await apiFetch(subtitleSrc);
         const vtt = toWebVtt(decodeSubtitleBytes(await response.arrayBuffer()));
+        if (gen !== this.subtitleGen) {
+          // A newer load (or the video changed) while this one was downloading
+          return;
+        }
         const url = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
         const track = document.createElement("track");
         track.kind = "captions";
