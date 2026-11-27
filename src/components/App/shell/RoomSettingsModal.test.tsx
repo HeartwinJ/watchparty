@@ -163,11 +163,11 @@ describe("owners", () => {
     fireEvent.change(input, { target: { value: "40" } });
     act(() => vi.advanceTimersByTime(400));
     expect(room.cmd.setRoomSettings.mock.calls).toEqual([]);
-    fireEvent.change(input, { target: { value: "300" } });
+    fireEvent.change(input, { target: { value: "999" } });
     act(() => vi.advanceTimersByTime(500));
     expect(room.cmd.setRoomSettings).toHaveBeenCalledTimes(1);
     expect(room.cmd.setRoomSettings).toHaveBeenCalledWith({
-      nextEpisodeOffset: 120,
+      nextEpisodeOffset: 300,
     });
   });
 

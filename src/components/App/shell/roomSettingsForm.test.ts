@@ -22,7 +22,7 @@ describe("offsetToSend", () => {
     expect(offsetToSend(30, 25)).toBe(30);
     expect(offsetToSend("45", 25)).toBe(45);
     expect(offsetToSend(2, 25)).toBe(5);
-    expect(offsetToSend(500, 25)).toBe(120);
+    expect(offsetToSend(500, 25)).toBe(300);
     expect(offsetToSend(25.4, 25)).toBeUndefined();
     expect(offsetToSend("", 25)).toBeUndefined();
     expect(offsetToSend("abc", 25)).toBeUndefined();

@@ -4,7 +4,7 @@ import { isSkipIntroPreset, SKIP_INTRO_MAX } from "../logic/introSkip";
 
 export const ROOM_TITLE_MAX = 60;
 export const NEXT_EPISODE_OFFSET_MIN = 5;
-export const NEXT_EPISODE_OFFSET_MAX = 120;
+export const NEXT_EPISODE_OFFSET_MAX = 300;
 
 /** The title to send for a draft (trimmed, whitespace collapsed, ≤ 60 chars), or undefined when nothing changed. */
 export function titleToSend(
@@ -19,7 +19,7 @@ export function titleToSend(
 }
 
 /**
- * The next-episode offset to send for a NumberInput value (number, or a string while typing), clamped to 5–120 and
+ * The next-episode offset to send for a NumberInput value (number, or a string while typing), clamped to 5–300 and
  * rounded, or undefined when it's empty/invalid or unchanged.
  */
 export function offsetToSend(

@@ -4,7 +4,7 @@ import { normalizeSkipIntro } from "./introSkip.ts";
 
 export const ROOM_TITLE_MAX = 60;
 export const NEXT_EPISODE_OFFSET_MIN = 5;
-export const NEXT_EPISODE_OFFSET_MAX = 120;
+export const NEXT_EPISODE_OFFSET_MAX = 300;
 
 export const DEFAULT_ROOM_SETTINGS: Readonly<RoomSettings> = Object.freeze({
   title: "",
@@ -42,7 +42,7 @@ export function normalizeRoomTitle(raw: unknown): string | undefined {
   return Array.from(cleaned).slice(0, ROOM_TITLE_MAX).join("").trim();
 }
 
-/** Seconds before the end for the next-episode card: an integer clamped to 5–120. */
+/** Seconds before the end for the next-episode card: an integer clamped to 5–300. */
 export function normalizeNextEpisodeOffset(raw: unknown): number | undefined {
   if (typeof raw !== "number" || !Number.isFinite(raw)) {
     return undefined;

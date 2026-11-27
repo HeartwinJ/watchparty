@@ -33,11 +33,11 @@ describe("normalizeRoomTitle", () => {
 });
 
 describe("normalizeNextEpisodeOffset", () => {
-  it("clamps to 5–120 and rounds to whole seconds", () => {
+  it("clamps to 5–300 and rounds to whole seconds", () => {
     expect(normalizeNextEpisodeOffset(30)).toBe(30);
     expect(normalizeNextEpisodeOffset(0)).toBe(5);
     expect(normalizeNextEpisodeOffset(-10)).toBe(5);
-    expect(normalizeNextEpisodeOffset(500)).toBe(120);
+    expect(normalizeNextEpisodeOffset(500)).toBe(300);
     expect(normalizeNextEpisodeOffset(29.6)).toBe(30);
   });
 
@@ -54,11 +54,11 @@ describe("parseRoomSettingsPatch", () => {
       parseRoomSettingsPatch({
         title: " Hi ",
         readyCheck: "yes",
-        nextEpisodeOffset: 200,
+        nextEpisodeOffset: 400,
         __proto__: { readyCheck: true },
         extra: 1,
       }),
-    ).toEqual({ title: "Hi", nextEpisodeOffset: 120 });
+    ).toEqual({ title: "Hi", nextEpisodeOffset: 300 });
     expect(parseRoomSettingsPatch({ readyCheck: true })).toEqual({
       readyCheck: true,
     });
