@@ -58,6 +58,13 @@ export const LIMITER = {
 
 export const isBoostActive = (s: BoostSettings) => s.level > 1 || s.night;
 
+/**
+ * Firefox (and forks like Zen) leaves gaps in laced Matroska audio once the element is routed into Web Audio, so
+ * useConvert re-packs those files into fragmented MP4 while the boost is on (see utils/matroskaLacing.ts).
+ */
+export const stuttersOnLacedAudio = (ua = navigator.userAgent) =>
+  /\bFirefox\//.test(ua);
+
 /** Total gain after the night compressor */
 export const boostGain = (s: BoostSettings) =>
   s.level * (s.night ? NIGHT.makeup : 1);

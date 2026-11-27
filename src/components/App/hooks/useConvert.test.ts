@@ -31,7 +31,19 @@ vi.mock("../../../utils/clientTranscode", () => ({
   probeMedia: (url: string) => probeMedia(url),
 }));
 
-const { useConvert, getConvertStatus } = await import("./useConvert");
+const hasLacedAudio = vi.fn(async (_read: unknown) => false);
+vi.mock("../../../utils/matroskaLacing", () => ({
+  hasLacedAudio: (read: unknown) => hasLacedAudio(read),
+  urlRangeReader: (url: string) => `reader:${url}`,
+}));
+const firefox = vi.fn(() => false);
+vi.mock("../audioBoost", async (importActual) => ({
+  ...(await importActual<typeof import("../audioBoost")>()),
+  stuttersOnLacedAudio: () => firefox(),
+}));
+
+const { useConvert, getConvertStatus, REPACK_REASON } =
+  await import("./useConvert");
 const { useStore } = await import("./useStore");
 const { createInitialRoomState, AUTO_CONVERT_KEY } =
   await import("../roomState");
@@ -84,8 +96,9 @@ let video: HTMLVideoElement;
 
 function setup() {
   const setSrcAndTime = vi.fn(async (_s: string, _t: number) => {});
+  const playVideo = vi.fn(async () => {});
   const player = {
-    html: () => ({ getVideoEl: () => video }),
+    html: () => ({ getVideoEl: () => video, playVideo }),
     current: () => ({ setSrcAndTime }),
   };
   const showError = vi.fn();
@@ -116,6 +129,7 @@ function setup() {
     c,
     get,
     setSrcAndTime,
+    playVideo,
     showError,
     reportIssue,
     onConvertStart,
@@ -126,6 +140,9 @@ function setup() {
 beforeEach(() => {
   transcoders.length = 0;
   probeMedia.mockReset();
+  hasLacedAudio.mockReset();
+  hasLacedAudio.mockResolvedValue(false);
+  firefox.mockReturnValue(false);
   probeMedia.mockRejectedValue(new Error("not readable"));
   window.localStorage.clear();
   document.body.innerHTML = '<video id="leftVideo"></video>';
@@ -386,5 +403,182 @@ describe("useConvert.playUrl", () => {
     });
     act(() => c().setConvertEnabled(true));
     expect(get().convertEnabled).toBe(true);
+  });
+});
+
+describe("re-packing laced Matroska for Volume boost in Firefox", () => {
+  const mkv = (p: Record<string, unknown> = {}) =>
+    probe({ container: "matroska", ...p });
+  const boostOn = (store: { set: (p: any) => void }) =>
+    act(() => store.set({ audioBoost: { level: 2, night: false } }));
+
+  it("converts (a copy) instead of playing directly when the boost is on and the audio is laced", async () => {
+    const r = setup();
+    firefox.mockReturnValue(true);
+    hasLacedAudio.mockResolvedValue(true);
+    probeMedia.mockResolvedValue(mkv());
+    boostOn(r.result.current.store);
+    await act(() => r.c().playUrl(SRC, 4));
+    expect(hasLacedAudio).toHaveBeenCalledWith(`reader:${SRC}`);
+    expect(r.get().playback).toEqual({
+      mode: "convert",
+      heavy: false,
+      reason: REPACK_REASON,
+    });
+    expect(r.onConvertStart).toHaveBeenCalledWith(REPACK_REASON, false);
+    expect(transcoders[0].opts).toMatchObject({
+      source: SRC,
+      startTime: 4,
+      audioTrackId: 2,
+    });
+    expect(r.setSrcAndTime).not.toHaveBeenCalled();
+  });
+
+  it("probes for it even with auto-convert off", async () => {
+    const r = setup();
+    act(() => r.c().setConvertEnabled(false));
+    firefox.mockReturnValue(true);
+    hasLacedAudio.mockResolvedValue(true);
+    probeMedia.mockResolvedValue(mkv());
+    boostOn(r.result.current.store);
+    await act(() => r.c().playUrl(SRC, 0));
+    expect(r.get().playback).toMatchObject({ reason: REPACK_REASON });
+  });
+
+  it("plays directly otherwise", async () => {
+    const cases: {
+      ff: boolean;
+      boost: boolean;
+      laced: boolean;
+      p: ReturnType<typeof probe>;
+    }[] = [
+      { ff: false, boost: true, laced: true, p: mkv() }, // not Firefox
+      { ff: true, boost: false, laced: true, p: mkv() }, // boost off
+      { ff: true, boost: true, laced: false, p: mkv() }, // not laced
+      { ff: true, boost: true, laced: true, p: probe() }, // MP4
+      {
+        ff: true,
+        boost: true,
+        laced: true,
+        p: mkv({ transcodeSupported: false }),
+      },
+      {
+        ff: true,
+        boost: true,
+        laced: true,
+        p: mkv({
+          video: {
+            id: 1,
+            codec: "avc",
+            height: 1080,
+            native: true,
+            copy: false,
+            decode: true,
+          },
+        }),
+      },
+      {
+        ff: true,
+        boost: true,
+        laced: true,
+        p: mkv({ audio: [{ ...ac3Only().audio[0], native: true }] }),
+      },
+      { ff: true, boost: true, laced: true, p: mkv({ audio: [] }) },
+    ];
+    for (const { ff, boost, laced, p } of cases) {
+      const r = setup();
+      firefox.mockReturnValue(ff);
+      hasLacedAudio.mockResolvedValue(laced);
+      probeMedia.mockResolvedValue(p);
+      if (boost) {
+        boostOn(r.result.current.store);
+      }
+      await act(() => r.c().playUrl(SRC, 0));
+      expect(r.get().playback?.mode).toBe("direct");
+      expect(transcoders).toHaveLength(0);
+      r.unmount();
+    }
+  });
+
+  it("re-packs the direct video from where it is when the boost is turned on", async () => {
+    const r = setup();
+    probeMedia.mockResolvedValue(mkv());
+    await act(() => r.c().playUrl(SRC, 0));
+    expect(r.get().playback?.mode).toBe("direct");
+    // Nothing to do while it's off, or outside Firefox
+    await act(() => r.c().repackForBoost());
+    firefox.mockReturnValue(true);
+    await act(() => r.c().repackForBoost());
+    expect(transcoders).toHaveLength(0);
+
+    boostOn(r.result.current.store);
+    hasLacedAudio.mockResolvedValue(true);
+    video.currentTime = 42;
+    act(() => r.result.current.store.set({ roomPaused: false }));
+    await act(() => r.c().repackForBoost());
+    expect(r.get().playback).toEqual({
+      mode: "convert",
+      heavy: false,
+      reason: REPACK_REASON,
+    });
+    expect(transcoders[0].opts).toMatchObject({ source: SRC, startTime: 42 });
+    expect(r.playVideo).toHaveBeenCalled();
+    // Already converting: nothing more
+    await act(() => r.c().repackForBoost());
+    expect(transcoders).toHaveLength(1);
+  });
+
+  it("stays paused, and gives up quietly when the file can't be read or isn't laced", async () => {
+    const r = setup();
+    firefox.mockReturnValue(true);
+    probeMedia.mockResolvedValue(mkv());
+    await act(() => r.c().playUrl(SRC, 0));
+    boostOn(r.result.current.store);
+
+    probeMedia.mockRejectedValueOnce(new Error("gone"));
+    await act(() => r.c().repackForBoost());
+    await act(() => r.c().repackForBoost()); // not laced
+    expect(transcoders).toHaveLength(0);
+
+    hasLacedAudio.mockResolvedValue(true);
+    act(() => r.result.current.store.set({ roomPaused: true }));
+    await act(() => r.c().repackForBoost());
+    expect(transcoders).toHaveLength(1);
+    expect(r.playVideo).not.toHaveBeenCalled();
+  });
+
+  it("drops the re-pack when the video changes meanwhile", async () => {
+    const r = setup();
+    firefox.mockReturnValue(true);
+    probeMedia.mockResolvedValue(mkv());
+    await act(() => r.c().playUrl(SRC, 0));
+    boostOn(r.result.current.store);
+    hasLacedAudio.mockResolvedValue(true);
+    let release!: () => void;
+    hasLacedAudio.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = () => resolve(true);
+        }),
+    );
+    const pending = r.c().repackForBoost();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => r.c().stopConvert());
+    await act(async () => {
+      release();
+      await pending;
+    });
+    expect(transcoders).toHaveLength(0);
+  });
+
+  it("does nothing before any direct video", async () => {
+    const r = setup();
+    firefox.mockReturnValue(true);
+    boostOn(r.result.current.store);
+    await act(() => r.c().repackForBoost());
+    expect(probeMedia).not.toHaveBeenCalled();
   });
 });

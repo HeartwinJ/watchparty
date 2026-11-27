@@ -14,6 +14,7 @@ import {
   corsReadable,
   describeBoost,
   isBoostActive,
+  stuttersOnLacedAudio,
   parseBoostLevel,
   readBoostSettings,
   saveBoostSettings,
@@ -143,6 +144,20 @@ describe("settings", () => {
     expect(isBoostActive({ level: 1, night: true })).toBe(true);
     expect(boostGain({ level: 2, night: false })).toBe(2);
     expect(boostGain({ level: 2, night: true })).toBe(2 * NIGHT.makeup);
+  });
+});
+
+describe("stuttersOnLacedAudio", () => {
+  it("is Firefox and its forks only", () => {
+    const ff =
+      "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
+    expect(stuttersOnLacedAudio(ff)).toBe(true);
+    expect(
+      stuttersOnLacedAudio(
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
+      ),
+    ).toBe(false);
+    expect(typeof stuttersOnLacedAudio()).toBe("boolean");
   });
 });
 
