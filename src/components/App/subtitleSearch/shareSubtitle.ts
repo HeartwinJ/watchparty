@@ -1,4 +1,5 @@
 import { apiFetch, serverPath } from "../../../utils/api";
+import { decodeSubtitleBytes } from "../logic/subtitleText";
 
 /** Same limit as the server's text/plain body parser (POST /subtitle) */
 export const MAX_SUBTITLE_BYTES = 1_000_000;
@@ -65,7 +66,7 @@ export async function shareSubtitleFromUrl(
     if (!resp.ok) {
       throw new Error();
     }
-    text = await resp.text();
+    text = decodeSubtitleBytes(await resp.arrayBuffer());
   } catch (e) {
     if ((e as Error)?.name === "AbortError") {
       throw e;

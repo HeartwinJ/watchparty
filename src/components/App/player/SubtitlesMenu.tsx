@@ -31,6 +31,7 @@ import {
   type SubtitleChoice,
 } from "./subtitleChoices";
 import styles from "./Player.module.css";
+import { decodeSubtitleBytes } from "../logic/subtitleText";
 
 const SIZES: [SubtitleSize, string][] = [
   ["s", "S"],
@@ -53,7 +54,7 @@ async function uploadSubtitleFile(): Promise<string | undefined> {
   }
   const resp = await apiFetch("/subtitle", {
     method: "POST",
-    body: await file.text(),
+    body: decodeSubtitleBytes(await file.arrayBuffer()),
     headers: { "Content-Type": "text/plain" },
   });
   const json = await resp.json();

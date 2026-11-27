@@ -18,6 +18,7 @@ import {
   IconUpload,
   IconX,
 } from "@tabler/icons-react";
+import { decodeSubtitleBytes } from "../App/logic/subtitleText";
 
 function subtitleErrorMessage(body: unknown): string {
   const b = body as { error?: string; message?: string } | null;
@@ -51,21 +52,16 @@ export class SubtitleModal extends React.Component<{
     if (!files) {
       return;
     }
-    const file = files[0];
-    const reader = new FileReader();
-    reader.addEventListener("load", async (event) => {
-      const subData = event.target?.result;
-      // Upload to server
-      const resp = await apiFetch("/subtitle", {
-        method: "POST",
-        body: subData,
-        headers: { "Content-Type": "text/plain" },
-      });
-      // Once URL obtained, make those the room subtitles
-      const json = await resp.json();
-      this.props.setRoomSubtitle(serverPath + "/subtitle/" + json.hash);
+    // Decoded here so files in legacy encodings are stored as UTF-8
+    const subData = decodeSubtitleBytes(await files[0].arrayBuffer());
+    const resp = await apiFetch("/subtitle", {
+      method: "POST",
+      body: subData,
+      headers: { "Content-Type": "text/plain" },
     });
-    reader.readAsText(file);
+    // Once URL obtained, make those the room subtitles
+    const json = await resp.json();
+    this.props.setRoomSubtitle(serverPath + "/subtitle/" + json.hash);
   };
 
   searchSubtitles = async () => {

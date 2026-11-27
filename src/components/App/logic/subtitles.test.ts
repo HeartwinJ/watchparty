@@ -31,6 +31,12 @@ describe("toWebVtt", () => {
       toWebVtt("1\n00:00:00,000 --> 00:00:01,000\nHi, 00:00:02,000\n"),
     ).toContain("Hi, 00:00:02,000");
   });
+
+  it("repairs mojibake and strips ASS tags in cue text", () => {
+    expect(
+      toWebVtt("1\n00:00:01,000 --> 00:00:02,000\n{\\an8}â™ªSongâ™ª\n"),
+    ).toBe("WEBVTT\n\n1\n00:00:01.000 --> 00:00:02.000\n♪Song♪\n");
+  });
 });
 
 describe("offset math", () => {
