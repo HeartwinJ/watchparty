@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader, Modal } from "@mantine/core";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ActionIcon, Loader, Modal } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import {
   IconAlertTriangle,
-  IconArrowLeft,
+  IconChevronLeft,
   IconChevronRight,
   IconFileSearch,
   IconMovie,
   IconSearch,
   IconSubtitles,
+  IconX,
 } from "@tabler/icons-react";
 import {
   AddonApiError,
@@ -25,6 +32,9 @@ import {
   type TitleRef,
 } from "../../../api/addons";
 import { toast } from "../ui/toast";
+import { cx } from "../picker/RootViews";
+import { formatAirDate } from "../picker/pickerLogic";
+import picker from "../picker/SourcePicker.module.css";
 import {
   episodeCode,
   findGuessedEpisode,
@@ -45,6 +55,7 @@ type SubtitlesTarget = {
   label: string;
   /** "episode" or "movie", for the empty state */
   noun: "episode" | "movie";
+  poster: string | null;
 };
 
 type View =
@@ -103,168 +114,10 @@ function useAsync<T>(
   return { ...state, retry };
 }
 
-/**
- * "Search subtitles…": keyless subtitle search for the room's video. Search a title (Cinemeta + Kitsu via
- * /addon/search), pick a series' season/episode, then a subtitle (OpenSubtitles v3 via /addon/subtitles). The chosen
- * file is stored on our server (POST /subtitle) and set as the room subtitle for everyone (`setRoomSubtitle`, i.e.
- * CMD:subtitle). Pre-filled from what's playing (guessSubtitleSearch); AIOStreams picks open on their subtitles.
- */
-export function SubtitleSearch(props: {
-  opened: boolean;
-  onClose: () => void;
-  /** The room's current media URL (only its `#wp-name=` / file name is used, never shown) */
-  mediaUrl: string;
-  videoMeta: VideoMeta | null;
-  /** Sets the room subtitle (CMD:subtitle) */
-  setRoomSubtitle: (url: string) => void;
-  /** Opens the OpenSubtitles API (file name) search; only offered when the server has a key */
-  openFileNameSearch?: () => void;
-}) {
-  const isPhone = useMediaQuery("(max-width: 768px)", false, {
-    getInitialValueInEffect: false,
-  });
-  return (
-    <Modal
-      opened={props.opened}
-      onClose={props.onClose}
-      title="Search subtitles"
-      centered={!isPhone}
-      radius="xl"
-      size={isPhone ? "100%" : 520}
-      zIndex={400}
-      transitionProps={isPhone ? { transition: "slide-up" } : undefined}
-      classNames={{
-        content: isPhone ? `${styles.content} ${styles.sheet}` : styles.content,
-        inner: isPhone ? styles.sheetInner : undefined,
-        header: styles.header,
-        title: styles.title,
-        body: styles.body,
-      }}
-    >
-      {props.opened && <SubtitleSearchBody {...props} />}
-    </Modal>
-  );
-}
-
-/** The views inside the modal (exported for tests) */
-export function SubtitleSearchBody({
-  onClose,
-  mediaUrl,
-  videoMeta,
-  setRoomSubtitle,
-  openFileNameSearch,
-}: Parameters<typeof SubtitleSearch>[0]) {
-  // Guessed once when the view opens, so a video change underneath doesn't reset what the user is doing
-  const [start] = useState(() => guessSubtitleSearch(mediaUrl, videoMeta));
-  const guess: TitleGuess = start.guess;
-  const [views, setViews] = useState<View[]>(() =>
-    start.kind === "subtitles"
-      ? [
-          { kind: "search" },
-          {
-            kind: "subtitles",
-            type: start.type,
-            id: start.id,
-            label: start.label,
-            noun: start.guess.episode !== null ? "episode" : "movie",
-          },
-        ]
-      : [{ kind: "search" }],
-  );
-  const view = views[views.length - 1];
-  const push = (v: View) => setViews((vs) => [...vs, v]);
-  const back = () => setViews((vs) => (vs.length > 1 ? vs.slice(0, -1) : vs));
-  const fileNameSearchAvailable = useOpenSubtitlesAvailable();
-
-  return (
-    <div className={styles.root}>
-      {views.length > 1 && (
-        <button type="button" className={styles.back} onClick={back}>
-          <IconArrowLeft size={16} aria-hidden />
-          Back
-        </button>
-      )}
-      {/* The search stays mounted so its query and results survive going deeper and back */}
-      <div hidden={view.kind !== "search"}>
-        <SearchView
-          initialQuery={guess.query}
-          guess={guess}
-          active={view.kind === "search"}
-          onPick={(item) =>
-            item.type === "movie"
-              ? push({
-                  kind: "subtitles",
-                  type: item.kind,
-                  id: item.id,
-                  label: item.year ? `${item.name} (${item.year})` : item.name,
-                  noun: "movie",
-                })
-              : push({ kind: "title", item })
-          }
-        />
-      </div>
-      {view.kind === "title" && (
-        <TitleView
-          item={view.item}
-          guess={guess}
-          onPick={(meta, ep) =>
-            push({
-              kind: "subtitles",
-              type: view.item.kind,
-              id: ep.id,
-              label: subtitleTargetLabel(meta.name, ep.season, ep.episode),
-              noun: "episode",
-            })
-          }
-        />
-      )}
-      {view.kind === "subtitles" && (
-        <SubtitlesView
-          target={view}
-          onLoaded={(url) => {
-            setRoomSubtitle(url);
-            onClose();
-          }}
-        />
-      )}
-      {openFileNameSearch && fileNameSearchAvailable && (
-        <div className={styles.foot}>
-          <button
-            type="button"
-            className={styles.link}
-            onClick={openFileNameSearch}
-          >
-            <IconFileSearch size={14} aria-hidden />
-            Search by file name (OpenSubtitles API)
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const TYPE_LABEL: Record<ContentType, string> = {
-  movie: "Movie",
-  series: "Show",
-  anime: "Anime",
-};
-
-function SearchView({
-  initialQuery,
-  guess,
-  active,
-  onPick,
-}: {
-  initialQuery: string;
-  guess: TitleGuess;
-  active: boolean;
-  onPick: (item: TitleRef) => void;
-}) {
-  const [query, setQuery] = useState(initialQuery);
+/** The title search: debounced while typing, immediate on Enter; only the latest query's answer counts */
+function useTitleSearch() {
   const [state, setState] = useState<Async<SearchResults>>({ status: "idle" });
-  const inputRef = useRef<HTMLInputElement>(null);
   const search = useMemo(() => createDebouncedSearch(searchTitles, 300), []);
-  // Only the latest query's answer counts (an Enter search can race a debounced one)
   const seq = useRef(0);
   const immediate = useRef<AbortController | null>(null);
   const run = useCallback(
@@ -293,19 +146,6 @@ function SearchView({
     },
     [search],
   );
-  // Search what's playing right away, but only once the search view is visible (AIOStreams picks start deeper)
-  const started = useRef(false);
-  useEffect(() => {
-    if (active && !started.current) {
-      started.current = true;
-      if (initialQuery.trim()) {
-        run(initialQuery, true);
-      }
-    }
-    if (active) {
-      inputRef.current?.focus();
-    }
-  }, [active, initialQuery, run]);
   useEffect(
     () => () => {
       search.cancel();
@@ -313,7 +153,394 @@ function SearchView({
     },
     [search],
   );
+  return { state, run };
+}
 
+/**
+ * "Search subtitles…": keyless subtitle search for the room's video. Search a title (Cinemeta + Kitsu via
+ * /addon/search), pick a series' season/episode, then a subtitle (OpenSubtitles v3 via /addon/subtitles). The chosen
+ * file is stored on our server (POST /subtitle) and set as the room subtitle for everyone (`setRoomSubtitle`, i.e.
+ * CMD:subtitle). Pre-filled from what's playing (guessSubtitleSearch); AIOStreams picks open on their subtitles.
+ * Built from the source picker's parts (SourcePicker.module.css): search header, breadcrumbs, scrolling list, footer.
+ */
+export function SubtitleSearch(props: {
+  opened: boolean;
+  onClose: () => void;
+  /** The room's current media URL (only its `#wp-name=` / file name is used, never shown) */
+  mediaUrl: string;
+  videoMeta: VideoMeta | null;
+  /** Sets the room subtitle (CMD:subtitle) */
+  setRoomSubtitle: (url: string) => void;
+  /** Opens the OpenSubtitles API (file name) search; only offered when the server has a key */
+  openFileNameSearch?: () => void;
+}) {
+  const phone =
+    useMediaQuery("(max-width: 768px)", false, {
+      getInitialValueInEffect: false,
+    }) ?? false;
+  return (
+    <Modal.Root
+      opened={props.opened}
+      onClose={props.onClose}
+      size={640}
+      yOffset="10vh"
+      fullScreen={phone}
+      closeOnEscape={false}
+      trapFocus
+      returnFocus
+      zIndex={400}
+      transitionProps={{
+        transition: phone ? "slide-up" : "pop",
+        duration: 180,
+      }}
+      classNames={{
+        overlay: picker.overlay,
+        content: cx(picker.content, styles.content),
+        body: picker.modalBody,
+      }}
+    >
+      <Modal.Overlay />
+      <Modal.Content
+        aria-label="Search subtitles"
+        data-full-screen={phone || undefined}
+      >
+        <Modal.Body>
+          {props.opened && <SubtitleSearchBody {...props} phone={phone} />}
+        </Modal.Body>
+      </Modal.Content>
+    </Modal.Root>
+  );
+}
+
+const TYPE_LABEL: Record<ContentType, string> = {
+  movie: "Movie",
+  series: "Show",
+  anime: "Anime",
+};
+
+/** The views inside the modal */
+function SubtitleSearchBody({
+  onClose,
+  mediaUrl,
+  videoMeta,
+  setRoomSubtitle,
+  openFileNameSearch,
+  phone,
+}: Parameters<typeof SubtitleSearch>[0] & { phone: boolean }) {
+  // Guessed once when the view opens, so a video change underneath doesn't reset what the user is doing
+  const [start] = useState(() => guessSubtitleSearch(mediaUrl, videoMeta));
+  const guess: TitleGuess = start.guess;
+  const [views, setViewsState] = useState<View[]>(() =>
+    start.kind === "subtitles"
+      ? [
+          { kind: "search" },
+          {
+            kind: "subtitles",
+            type: start.type,
+            id: start.id,
+            label: start.label,
+            noun: start.guess.episode !== null ? "episode" : "movie",
+            poster: videoMeta?.poster ?? null,
+          },
+        ]
+      : [{ kind: "search" }],
+  );
+  // Updated synchronously, so several quick Esc presses each go back one level
+  const viewsRef = useRef(views);
+  const setViews = useCallback((next: View[]) => {
+    viewsRef.current = next;
+    setViewsState(next);
+  }, []);
+  const view = views[views.length - 1];
+  const push = (v: View) => setViews([...viewsRef.current, v]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const popTo = useCallback(
+    (depth: number) => {
+      setViews(viewsRef.current.slice(0, Math.max(1, depth)));
+      inputRef.current?.focus();
+    },
+    [setViews],
+  );
+  const back = useCallback(() => {
+    const depth = viewsRef.current.length;
+    if (depth > 1) {
+      popTo(depth - 1);
+      return true;
+    }
+    return false;
+  }, [popTo]);
+  const fileNameSearchAvailable = useOpenSubtitlesAvailable();
+
+  const [query, setQuery] = useState(guess.query);
+  const titleSearch = useTitleSearch();
+  // Search what's playing right away, but only once the search level shows (AIOStreams picks start deeper)
+  const started = useRef(false);
+  useEffect(() => {
+    if (view.kind === "search" && !started.current) {
+      started.current = true;
+      if (guess.query.trim()) {
+        titleSearch.run(guess.query, true);
+      }
+    }
+  }, [view.kind, guess.query, titleSearch]);
+
+  // A new level starts at the top, with typing still going to the search field
+  useEffect(() => {
+    listRef.current?.scrollTo?.({ top: 0 });
+    inputRef.current?.focus();
+  }, [view]);
+
+  // Esc goes back one level, then closes (wherever focus is inside the dialog)
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (!back()) {
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("keydown", onEsc, true);
+    return () => window.removeEventListener("keydown", onEsc, true);
+  }, [back]);
+
+  // ↑/↓ move between the rows (and from the search field into the list)
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
+      return;
+    }
+    const rows = Array.from(
+      listRef.current?.querySelectorAll<HTMLButtonElement>(
+        "button[data-row]:not(:disabled)",
+      ) ?? [],
+    );
+    if (!rows.length) {
+      return;
+    }
+    e.preventDefault();
+    const at = rows.indexOf(document.activeElement as HTMLButtonElement);
+    const down = e.key === "ArrowDown";
+    if (at < 0) {
+      if (down) {
+        rows[0].focus();
+      }
+    } else if (!down && at === 0) {
+      inputRef.current?.focus();
+    } else {
+      rows[Math.min(rows.length - 1, at + (down ? 1 : -1))].focus();
+    }
+  };
+
+  const onInput = (value: string) => {
+    setQuery(value);
+    // Typing starts a new search from the top level
+    if (viewsRef.current.length > 1) {
+      setViews([{ kind: "search" }]);
+    }
+    titleSearch.run(value);
+  };
+
+  const trimmed = query.trim();
+  const crumbs: { label: string; depth: number }[] = [];
+  if (views.length > 1) {
+    crumbs.push({
+      label: trimmed ? `Results for “${trimmed}”` : "Search",
+      depth: 1,
+    });
+    views.slice(1).forEach((v, i) => {
+      crumbs.push({
+        label: v.kind === "title" ? v.item.name : "Subtitles",
+        depth: i + 2,
+      });
+    });
+  }
+
+  const searching = titleSearch.state.status === "loading";
+  const fileNameLink = openFileNameSearch && fileNameSearchAvailable && (
+    <button
+      type="button"
+      className={styles.footLink}
+      onClick={openFileNameSearch}
+    >
+      <IconFileSearch size={14} aria-hidden />
+      Search by file name (OpenSubtitles API)
+    </button>
+  );
+
+  return (
+    <div className={picker.modalBody} onKeyDown={onKeyDown}>
+      <form
+        className={picker.head}
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (viewsRef.current.length > 1) {
+            setViews([{ kind: "search" }]);
+          }
+          titleSearch.run(query, true);
+        }}
+      >
+        {views.length > 1 ? (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label="Back"
+            onClick={back}
+            size="lg"
+          >
+            <IconChevronLeft size={20} />
+          </ActionIcon>
+        ) : (
+          <span className={picker.headIcon} aria-hidden>
+            {searching ? (
+              <Loader size={18} color="gray" />
+            ) : (
+              <IconSearch size={20} />
+            )}
+          </span>
+        )}
+        <input
+          ref={inputRef}
+          data-autofocus
+          className={cx(picker.input, styles.input)}
+          type="search"
+          aria-label="Movie or show title"
+          placeholder="Search subtitles by movie or show title"
+          value={query}
+          maxLength={100}
+          onChange={(e) => onInput(e.currentTarget.value)}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          enterKeyHint="search"
+        />
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          aria-label="Close"
+          onClick={onClose}
+          size="lg"
+        >
+          <IconX size={20} />
+        </ActionIcon>
+      </form>
+      {crumbs.length > 0 && (
+        <nav className={picker.crumbs} aria-label="Breadcrumbs">
+          {crumbs.map((c, i) => {
+            const last = i === crumbs.length - 1;
+            return (
+              <React.Fragment key={c.depth}>
+                {i > 0 && <IconChevronRight size={14} aria-hidden />}
+                {last ? (
+                  <span className={picker.crumbCurrent} aria-current="page">
+                    {c.label}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className={picker.crumb}
+                    onClick={() => popTo(c.depth)}
+                  >
+                    {c.label}
+                  </button>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </nav>
+      )}
+      <div ref={listRef} className={picker.body}>
+        {view.kind === "search" && (
+          <SearchResultsView
+            state={titleSearch.state}
+            query={query}
+            guess={guess}
+            onRetry={() => titleSearch.run(query, true)}
+            onPick={(item) =>
+              item.type === "movie"
+                ? push({
+                    kind: "subtitles",
+                    type: item.kind,
+                    id: item.id,
+                    label: item.year
+                      ? `${item.name} (${item.year})`
+                      : item.name,
+                    noun: "movie",
+                    poster: item.poster,
+                  })
+                : push({ kind: "title", item })
+            }
+          />
+        )}
+        {view.kind === "title" && (
+          <TitleView
+            item={view.item}
+            guess={guess}
+            onPick={(meta, ep) =>
+              push({
+                kind: "subtitles",
+                type: view.item.kind,
+                id: ep.id,
+                label: subtitleTargetLabel(meta.name, ep.season, ep.episode),
+                noun: "episode",
+                poster: meta.poster ?? view.item.poster,
+              })
+            }
+          />
+        )}
+        {view.kind === "subtitles" && (
+          <SubtitlesView
+            target={view}
+            onLoaded={(url) => {
+              setRoomSubtitle(url);
+              onClose();
+            }}
+          />
+        )}
+      </div>
+      {(!phone || fileNameLink) && (
+        <div className={cx(picker.foot, styles.foot)}>
+          {!phone && (
+            <>
+              <span>
+                <kbd className={picker.kbd}>↑</kbd>
+                <kbd className={picker.kbd}>↓</kbd> move
+              </span>
+              <span>
+                <kbd className={picker.kbd}>↵</kbd> choose
+              </span>
+              <span>
+                <kbd className={picker.kbd}>esc</kbd> back / close
+              </span>
+            </>
+          )}
+          <span className={picker.footRight}>
+            {fileNameLink || "Subtitles from OpenSubtitles"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchResultsView({
+  state,
+  query,
+  guess,
+  onRetry,
+  onPick,
+}: {
+  state: Async<SearchResults>;
+  query: string;
+  guess: TitleGuess;
+  onRetry: () => void;
+  onPick: (item: TitleRef) => void;
+}) {
   // The catalog groups movies, then series, then anime; put the likely match first instead
   const items = useMemo(
     () =>
@@ -326,89 +553,78 @@ function SearchView({
         : [],
     [state, query, guess],
   );
+  if (state.status === "error") {
+    return <ErrorState message={state.message} onRetry={onRetry} />;
+  }
+  if (state.status === "idle") {
+    return (
+      <div className={picker.hint}>
+        Type the name of the movie or show that's playing.
+      </div>
+    );
+  }
+  if (state.status === "loading") {
+    return <LoadingState text="Searching…" />;
+  }
+  if (items.length === 0) {
+    return (
+      <div className={picker.empty}>No titles found for “{query.trim()}”.</div>
+    );
+  }
   return (
     <>
-      <form
-        className={styles.searchRow}
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault();
-          run(query, true);
-        }}
-      >
-        <IconSearch size={16} className={styles.searchIcon} aria-hidden />
-        <input
-          ref={inputRef}
-          className={styles.input}
-          type="search"
-          aria-label="Movie or show title"
-          placeholder="Movie or show title"
-          value={query}
-          maxLength={100}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            run(e.target.value);
-          }}
-        />
-        {state.status === "loading" && <Loader size="xs" />}
-      </form>
-      {state.status === "error" && (
-        <ErrorState message={state.message} onRetry={() => run(query, true)} />
-      )}
-      {state.status === "idle" && (
-        <p className={styles.note}>
-          Type the name of the movie or show that's playing.
-        </p>
-      )}
-      {state.status === "done" && items.length === 0 && (
-        <p className={styles.note}>No titles found for “{query.trim()}”.</p>
-      )}
-      {items.length > 0 && (
-        <ul className={styles.list} aria-label="Titles">
-          {items.map((item) => (
-            <li key={`${item.kind}-${item.id}`}>
-              <button
-                type="button"
-                className={styles.row}
-                onClick={() => onPick(item)}
-              >
-                <Poster src={item.poster} />
-                <span className={styles.grow}>
-                  <span className={styles.rowTitle}>{item.name}</span>
-                  <small className={styles.rowMeta}>
-                    {[TYPE_LABEL[item.kind], item.year]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </small>
+      <div className={picker.groupLabel}>
+        <IconMovie size={14} aria-hidden /> Movies & shows
+      </div>
+      <ul className={styles.list} aria-label="Titles">
+        {items.map((item) => (
+          <li key={`${item.kind}-${item.id}`}>
+            <button
+              type="button"
+              data-row
+              className={cx(picker.item, styles.row)}
+              onClick={() => onPick(item)}
+            >
+              <Poster src={item.poster} className={styles.thumb} />
+              <span className={cx(picker.grow, styles.lines)}>
+                <span className={picker.title}>{item.name}</span>
+                <span className={styles.metaRow}>
+                  {item.year && <span>{item.year}</span>}
+                  <span className={cx(picker.tag, picker.tagOutline)}>
+                    {TYPE_LABEL[item.kind]}
+                  </span>
                 </span>
-                <IconChevronRight size={16} aria-hidden />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+              </span>
+              <IconChevronRight
+                size={16}
+                className={styles.chevron}
+                aria-hidden
+              />
+            </button>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
 
-function Poster({ src }: { src: string | null }) {
+/** A poster image, or a film icon when there's none or it doesn't load */
+function Poster({ src, className }: { src: string | null; className: string }) {
   const [failed, setFailed] = useState(false);
-  if (!src || failed) {
-    return (
-      <span className={styles.poster} aria-hidden>
-        <IconMovie size={18} />
-      </span>
-    );
-  }
   return (
-    <img
-      className={styles.poster}
-      src={src}
-      alt=""
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-    />
+    <span className={className} aria-hidden>
+      {!src || failed ? (
+        <IconMovie size={18} />
+      ) : (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
   );
 }
 
@@ -445,31 +661,41 @@ function TitleView({
 
   return (
     <>
-      <div className={styles.titleHead}>
-        <Poster src={item.poster} />
-        <div>
-          <div className={styles.heading}>{item.name}</div>
-          <small className={styles.rowMeta}>
-            {[TYPE_LABEL[item.kind], item.year].filter(Boolean).join(" · ")}
-          </small>
-        </div>
-      </div>
+      <Header
+        poster={data?.poster ?? item.poster}
+        title={item.name}
+        meta={
+          <>
+            {(data?.releaseInfo || item.year) && (
+              <span>{data?.releaseInfo || item.year}</span>
+            )}
+            <span className={cx(picker.tag, picker.tagOutline)}>
+              {TYPE_LABEL[item.kind]}
+            </span>
+          </>
+        }
+        note="Pick the episode that's playing."
+      />
       {meta.status === "loading" && <LoadingState text="Loading episodes…" />}
       {meta.status === "error" && (
         <ErrorState message={meta.message} onRetry={meta.retry} />
       )}
       {data && data.seasons.length === 0 && (
-        <p className={styles.note}>No episodes found for this show.</p>
+        <div className={picker.empty}>No episodes found for this show.</div>
       )}
       {data && data.seasons.length > 0 && (
         <>
           {data.seasons.length > 1 && (
-            <div className={styles.chips} role="group" aria-label="Season">
+            <div
+              className={cx(picker.seasonBar, styles.seasons)}
+              role="group"
+              aria-label="Season"
+            >
               {data.seasons.map((s) => (
                 <button
                   key={s.season}
                   type="button"
-                  className={styles.chip}
+                  className={picker.pill}
                   aria-pressed={s.season === shownSeason}
                   onClick={() => setSeason(s.season)}
                 >
@@ -481,26 +707,39 @@ function TitleView({
           <ul className={styles.list} aria-label="Episodes">
             {episodes.map((ep) => {
               const isGuess = guessed?.id === ep.id;
+              const date = formatAirDate(ep.released);
               return (
                 <li key={ep.id}>
                   <button
                     type="button"
+                    data-row
                     ref={isGuess ? guessedRef : undefined}
-                    className={styles.row}
+                    className={cx(picker.item, styles.row)}
                     data-guess={isGuess || undefined}
                     aria-current={isGuess || undefined}
                     onClick={() => onPick(data, ep)}
                   >
-                    <span className={styles.code}>
-                      {episodeCode(ep.season, ep.episode)}
-                    </span>
-                    <span className={styles.grow}>
-                      <span className={styles.rowTitle}>
-                        {ep.title || `Episode ${ep.episode}`}
+                    <span className={cx(picker.grow, styles.lines)}>
+                      <span className={picker.title}>
+                        <span className={picker.epNum}>
+                          {episodeCode(ep.season, ep.episode)}
+                        </span>
+                        <span>{ep.title || `Episode ${ep.episode}`}</span>
                       </span>
+                      {(date || isGuess) && (
+                        <span className={picker.meta}>
+                          {date}
+                          {isGuess && (
+                            <span className={picker.playingNow}>
+                              {date ? " · " : ""}playing now
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </span>
-                    {isGuess && <span className={styles.badge}>Playing</span>}
-                    <IconChevronRight size={16} aria-hidden />
+                    <span className={styles.hint} aria-hidden>
+                      subtitles <IconChevronRight size={14} />
+                    </span>
                   </button>
                 </li>
               );
@@ -511,6 +750,33 @@ function TitleView({
     </>
   );
 }
+
+/** The title/episode header: poster, name, a meta line and a short note (the picker's title header) */
+function Header({
+  poster,
+  title,
+  meta,
+  note,
+}: {
+  poster: string | null;
+  title: string;
+  meta?: React.ReactNode;
+  note?: string;
+}) {
+  return (
+    <div className={cx(picker.titleHead, styles.head)}>
+      <Poster src={poster} className={cx(picker.poster, styles.poster)} />
+      <div className={picker.grow}>
+        <h3>{title}</h3>
+        {meta && <div className={picker.headMeta}>{meta}</div>}
+        {note && <p>{note}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** "en" → "EN", "pt-BR" → "PT" (the language chip on a subtitle row) */
+const langChip = (lang: string) => (lang.split("-")[0] || "?").toUpperCase();
 
 function SubtitlesView({
   target,
@@ -563,45 +829,59 @@ function SubtitlesView({
 
   return (
     <>
-      <div className={styles.titleHead}>
-        <span className={styles.poster} aria-hidden>
-          <IconSubtitles size={18} />
-        </span>
-        <div className={styles.heading}>{target.label}</div>
-      </div>
+      <Header
+        poster={target.poster}
+        title={target.label}
+        meta={
+          subData ? (
+            <span>
+              <IconSubtitles size={14} className={styles.inlineIcon} />{" "}
+              {subData.length === 1
+                ? "1 subtitle"
+                : `${subData.length} subtitles`}
+              {groups.length > 1 ? ` in ${groups.length} languages` : ""}
+            </span>
+          ) : undefined
+        }
+        note="Picking one loads it for everyone in the room."
+      />
       {subs.status === "loading" && <LoadingState text="Finding subtitles…" />}
       {subs.status === "error" && (
         <ErrorState message={subs.message} onRetry={subs.retry} />
       )}
       {subs.status === "done" && subs.data.length === 0 && (
-        <p className={styles.note}>
+        <div className={picker.empty}>
           No subtitles found for this {target.noun}.
-        </p>
+        </div>
       )}
       {groups.map((g) => (
         <section key={g.lang} aria-label={g.language}>
-          <div className={styles.groupLabel}>
+          <div className={picker.groupLabel}>
             {g.language}
-            <span>{g.items.length}</span>
+            <span className={styles.count}>{g.items.length}</span>
           </div>
           <ul className={styles.list}>
             {g.items.map((s) => (
               <li key={s.id}>
                 <button
                   type="button"
-                  className={styles.row}
+                  data-row
+                  className={cx(picker.item, styles.row)}
                   disabled={busyId !== null}
                   aria-busy={busyId === s.id || undefined}
                   onClick={() => pick(s)}
                 >
-                  <span className={styles.grow}>
-                    <span className={styles.rowTitle}>{s.label}</span>
-                    <small className={styles.rowMeta}>OpenSubtitles</small>
+                  <span className={cx(picker.lead, styles.lang)} aria-hidden>
+                    {langChip(s.lang)}
+                  </span>
+                  <span className={cx(picker.grow, styles.lines)}>
+                    <span className={picker.title}>{s.label}</span>
+                    <span className={picker.meta}>OpenSubtitles</span>
                   </span>
                   {busyId === s.id ? (
                     <Loader size="xs" />
                   ) : (
-                    <span className={styles.action}>Load for everyone</span>
+                    <span className={styles.hint}>Load for everyone</span>
                   )}
                 </button>
               </li>
@@ -616,7 +896,7 @@ function SubtitlesView({
 function LoadingState({ text }: { text: string }) {
   return (
     <div className={styles.state} role="status">
-      <Loader size="sm" />
+      <Loader size="sm" color="gray" />
       <span>{text}</span>
     </div>
   );
@@ -630,10 +910,10 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className={styles.state} role="alert">
+    <div className={picker.errorBox} role="alert">
       <IconAlertTriangle size={18} className={styles.danger} aria-hidden />
-      <span>{message}</span>
-      <button type="button" className={styles.link} onClick={onRetry}>
+      <span className={cx(picker.grow, styles.lines)}>{message}</span>
+      <button type="button" className={styles.retry} onClick={onRetry}>
         Try again
       </button>
     </div>

@@ -1,150 +1,33 @@
-/* "Search subtitles…": dark glass like the player menus, a bottom sheet on phones */
+/*
+ * "Search subtitles…": built from the source picker's parts (picker/SourcePicker.module.css: header, breadcrumbs,
+ * rows, pills, footer). Only what's specific to the subtitle search lives here.
+ */
 
-.content {
-  border: 1px solid var(--wp-border);
-  background: var(--wp-glass);
-  backdrop-filter: var(--wp-glass-blur);
-  -webkit-backdrop-filter: var(--wp-glass-blur);
-  box-shadow: var(--wp-sh-3);
-}
-
-.header {
-  background: transparent;
-}
-
-.title {
-  font-size: var(--wp-fs-lg);
-  font-weight: 700;
-}
-
-.body {
-  padding-top: 0;
-}
-
-.sheetInner {
-  align-items: flex-end;
-  padding: 0;
-}
-
-.sheet {
-  max-height: calc(100dvh - 48px);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.root {
-  display: grid;
-  gap: var(--wp-sp-3);
-  min-height: 240px;
-}
-
-.root > [hidden] {
-  display: none;
-}
-
-.root > div:not([hidden]) {
-  display: grid;
-  gap: var(--wp-sp-3);
-}
-
-.back,
-.link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--wp-sp-1);
-  justify-self: start;
-  padding: var(--wp-sp-1) 0;
-  border: 0;
-  background: none;
-  color: var(--wp-accent-text);
-  font: inherit;
-  font-size: var(--wp-fs-sm);
-  cursor: pointer;
-}
-
-.back:hover,
-.link:hover {
-  color: var(--wp-accent-hover);
-  text-decoration: underline;
-}
-
-.back:focus-visible,
-.link:focus-visible,
-.row:focus-visible,
-.chip:focus-visible {
-  outline: 2px solid var(--wp-accent);
-  outline-offset: 2px;
-}
-
-.searchRow {
-  display: flex;
-  align-items: center;
-  gap: var(--wp-sp-2);
-  height: var(--wp-control-h);
-  padding: 0 var(--wp-sp-3);
-  border: 1px solid var(--wp-border-strong);
-  border-radius: var(--wp-r-md);
-  background: var(--wp-surface-1);
-}
-
-.searchRow:focus-within {
-  border-color: var(--wp-accent);
-}
-
-.searchIcon {
-  flex: none;
-  color: var(--wp-text-3);
-}
-
-.input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--wp-text);
-  font: inherit;
-  font-size: var(--wp-fs-md);
-}
-
-.input::placeholder {
-  color: var(--wp-text-3);
-}
-
-.note {
-  margin: var(--wp-sp-2) 0;
-  color: var(--wp-text-2);
-  font-size: var(--wp-fs-sm);
+/* A steady height, so the dialog doesn't jump between search, episodes and subtitles */
+.content:not([data-full-screen]) {
+  height: min(640px, 80vh);
 }
 
 .list {
-  display: grid;
-  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* The picker's rows are divs; ours are buttons */
 .row {
-  display: flex;
-  align-items: center;
-  gap: var(--wp-sp-3);
-  width: 100%;
-  min-height: 44px;
-  padding: var(--wp-sp-2);
   border: 0;
-  border-radius: var(--wp-r-md);
-  background: transparent;
-  color: var(--wp-text);
+  background: none;
+  color: inherit;
   font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--wp-dur-fast) var(--wp-ease);
 }
 
-.row:hover:not(:disabled) {
+.row:focus-visible {
+  outline: 2px solid var(--wp-accent);
+  outline-offset: -2px;
+}
+
+.row:focus-visible:not(:hover) {
   background: var(--wp-surface-3);
 }
 
@@ -161,150 +44,154 @@
   background: var(--wp-accent-soft);
 }
 
-.row > svg {
-  flex: none;
-  color: var(--wp-text-3);
+.row[data-guess]:hover {
+  background: var(--wp-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--wp-accent);
 }
 
-.grow {
+/* A row's title and meta line, stacked (they're spans inside a button) */
+.lines {
   display: grid;
-  flex: 1;
   min-width: 0;
 }
 
-.rowTitle {
-  overflow: hidden;
-  font-size: var(--wp-fs-md);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* No native clear button: the field matches the picker's */
+.input::-webkit-search-cancel-button,
+.input::-webkit-search-decoration {
+  appearance: none;
 }
 
-.rowMeta {
-  color: var(--wp-text-3);
-  font-size: var(--wp-fs-xs);
-}
-
-.poster {
-  display: inline-flex;
+/* Small poster on a search result */
+.thumb {
+  display: grid;
   flex: none;
-  align-items: center;
-  justify-content: center;
+  place-items: center;
   width: 36px;
-  height: 54px;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
   border-radius: var(--wp-r-sm);
   background: var(--wp-surface-3);
   color: var(--wp-text-3);
+}
+
+.thumb img,
+.poster img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
-.titleHead {
+/* The header poster: the picker's, with an icon instead of text when there's no image */
+.poster {
+  align-items: center;
+  justify-content: center;
+  color: var(--wp-text-3);
+}
+
+.head {
+  align-items: center;
+}
+
+.metaRow {
   display: flex;
   align-items: center;
-  gap: var(--wp-sp-3);
-}
-
-.heading {
-  font-size: var(--wp-fs-lg);
-  font-weight: 600;
-}
-
-.chips,
-/* Beats `.root > div:not([hidden])` (grid), which otherwise stacks the chips one per row */
-.root > div.chips {
-  display: flex;
-  gap: var(--wp-sp-2);
-  overflow-x: auto;
-  padding-bottom: var(--wp-sp-1);
-  scrollbar-width: thin;
-}
-
-.chip {
-  flex: none;
-  height: 30px;
-  padding: 0 var(--wp-sp-3);
-  border: 1px solid var(--wp-border-strong);
-  border-radius: var(--wp-r-full);
-  background: transparent;
+  gap: 6px;
+  margin-top: 2px;
   color: var(--wp-text-2);
-  font: inherit;
   font-size: var(--wp-fs-sm);
-  cursor: pointer;
 }
 
-.chip[aria-pressed="true"] {
-  border-color: var(--wp-accent);
-  background: var(--wp-accent-soft);
-  color: var(--wp-accent-text);
-}
-
-.code {
+.chevron {
   flex: none;
-  min-width: 56px;
   color: var(--wp-text-3);
-  font-family: var(--wp-font-mono);
-  font-size: var(--wp-fs-xs);
 }
 
-.badge {
-  flex: none;
-  padding: 2px var(--wp-sp-2);
-  border-radius: var(--wp-r-full);
-  background: var(--wp-accent-soft);
-  color: var(--wp-accent-text);
-  font-size: var(--wp-fs-xs);
-}
-
-.action {
-  flex: none;
-  color: var(--wp-accent-text);
-  font-size: var(--wp-fs-xs);
-  opacity: 0;
-  transition: opacity var(--wp-dur-fast) var(--wp-ease);
-}
-
-.row:hover .action,
-.row:focus-visible .action {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .action {
-    opacity: 1;
-  }
-}
-
-.groupLabel {
+/* "subtitles ›" / "Load for everyone": faint, brighter on the row under the pointer or keyboard */
+.hint {
   display: flex;
-  justify-content: space-between;
-  margin: var(--wp-sp-2) 0 var(--wp-sp-1);
-  padding: 0 var(--wp-sp-2);
-  color: var(--wp-text-2);
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--wp-text-3);
   font-size: var(--wp-fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  transition: color var(--wp-dur-fast) var(--wp-ease);
 }
 
-.groupLabel span {
-  color: var(--wp-text-3);
-  font-weight: 400;
+.row:hover .hint,
+.row:focus-visible .hint {
+  color: var(--wp-accent-text);
+}
+
+.seasons {
+  padding-top: var(--wp-sp-1);
+}
+
+/* The language chip on a subtitle row */
+.lang {
+  font: 600 12px var(--wp-font-mono);
+  letter-spacing: 0.02em;
+}
+
+.count {
+  margin-left: auto;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.inlineIcon {
+  vertical-align: -2px;
 }
 
 .state {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: var(--wp-sp-2);
-  padding: var(--wp-sp-4) 0;
+  padding: var(--wp-sp-6) var(--wp-sp-4);
   color: var(--wp-text-2);
   font-size: var(--wp-fs-sm);
 }
 
 .danger {
+  flex: none;
   color: var(--wp-danger);
 }
 
-.foot {
-  padding-top: var(--wp-sp-2);
-  border-top: 1px solid var(--wp-border);
+.retry,
+.footLink {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--wp-sp-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wp-accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.footLink {
+  font-weight: 500;
+}
+
+.retry:hover,
+.footLink:hover {
+  color: var(--wp-accent-hover);
+  text-decoration: underline;
+}
+
+.retry:focus-visible,
+.footLink:focus-visible {
+  outline: 2px solid var(--wp-accent);
+  outline-offset: 2px;
+  border-radius: var(--wp-r-xs);
+}
+
+/* The picker hides its footer on phones; ours stays when it holds the file-name search link */
+@media (max-width: 768px) {
+  .foot.foot {
+    display: flex;
+  }
 }
