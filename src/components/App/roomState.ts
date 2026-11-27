@@ -125,6 +125,13 @@ export interface RoomState {
   subtitleSyncJob: { auto: boolean; progress: number } | null;
   /** Someone else's device is computing the room's subtitle auto-sync */
   subtitleSyncRemote: { by: string } | null;
+  /**
+   * The last auto-sync outcome, shown in the subtitles menu for a while (toasts are invisible in element fullscreen)
+   */
+  subtitleSyncOutcome: {
+    text: string;
+    tone: "success" | "warning" | "danger";
+  } | null;
   /** Extra subtitle tracks for the menu (slot for auto subtitles; optional) */
   subtitleTracks?: SubtitleTrackOption[];
   /** A short message for the player's on-screen display (e.g. "Alex paused" in fullscreen) */
@@ -226,6 +233,7 @@ export function createInitialRoomState(): RoomState {
     roomSettings: { ...DEFAULT_ROOM_SETTINGS },
     subtitleSyncJob: null,
     subtitleSyncRemote: null,
+    subtitleSyncOutcome: null,
     roomAccess: null,
     roomDeleted: null,
     call: initialCallState(readCallPrefs()),

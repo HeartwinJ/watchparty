@@ -12,7 +12,7 @@ import type { SyncResult } from "./signal";
 const toast = vi.fn();
 vi.mock("../ui/toast", () => ({ toast: (...a: unknown[]) => toast(...a) }));
 
-const { useSubtitleSync } = await import("./useSubtitleSync");
+const { useSubtitleSync, OUTCOME_MS } = await import("./useSubtitleSync");
 
 const VIDEO = "https://cdn.example.com/movie.mkv";
 const SUB = "https://subs.example.com/movie.srt";
@@ -136,12 +136,38 @@ describe("the wand (syncNow)", () => {
     expect(t.result.current.state.subtitleSyncJob?.progress).toBe(0.4);
     t.finish(confident(2.35));
     await flush();
-    expect(t.subtitles.setTiming).toHaveBeenCalledWith(2.35, 1);
+    // Marked as auto-sync, so the room's chat line says so
+    expect(t.subtitles.setTiming).toHaveBeenCalledWith(2.35, 1, { auto: true });
     expect(toast).toHaveBeenCalledWith(
       "Subtitles synced: +2.35 s",
       expect.objectContaining({ tone: "success" }),
     );
     expect(t.result.current.state.subtitleSyncJob).toBeNull();
+    // ...and shown in the menu for a while (toasts don't show in fullscreen)
+    expect(t.result.current.state.subtitleSyncOutcome).toEqual({
+      text: "Subtitles synced: +2.35 s",
+      tone: "success",
+    });
+    act(() => vi.advanceTimersByTime(OUTCOME_MS));
+    expect(t.result.current.state.subtitleSyncOutcome).toBeNull();
+  });
+
+  it("clears the shown outcome when a new sync starts or the video changes", async () => {
+    const t = setup();
+    act(() => void t.result.current.sync.syncNow());
+    t.finish(confident(1));
+    await flush();
+    expect(t.result.current.state.subtitleSyncOutcome).not.toBeNull();
+    act(() => void t.result.current.sync.syncNow());
+    expect(t.result.current.state.subtitleSyncOutcome).toBeNull();
+    t.fail(new AutoSyncError("Timed out reading the video's audio"));
+    await flush();
+    expect(t.result.current.state.subtitleSyncOutcome).toEqual({
+      text: "Timed out reading the video's audio",
+      tone: "danger",
+    });
+    act(() => t.result.current.sync.onVideoChange());
+    expect(t.result.current.state.subtitleSyncOutcome).toBeNull();
   });
 
   it("applies a time scale for frame-rate drift", async () => {
@@ -149,7 +175,11 @@ describe("the wand (syncNow)", () => {
     act(() => void t.result.current.sync.syncNow());
     t.finish({ ...confident(-1.2), scale: 24000 / 1001 / 25 });
     await flush();
-    expect(t.subtitles.setTiming).toHaveBeenCalledWith(-1.2, 24000 / 1001 / 25);
+    expect(t.subtitles.setTiming).toHaveBeenCalledWith(
+      -1.2,
+      24000 / 1001 / 25,
+      { auto: true },
+    );
     expect(toast).toHaveBeenCalledWith(
       "Subtitles synced: −1.2 s · speed 0.959 (23.976→25 fps)",
       expect.anything(),
@@ -477,6 +507,9 @@ describe("room auto-sync", () => {
     expect(toast).toHaveBeenCalledWith(
       "Subtitles auto-synced by Bob: +3.0 s",
       expect.anything(),
+    );
+    expect(t.result.current.state.subtitleSyncOutcome?.text).toBe(
+      "Subtitles auto-synced by Bob: +3.0 s",
     );
     toast.mockClear();
     act(() =>

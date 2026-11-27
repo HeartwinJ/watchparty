@@ -1305,31 +1305,41 @@ export class Room {
     }
   };
 
-  /** CMD:subtitleTiming {offset, scale}: sets both (scale 0.9–1.1); Reset sends {offset: 0, scale: 1} */
+  /**
+   * CMD:subtitleTiming {offset, scale, auto?}: sets both (scale 0.9–1.1); Reset sends {offset: 0, scale: 1}. `auto`:
+   * the result of someone's auto-sync wand, announced as a `subtitleAutoSync` chat line.
+   */
   private setSubtitleTiming = (socket: Socket, data: unknown) => {
     const timing = parseSubtitleTiming(data);
     if (timing) {
-      this.commitSubtitleTiming(socket, timing);
+      const auto = (data as { auto?: unknown }).auto === true;
+      this.commitSubtitleTiming(socket, timing, auto);
     }
   };
 
   /**
-   * A timing set by hand: tells the others (REC:subtitleOffset {offset, scale, actor}), saves it for this video, and
-   * announces it in chat once it stops changing.
+   * A timing set by a person (by hand, or with their auto-sync wand: `auto`): tells the others
+   * (REC:subtitleOffset {offset, scale, actor, auto?}), saves it for this video, and announces it in chat once it stops
+   * changing (a `subtitleAutoSync` line when the last change was the wand's).
    */
-  private commitSubtitleTiming = (socket: Socket, timing: SubtitleTiming) => {
+  private commitSubtitleTiming = (
+    socket: Socket,
+    timing: SubtitleTiming,
+    auto = false,
+  ) => {
     this.setLoadedTiming(timing);
     this.subtitleSync.manualOffset();
     socket.broadcast.emit("REC:subtitleOffset", {
       ...timing,
       actor: this.getActor(socket),
+      ...(auto ? { auto: true } : {}),
     });
     this.saveCurrentSubtitleTiming();
     clearTimeout(this.subtitleOffsetChatTimer);
     this.subtitleOffsetChatTimer = setTimeout(() => {
       this.addChatMessage(socket, {
         id: socket.clientId,
-        cmd: "subtitleOffset",
+        cmd: auto ? "subtitleAutoSync" : "subtitleOffset",
         msg: subtitleTimingChatMsg({
           offset: this.subtitleOffset,
           scale: this.subtitleScale,

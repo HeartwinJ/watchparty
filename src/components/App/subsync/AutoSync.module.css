@@ -39,3 +39,16 @@
   background: var(--wp-accent);
   transition: width var(--wp-dur-base) ease;
 }
+
+/* The last outcome under "Auto-sync" (!important: beats `.grow small` in Player.module.css) */
+.success {
+  color: var(--wp-success) !important;
+}
+
+.warning {
+  color: var(--wp-warning) !important;
+}
+
+.danger {
+  color: var(--wp-danger) !important;
+}

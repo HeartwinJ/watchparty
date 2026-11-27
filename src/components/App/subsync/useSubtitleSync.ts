@@ -21,6 +21,8 @@ const CUE_WAIT_TRIES = 20;
 /** Room auto-sync: random delay before claiming, so the first viewer ready usually wins without a race */
 const CLAIM_JITTER_MS = 1500;
 const TOAST_ID = "wp-subsync";
+/** How long the outcome stays in the subtitles menu's Auto-sync row */
+export const OUTCOME_MS = 15_000;
 
 /**
  * Auto subtitle sync on this device (see "Subtitle auto-sync" in components/App/README.md):
@@ -59,6 +61,7 @@ export function useSubtitleSync(opts: {
     const pending = new Set<string>();
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let claimTimer: ReturnType<typeof setTimeout> | undefined;
+    let outcomeTimer: ReturnType<typeof setTimeout> | undefined;
     const pairKey = (video: string, key: string) => `${video}\n${key}`;
 
     const availability = () => {
@@ -88,6 +91,23 @@ export function useSubtitleSync(opts: {
       };
     };
 
+    /** Tells this viewer how a sync ended: a toast, and the Auto-sync row in the menu (works in fullscreen) */
+    const report = (text: string, tone: "success" | "warning" | "danger") => {
+      toast(text, { id: TOAST_ID, tone });
+      clearTimeout(outcomeTimer);
+      store.set({ subtitleSyncOutcome: { text, tone } });
+      outcomeTimer = setTimeout(
+        () => store.set({ subtitleSyncOutcome: null }),
+        OUTCOME_MS,
+      );
+    };
+    const clearOutcome = () => {
+      clearTimeout(outcomeTimer);
+      if (store.get().subtitleSyncOutcome) {
+        store.set({ subtitleSyncOutcome: null });
+      }
+    };
+
     const setJob = (progress: number) => {
       if (!job) {
         return;
@@ -105,6 +125,7 @@ export function useSubtitleSync(opts: {
       const controller = new AbortController();
       job = { controller, auto, video: s.roomMedia };
       const mine = job;
+      clearOutcome();
       setJob(0);
       const promise = run({
         source,
@@ -143,17 +164,17 @@ export function useSubtitleSync(opts: {
         const result = await startJob(false, sel.cues, avail.source);
         const timing = syncResultToTiming(result);
         if (timing) {
-          subtitles.setTiming(timing.offset, timing.scale);
+          subtitles.setTiming(timing.offset, timing.scale, { auto: true });
         }
-        toast(describeSyncOutcome(timing?.offset ?? null, timing ?? {}), {
-          id: TOAST_ID,
-          tone: timing ? "success" : "warning",
-        });
+        report(
+          describeSyncOutcome(timing?.offset ?? null, timing ?? {}),
+          timing ? "success" : "warning",
+        );
       } catch (err) {
         if (!(err instanceof AutoSyncError && err.cancelled)) {
-          toast(
+          report(
             err instanceof Error ? err.message : "Couldn't sync subtitles",
-            { id: TOAST_ID, tone: "danger" },
+            "danger",
           );
         }
       }
@@ -260,16 +281,13 @@ export function useSubtitleSync(opts: {
             store.set({ subtitleSyncRemote: null });
             const mine = e.by?.id === clientId;
             if (mine || (e.offset !== null && e.offset !== undefined)) {
-              toast(
+              report(
                 describeSyncOutcome(e.offset ?? null, {
                   auto: true,
                   by: mine ? undefined : nameOf(e.by),
                   scale: e.scale,
                 }),
-                {
-                  id: TOAST_ID,
-                  tone: e.offset == null ? "warning" : "success",
-                },
+                e.offset == null ? "warning" : "success",
               );
             }
           }
@@ -294,6 +312,7 @@ export function useSubtitleSync(opts: {
       cancel("any");
       clearTimeout(retryTimer);
       clearTimeout(claimTimer);
+      clearOutcome();
       pending.clear();
       store.set({ subtitleSyncRemote: null });
     };

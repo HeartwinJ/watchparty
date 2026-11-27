@@ -343,16 +343,20 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
   (first to last cue); audio is interleaved with video, so listening costs about bitrate × seconds:
   `windowSecondsForBitrate` shortens the windows to stay near 300 MB, never below 4 × 60 s. After the 3rd window a very
-  clear match (`isClearMatch`) stops early. While converting, it listens to the converter's audio track. The URL is
+  clear match (`isClearMatch`) stops early; the worker then reports 100% ("Matching…"), so the bar never sits at ~70%.
+  While converting, it listens to the converter's audio track. The URL is
   never logged (AIOStreams playback URLs carry a credential).
 - **Where:** direct links and (for the sharer only, via `ShareSession.file`) file shares. Not YouTube, screen share,
   HLS/DASH or live streams; `autoSyncAvailability()` gives the reason the wand shows instead. Needs `Worker` +
   WebCodecs `AudioDecoder`.
 - **The wand** (`AutoSyncButton` in the subtitles menu's Timing offset section): `room.subsync.syncNow()` aligns the
   selected track's original cues (`HTML.getOriginalCues`) and applies offset and scale through `subtitles.setTiming`,
-  so it respects Everyone / Just me; ±0.1 s then fine-tunes the offset and keeps the scale. Progress ("Listening… 40%") comes from
-  `state.subtitleSyncJob`; closing the menu or a new video cancels it; a toast says "Subtitles synced: +2.35 s" or
-  "Couldn't find a confident match, offset unchanged".
+  so it respects Everyone / Just me; ±0.1 s then fine-tunes the offset and keeps the scale. For Everyone it sends
+  `CMD:subtitleTiming` with `auto: true`, so the chat line reads "auto-synced the subtitles: …" rather than a manual
+  offset change. Progress ("Listening… 40%") comes from `state.subtitleSyncJob`; closing the menu or a new video
+  cancels it. The outcome ("Subtitles synced: +2.35 s", "Couldn't find a confident match, offset unchanged" or the
+  error) is a toast and also stays under "Auto-sync" in the menu for 15 s (`state.subtitleSyncOutcome`), because toasts
+  don't show in element fullscreen; room auto-sync results land there too.
 - **Room auto-sync** (`roomSettings.autoSyncSubtitles`, owners, default off): whenever a subtitle with cues is
   selected (a room subtitle via `REC:subtitle`/`REC:host`, picking a track in the menu, or the setting turning on),
   `useSubtitleSync.evaluate()` waits for the cues (up to 20 s) and, if this device can compute it, sends a claim

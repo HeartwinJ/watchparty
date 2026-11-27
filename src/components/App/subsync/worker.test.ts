@@ -82,12 +82,14 @@ describe("subtitle sync worker", () => {
       maxOffset: 600,
     });
     expect(posted[0]).toEqual({ type: "progress", fraction: 0.25 });
-    expect(posted[1]).toMatchObject({
+    // Complete once reading is done (also after an early stop)
+    expect(posted[1]).toEqual({ type: "progress", fraction: 1 });
+    expect(posted[2]).toMatchObject({
       type: "result",
       result: result(1.5),
       timing: { readMs: expect.any(Number), alignMs: expect.any(Number) },
     });
-    expect(postSpy).toHaveBeenCalledTimes(2);
+    expect(postSpy).toHaveBeenCalledTimes(3);
   });
 
   it("reuses the early alignment when a clear match stopped the reading", async () => {
