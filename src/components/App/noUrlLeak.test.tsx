@@ -184,10 +184,10 @@ describe("room page", () => {
     expect(seen).not.toContain(SECRET_HOST);
     expect(seen).not.toContain("eyFAKEBLOB");
     // "Search subtitles…" starts from the title/episode, never the URL
+    fireEvent.click(screen.getByRole("button", { name: "Subtitles" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Subtitles and audio" }),
+      await screen.findByRole("button", { name: "Search subtitles…" }),
     );
-    fireEvent.click(await screen.findByText("Search subtitles…"));
     await screen.findByText("No subtitles found for this episode.");
     expect(document.body.textContent).toContain(NAME);
     const seenInSearch = visibleStrings(document.body);

@@ -121,6 +121,110 @@ describe("SubtitlesMenu tracks", () => {
     expect(item("Off").getAttribute("aria-checked")).toBe("true");
   });
 
+  it("groups a long list by language, with a filter", () => {
+    const langs = ["en", "en", "en", "es", "fr", "de", "it", "nl", "pl"];
+    const counts: Record<string, number> = {};
+    const subtitleTracks = langs.map((lang, i) => {
+      counts[lang] = (counts[lang] ?? 0) + 1;
+      const name = new Intl.DisplayNames(["en"], { type: "language" }).of(
+        lang,
+      )!;
+      return {
+        id: `s${i}`,
+        lang,
+        label: counts[lang] > 1 ? `${name} ${counts[lang]}` : name,
+        url: `https://subs.example.com/${i}.srt`,
+        detail: "OpenSubtitles",
+        source: "auto" as const,
+      };
+    });
+    const r = setup({
+      state: { subtitleTracks },
+      media: {
+        tracks: [
+          { index: 0, label: "English [SDH]", language: "", fromRoom: false },
+        ],
+      },
+    });
+    // English (3 auto + 1 embedded) is one folded row; single languages are plain rows
+    const english = within(tracksMenu()).getByRole("menuitem", {
+      name: /English/,
+    });
+    expect(english.getAttribute("aria-expanded")).toBe("false");
+    expect(english.textContent).toContain("4 subtitles");
+    expect(
+      within(tracksMenu()).queryByRole("menuitemradio", { name: /English 2/ }),
+    ).toBeNull();
+    fireEvent.click(item(/Spanish/));
+    expect(r.socket.emits("CMD:subtitle")).toEqual([
+      ["https://subs.example.com/3.srt"],
+    ]);
+
+    fireEvent.click(english);
+    expect(english.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(item(/English 2/));
+    expect(r.socket.emits("CMD:subtitle").at(-1)).toEqual([
+      "https://subs.example.com/1.srt",
+    ]);
+    fireEvent.click(item(/English \[SDH\]/));
+    expect(r.player.html().selectSubtitleTrack).toHaveBeenCalledWith(0);
+    fireEvent.click(english);
+    expect(english.getAttribute("aria-expanded")).toBe("false");
+    // Selected inside a folded group: named on the group row
+    expect(english.textContent).toContain("English [SDH]");
+
+    // Filtering opens matching groups and hides the rest
+    const filter = screen.getByLabelText("Filter subtitles");
+    fireEvent.change(filter, { target: { value: "pol" } });
+    expect(
+      within(tracksMenu())
+        .getAllByRole("menuitemradio")
+        .map((b) => b.textContent),
+    ).toEqual(["Off", expect.stringContaining("Polish")]);
+    fireEvent.change(filter, { target: { value: "english 3" } });
+    expect(item(/English 3/)).toBeTruthy();
+    fireEvent.change(filter, { target: { value: "klingon" } });
+    expect(within(tracksMenu()).getByText(/No subtitles match/)).toBeTruthy();
+  });
+
+  it("opens the group of the selected subtitle by default", () => {
+    const url = "https://subs.example.com/en2.srt";
+    setup({
+      state: {
+        roomSubtitle: url,
+        subtitleTracks: Array.from({ length: 9 }, (_, i) => ({
+          id: `s${i}`,
+          lang: "en",
+          label: i ? `English ${i + 1}` : "English",
+          url: i === 1 ? url : `https://subs.example.com/${i}.srt`,
+          source: "auto" as const,
+        })),
+      },
+      media: {
+        tracks: [{ index: 0, label: "", language: "", fromRoom: true }],
+        selectedTrack: 0,
+      },
+    });
+    const english = within(tracksMenu()).getByRole("menuitem", {
+      name: /English/,
+    });
+    expect(english.getAttribute("aria-expanded")).toBe("true");
+    expect(item(/English 2/).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("names an embedded track without a label by its language or number", () => {
+    setup({
+      media: {
+        tracks: [
+          { index: 0, label: "", language: "fr", fromRoom: false },
+          { index: 1, label: "", language: "", fromRoom: false },
+        ],
+      },
+    });
+    expect(item(/French/)).toBeTruthy();
+    expect(item(/Track 2/)).toBeTruthy();
+  });
+
   it("the room track shows as checked auto track, not twice", () => {
     const url = "https://subs.example.com/en.srt";
     setup({
@@ -155,7 +259,7 @@ describe("SubtitlesMenu tracks", () => {
     ]);
     apiFetch.mockResolvedValue(Response.json({ hash: "abc123" }));
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitem", { name: /Load a .srt/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Load a .srt/ }));
     });
     expect(openFileSelector).toHaveBeenCalledWith(".srt,.vtt");
     expect(apiFetch.mock.calls[0][0]).toBe("/subtitle");
@@ -171,7 +275,7 @@ describe("SubtitlesMenu tracks", () => {
     const r = setup();
     openFileSelector.mockResolvedValue([]);
     await act(async () => {
-      fireEvent.click(screen.getByRole("menuitem", { name: /Load a .srt/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Load a .srt/ }));
     });
     expect(apiFetch).not.toHaveBeenCalled();
     expect(r.socket.emits("CMD:subtitle")).toEqual([]);
@@ -179,7 +283,7 @@ describe("SubtitlesMenu tracks", () => {
 
   it("loads a subtitle from a URL (trimmed; empty is ignored)", () => {
     const r = setup();
-    const toggle = screen.getByRole("menuitem", { name: /From a URL/ });
+    const toggle = screen.getByRole("button", { name: /From a URL/ });
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     const input = screen.getByLabelText("Subtitle URL");
@@ -197,7 +301,7 @@ describe("SubtitlesMenu tracks", () => {
 
   it("Search subtitles… closes the menu, leaves fullscreen and opens the search", () => {
     const r = setup({ media: { fullscreen: true } });
-    fireEvent.click(screen.getByRole("menuitem", { name: /Search subtitles/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Search subtitles/ }));
     expect(r.onClose).toHaveBeenCalled();
     expect(r.player.toggleFullscreen).toHaveBeenCalled();
     expect(r.subtitles.openSearch).toHaveBeenCalled();
@@ -205,7 +309,7 @@ describe("SubtitlesMenu tracks", () => {
 
   it("Search outside fullscreen doesn't toggle fullscreen", () => {
     const r = setup();
-    fireEvent.click(screen.getByRole("menuitem", { name: /Search subtitles/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Search subtitles/ }));
     expect(r.player.toggleFullscreen).not.toHaveBeenCalled();
   });
 });
@@ -223,74 +327,9 @@ describe("SubtitlesMenu on YouTube", () => {
     );
     expect(screen.queryByText("Timing offset")).toBeNull();
     expect(screen.queryByText("Style")).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: /Search/ })).toBeNull();
-  });
-});
-
-describe("SubtitlesMenu audio tracks", () => {
-  it("lists audio tracks when there are several", () => {
-    const r = setup({
-      state: {
-        audioTracks: [
-          { id: 1, label: "English 5.1" },
-          { id: 2, label: "Commentary" },
-        ] as any,
-        audioTrackId: 1,
-      },
-    });
-    const menu = screen.getByRole("menu", { name: "Audio tracks" });
     expect(
-      within(menu)
-        .getByRole("menuitemradio", { name: "English 5.1" })
-        .getAttribute("aria-checked"),
-    ).toBe("true");
-    fireEvent.click(
-      within(menu).getByRole("menuitemradio", { name: "Commentary" }),
-    );
-    expect(r.convert.setAudioTrack).toHaveBeenCalledWith(2);
-  });
-
-  it("hides the section with a single track", () => {
-    setup({ state: { audioTracks: [{ id: 1, label: "Only" }] as any } });
-    expect(screen.queryByRole("menu", { name: "Audio tracks" })).toBeNull();
-  });
-});
-
-describe("SubtitlesMenu volume boost", () => {
-  const boost = () => screen.getByRole("group", { name: "Boost" });
-  const night = () => screen.getByRole("group", { name: "Night mode" });
-
-  it("picks a boost level and Night mode for this device", () => {
-    const r = setup({ state: { audioBoost: { level: 1.5, night: false } } });
-    expect(
-      within(boost())
-        .getByRole("button", { name: "150%" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    fireEvent.click(within(boost()).getByRole("button", { name: "300%" }));
-    expect(r.player.setAudioBoost).toHaveBeenCalledWith({ level: 3 });
-    fireEvent.click(within(boost()).getByRole("button", { name: "Off" }));
-    expect(r.player.setAudioBoost).toHaveBeenLastCalledWith({ level: 1 });
-    expect(
-      within(night())
-        .getByRole("button", { name: "Off" })
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    fireEvent.click(within(night()).getByRole("button", { name: "On" }));
-    expect(r.player.setAudioBoost).toHaveBeenLastCalledWith({ night: true });
-    expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("explains when it's waiting for a click or can't be used", () => {
-    const r = setup({ state: { audioBoostStatus: "pending" } });
-    expect(screen.getByRole("status").textContent).toMatch(/next click/);
-    r.setState({ audioBoostStatus: "unavailable" });
-    expect(screen.getByRole("status").textContent).toMatch(/Not available/);
-  });
-
-  it("isn't offered for YouTube", () => {
-    setup({ media: { youtube: true, native: false } });
-    expect(screen.queryByRole("group", { name: "Boost" })).toBeNull();
+      screen.queryByRole("button", { name: /Search subtitles/ }),
+    ).toBeNull();
   });
 });
 

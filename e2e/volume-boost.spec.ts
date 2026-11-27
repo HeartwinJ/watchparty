@@ -29,8 +29,8 @@ const binds = (page: Page) =>
 
 async function openAudioMenu(page: Page) {
   await showControls(page);
-  await page.getByRole("button", { name: "Subtitles and audio" }).click();
-  return page.getByRole("dialog", { name: "Subtitles and audio" });
+  await page.getByRole("button", { name: "Audio", exact: true }).click();
+  return page.getByRole("dialog", { name: "Audio", exact: true });
 }
 
 const badge = (page: Page) => page.locator('[class*="_boostBadge_"]');

@@ -23,7 +23,13 @@ import {
 import type { SubtitleStyle } from "./useSubtitleStyle";
 import type { useTextTracks } from "./useTextTracks";
 import { AutoSyncButton } from "../subsync/AutoSyncButton";
-import { AudioBoostSection } from "./AudioBoostSection";
+import { SubtitleChoiceList } from "./SubtitleChoiceList";
+import {
+  guessLanguage,
+  languageName,
+  stripNumber,
+  type SubtitleChoice,
+} from "./subtitleChoices";
 import styles from "./Player.module.css";
 
 const SIZES: [SubtitleSize, string][] = [
@@ -55,9 +61,9 @@ async function uploadSubtitleFile(): Promise<string | undefined> {
 }
 
 /**
- * The CC menu: track list (auto tracks from room state first, then the room/embedded tracks), loading a file or URL,
- * the audio track when the converter found several, volume boost / Night mode, the timing offset (6b) and the subtitle
- * style.
+ * The CC menu: track list (auto tracks from room state first, then the room/embedded tracks; grouped by language with
+ * a filter when it's long, see SubtitleChoiceList), search / file / URL, the timing offset (6b) and the subtitle style.
+ * The audio track and volume boost live in the Audio menu (AudioMenu.tsx).
  */
 export function SubtitlesMenu(props: {
   room: Room;
@@ -84,28 +90,75 @@ export function SubtitlesMenu(props: {
     cmd.setSubtitle(u);
   };
 
+  // Auto tracks (from room state) first, then the room subtitle (unless it's one of them) and embedded tracks
+  const roomIsAuto = autoTracks.some((a) => a.url === state.roomSubtitle);
+  const picks = new Map<string, () => void>();
+  const choices: SubtitleChoice[] = [];
+  for (const t of autoTracks) {
+    const id = `auto:${t.id}`;
+    picks.set(id, () => pickRoomSubtitle(t.url));
+    choices.push({
+      id,
+      label: t.label,
+      detail: t.detail,
+      auto: t.source !== "manual",
+      checked:
+        state.roomSubtitle === t.url &&
+        !off &&
+        roomTrack?.index === tracks.selected,
+      language: languageName(t.lang) ?? (stripNumber(t.label) || "Other"),
+    });
+  }
+  for (const t of tracks.tracks) {
+    if (t.fromRoom && roomIsAuto) {
+      continue;
+    }
+    const id = `track:${t.index}`;
+    picks.set(id, () => {
+      player.html().selectSubtitleTrack(t.index);
+      tracks.refresh();
+      room.subsync.evaluate();
+    });
+    const name = languageName(t.language);
+    choices.push({
+      id,
+      label: t.fromRoom
+        ? "Room subtitles"
+        : t.label || name || `Track ${t.index + 1}`,
+      detail: t.fromRoom ? "Loaded for everyone" : "Embedded in the file",
+      checked: tracks.selected === t.index,
+      language: t.fromRoom
+        ? "Room subtitles"
+        : (name ?? (guessLanguage(t.label) || "Other")),
+    });
+  }
+
+  const offRow = (
+    <button
+      className={styles.menuItem}
+      role="menuitemradio"
+      aria-checked={youtube ? !ytOn : off}
+      onClick={() => {
+        if (youtube) {
+          player.youtube().setSubtitleMode("hidden");
+        } else {
+          player.html().selectSubtitleTrack(-1);
+        }
+        tracks.refresh();
+      }}
+    >
+      <IconCheck size={16} className={styles.check} />
+      <span className={styles.grow}>Off</span>
+    </button>
+  );
+
   return (
     <>
       <div className={styles.menuSection}>
         <div className={styles.menuLabel}>Subtitles</div>
-        <div role="menu" aria-label="Subtitle tracks">
-          <button
-            className={styles.menuItem}
-            role="menuitemradio"
-            aria-checked={youtube ? !ytOn : off}
-            onClick={() => {
-              if (youtube) {
-                player.youtube().setSubtitleMode("hidden");
-              } else {
-                player.html().selectSubtitleTrack(-1);
-              }
-              tracks.refresh();
-            }}
-          >
-            <IconCheck size={16} className={styles.check} />
-            <span className={styles.grow}>Off</span>
-          </button>
-          {youtube ? (
+        {youtube ? (
+          <div role="menu" aria-label="Subtitle tracks">
+            {offRow}
             <button
               className={styles.menuItem}
               role="menuitemradio"
@@ -121,109 +174,21 @@ export function SubtitlesMenu(props: {
                 <small>Provided by YouTube</small>
               </span>
             </button>
-          ) : (
-            <>
-              {autoTracks.map((t) => (
-                <button
-                  key={t.id}
-                  className={styles.menuItem}
-                  role="menuitemradio"
-                  aria-checked={
-                    state.roomSubtitle === t.url &&
-                    !off &&
-                    roomTrack?.index === tracks.selected
-                  }
-                  onClick={() => pickRoomSubtitle(t.url)}
-                >
-                  <IconCheck size={16} className={styles.check} />
-                  <span className={styles.grow}>
-                    {t.label}
-                    {t.detail && <small>{t.detail}</small>}
-                  </span>
-                  {t.source !== "manual" && (
-                    <span className={styles.badge}>Auto</span>
-                  )}
-                </button>
-              ))}
-              {tracks.tracks
-                .filter(
-                  (t) =>
-                    !t.fromRoom ||
-                    !autoTracks.some((a) => a.url === state.roomSubtitle),
-                )
-                .map((t) => (
-                  <button
-                    key={t.index}
-                    className={styles.menuItem}
-                    role="menuitemradio"
-                    aria-checked={tracks.selected === t.index}
-                    onClick={() => {
-                      player.html().selectSubtitleTrack(t.index);
-                      tracks.refresh();
-                      room.subsync.evaluate();
-                    }}
-                  >
-                    <IconCheck size={16} className={styles.check} />
-                    <span className={styles.grow}>
-                      {t.fromRoom ? "Room subtitles" : t.label}
-                      <small>
-                        {t.fromRoom
-                          ? "Loaded for everyone"
-                          : "Embedded in the file"}
-                      </small>
-                    </span>
-                  </button>
-                ))}
-              <button
-                className={styles.menuItem}
-                role="menuitem"
-                onClick={async () => {
-                  const u = await uploadSubtitleFile();
-                  if (u) {
-                    pickRoomSubtitle(u);
-                  }
-                }}
-              >
-                <IconUpload size={16} />
-                <span className={styles.grow}>Load a .srt / .vtt file…</span>
-              </button>
-              <button
-                className={styles.menuItem}
-                role="menuitem"
-                aria-expanded={urlOpen}
-                onClick={() => setUrlOpen((v) => !v)}
-              >
-                <IconLink size={16} />
-                <span className={styles.grow}>From a URL…</span>
-              </button>
-              {urlOpen && (
-                <form
-                  className={styles.urlRow}
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (url.trim()) {
-                      pickRoomSubtitle(url.trim());
-                      setUrl("");
-                      setUrlOpen(false);
-                    }
-                  }}
-                >
-                  <input
-                    type="url"
-                    aria-label="Subtitle URL"
-                    placeholder="https://…/subtitles.vtt"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                  />
-                  <button type="submit" className={styles.step}>
-                    Load
-                  </button>
-                </form>
-              )}
+          </div>
+        ) : (
+          <SubtitleChoiceList
+            choices={choices}
+            onPick={(id) => picks.get(id)?.()}
+            leading={offRow}
+          />
+        )}
+        {!youtube && (
+          <>
+            <div className={styles.actionRow}>
               {/* Keyless title search (subtitleSearch/); the OpenSubtitles API file-name search is linked from it */}
               <button
-                className={styles.menuItem}
-                role="menuitem"
+                className={styles.actionBtn}
+                aria-label="Search subtitles…"
                 onClick={() => {
                   props.onClose();
                   // The search is a page-level modal; leave fullscreen so it's visible
@@ -233,35 +198,59 @@ export function SubtitlesMenu(props: {
                   subtitles.openSearch();
                 }}
               >
-                <IconSearch size={16} />
-                <span className={styles.grow}>Search subtitles…</span>
+                <IconSearch size={15} />
+                Search
               </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {state.audioTracks && state.audioTracks.length > 1 && (
-        <div className={styles.menuSection}>
-          <div className={styles.menuLabel}>Audio</div>
-          <div role="menu" aria-label="Audio tracks">
-            {state.audioTracks.map((t) => (
               <button
-                key={t.id}
-                className={styles.menuItem}
-                role="menuitemradio"
-                aria-checked={state.audioTrackId === t.id}
-                onClick={() => room.convert.setAudioTrack(t.id)}
+                className={styles.actionBtn}
+                aria-label="Load a .srt / .vtt file…"
+                onClick={async () => {
+                  const u = await uploadSubtitleFile();
+                  if (u) {
+                    pickRoomSubtitle(u);
+                  }
+                }}
               >
-                <IconCheck size={16} className={styles.check} />
-                <span className={styles.grow}>{t.label}</span>
+                <IconUpload size={15} />
+                File
               </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!youtube && <AudioBoostSection room={room} />}
+              <button
+                className={styles.actionBtn}
+                aria-label="From a URL…"
+                aria-expanded={urlOpen}
+                onClick={() => setUrlOpen((v) => !v)}
+              >
+                <IconLink size={15} />
+                URL
+              </button>
+            </div>
+            {urlOpen && (
+              <form
+                className={styles.urlRow}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (url.trim()) {
+                    pickRoomSubtitle(url.trim());
+                    setUrl("");
+                    setUrlOpen(false);
+                  }
+                }}
+              >
+                <input
+                  type="url"
+                  aria-label="Subtitle URL"
+                  placeholder="https://…/subtitles.vtt"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                />
+                <button type="submit" className={styles.step}>
+                  Load
+                </button>
+              </form>
+            )}
+          </>
+        )}
+      </div>
 
       {!youtube && (
         <div className={styles.menuSection}>

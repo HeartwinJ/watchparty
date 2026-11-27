@@ -14,6 +14,7 @@ import {
   IconVolume2,
   IconVolumeOff,
   IconCheck,
+  IconHeadphones,
   IconMessage,
 } from "@tabler/icons-react";
 import { formatTimestamp } from "../../../utils/utils";
@@ -21,6 +22,7 @@ import type { Room } from "../hooks/useRoom";
 import { SeekBar } from "./SeekBar";
 import { PlayerMenu } from "./PlayerMenu";
 import { SubtitlesMenu } from "./SubtitlesMenu";
+import { AudioMenu, hasAudioMenu } from "./AudioMenu";
 import { SyncIndicator } from "./SyncIndicator";
 import type { PlaybackState } from "./usePlaybackState";
 import type { SubtitleStyle } from "./useSubtitleStyle";
@@ -31,9 +33,9 @@ import styles from "./Player.module.css";
 
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
-export type MenuName = "subtitles" | "speed";
+export type MenuName = "subtitles" | "audio" | "speed";
 
-/** The overlay control bar: seek bar, then play/±10 s/volume/time … sync/CC/speed/loop/PiP/fullscreen. */
+/** The overlay control bar: seek bar, then play/±10 s/volume/time … sync/chat/CC/audio/speed/loop/PiP/fullscreen. */
 export function ControlBar(props: {
   room: Room;
   playback: PlaybackState;
@@ -55,9 +57,12 @@ export function ControlBar(props: {
   const { state, player, cmd } = room;
   const ccRef = useRef<HTMLButtonElement>(null);
   const speedRef = useRef<HTMLButtonElement>(null);
+  const audioRef = useRef<HTMLButtonElement>(null);
   const seekable = player.hasDuration() && !player.isWebRTCShare();
   const pauseDisabled = player.isPauseDisabled();
   const youtube = player.usingYoutube();
+  const audioMenu = hasAudioMenu(room);
+  const boosted = !youtube && state.audioBoostStatus === "on";
   const subtitlesOn = youtube
     ? player.youtube().isSubtitled()
     : props.tracks.selected >= 0;
@@ -138,10 +143,10 @@ export function ControlBar(props: {
           >
             <VolumeIcon size={22} />
           </button>
-          {!youtube && state.audioBoostStatus === "on" && (
+          {boosted && (
             <span
               className={styles.boostBadge}
-              title="Volume boost / Night mode (subtitles and audio menu)"
+              title="Volume boost / Night mode (Audio menu)"
             >
               {describeBoost(state.audioBoost)}
             </span>
@@ -210,7 +215,7 @@ export function ControlBar(props: {
         <button
           ref={ccRef}
           className={styles.btn}
-          aria-label="Subtitles and audio"
+          aria-label="Subtitles"
           title="Subtitles"
           aria-haspopup="dialog"
           aria-expanded={menu === "subtitles"}
@@ -224,6 +229,21 @@ export function ControlBar(props: {
             <IconBadgeCc size={22} />
           )}
         </button>
+        {audioMenu && (
+          <button
+            ref={audioRef}
+            className={styles.btn}
+            aria-label="Audio"
+            title="Audio: track, volume boost, Night mode"
+            aria-haspopup="dialog"
+            aria-expanded={menu === "audio"}
+            aria-controls="wp-menu-audio"
+            aria-pressed={boosted}
+            onClick={() => toggleMenu("audio")}
+          >
+            <IconHeadphones size={22} />
+          </button>
+        )}
         <button
           ref={speedRef}
           className={`${styles.btn} ${styles.textBtn} ${styles.desktopOnly}`}
@@ -286,7 +306,7 @@ export function ControlBar(props: {
         onClose={() => setMenu(null)}
         target={props.container}
         sheet={sheet}
-        label="Subtitles and audio"
+        label="Subtitles"
         id="wp-menu-subtitles"
         trigger={ccRef}
       >
@@ -297,6 +317,17 @@ export function ControlBar(props: {
           setStyle={props.setSubtitleStyle}
           onClose={() => setMenu(null)}
         />
+      </PlayerMenu>
+      <PlayerMenu
+        open={menu === "audio" && audioMenu}
+        onClose={() => setMenu(null)}
+        target={props.container}
+        sheet={sheet}
+        label="Audio"
+        id="wp-menu-audio"
+        trigger={audioRef}
+      >
+        <AudioMenu room={room} />
       </PlayerMenu>
       <PlayerMenu
         open={menu === "speed"}

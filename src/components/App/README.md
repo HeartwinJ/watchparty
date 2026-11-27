@@ -64,7 +64,7 @@ useRoom(roomId)                          hooks/useRoom.ts: composes everything b
 | `RoomMessages.tsx`                        | Share/subtitle modals, loading + error overlays, reconnecting banner, error/success toasts                          |
 | `PlayerArea.tsx`                          | Re-exports `PlayerArea` and `SyncIndicator` from `player/`                                                          |
 | `player/PlayerArea.tsx`                   | The player: media, cues, gestures, auto-hide, keyboard, OSD, chat overlay/panel, quick chat, call tiles, cards      |
-| `player/ControlBar.tsx`                   | Overlay controls + speed menu; `SeekBar.tsx`, `SubtitlesMenu.tsx`, `PlayerMenu.tsx` (portal)                        |
+| `player/ControlBar.tsx`                   | Overlay controls + speed menu; `SeekBar.tsx`, `SubtitlesMenu.tsx`, `AudioMenu.tsx`, `PlayerMenu.tsx` (portal)       |
 | `player/SyncIndicator.tsx`                | Sync pill + popover (per-person drift, "Resync me"); `variant="mini"` in the control bar                            |
 | `player/SubtitleCues.tsx`                 | Renders the cues at the video's current time (`cuesAt`, not stale-prone `activeCues`) with the device's style       |
 | `player/ChatOverlay.tsx`, `QuickChat.tsx` | Chat bubbles over the video (8 s + 600 ms fade, max 4) and the `c` input (closes after 5 s empty)                   |
@@ -283,8 +283,13 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   `subtitleOffset`, chat line after 1.5 s idle); "Just me" is `state.localSubtitleOffset` + `localSubtitleScale`; the room's
   scale is `state.roomSubtitleScale`. The picker's auto subtitles go
   in `state.subtitleTracks` (`SubtitleTrackOption[]`, shown first with an Auto badge; picking one sets the room
-  subtitle). The converter's audio tracks show in the same menu.
-- **Volume boost / Night mode** (`audioBoost.ts`, `player/AudioBoostSection.tsx` in the CC menu, non-YouTube): per
+  subtitle). With more than 8 subtitles (`GROUP_THRESHOLD`) the list gets a filter box and one row per language
+  (`SubtitleChoiceList.tsx`, grouping in `subtitleChoices.ts`: auto and embedded tracks with the same language name
+  share a row, which folds its subtitles and is open while it holds the selected one); Search / File / URL are one
+  row of buttons under the list.
+- **Audio menu** (headphones button, `player/AudioMenu.tsx`; hidden for YouTube unless there are several audio
+  tracks): the converter's audio tracks, then volume boost / Night mode. The button shows pressed while the boost is on.
+- **Volume boost / Night mode** (`audioBoost.ts`, `player/AudioBoostSection.tsx` in the Audio menu, non-YouTube): per
   device (`state.audioBoost {level: 1|1.5|2|3, night}`, `localStorage` `wp-volume-boost`/`wp-night-mode`), set with
   `player.setAudioBoost(patch)`. `HTML.boost` (`AudioBoost`) routes the `<video>` through Web Audio: source → night
   compressor (transparent when off) → gain (level × 2 for night) → limiter (−1 dB). Element volume, mute and call
