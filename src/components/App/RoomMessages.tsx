@@ -9,7 +9,7 @@ import {
 import { navigate } from "../../router";
 import { ScreenShareModal } from "../Modal/ScreenShareModal";
 import { FileShareModal } from "../Modal/FileShareModal";
-import { SubtitleModal } from "../Modal/SubtitleModal";
+import { FileNameSearch } from "./subtitleSearch/FileNameSearch";
 import { SubtitleSearch } from "./subtitleSearch/SubtitleSearch";
 import type { Room } from "./hooks/useRoom";
 import { toast } from "./ui/toast";
@@ -47,17 +47,17 @@ export const RoomMessages = ({ room }: { room: Room }) => {
           startFileShare={room.share.startFileShare}
         />
       )}
-      {state.isSubtitleModalOpen && (
-        <SubtitleModal
-          closeModal={() => store.set({ isSubtitleModalOpen: false })}
-          setRoomSubtitle={room.cmd.setSubtitle}
-          roomSubtitle={state.roomSubtitle}
-          roomMedia={state.roomMedia}
-          getMediaDisplayName={room.getMediaDisplayName}
-          setSubtitleMode={room.player.current().setSubtitleMode}
-          getSubtitleMode={room.player.current().getSubtitleMode}
-        />
-      )}
+      <FileNameSearch
+        opened={state.isSubtitleModalOpen}
+        onClose={() => store.set({ isSubtitleModalOpen: false })}
+        onBack={() =>
+          store.set({ isSubtitleModalOpen: false, isSubtitleSearchOpen: true })
+        }
+        initialQuery={
+          room.getMediaDisplayName(state.roomMedia).split("/").slice(-1)[0]
+        }
+        setRoomSubtitle={room.cmd.setSubtitle}
+      />
       <SubtitleSearch
         opened={state.isSubtitleSearchOpen}
         onClose={() => store.set({ isSubtitleSearchOpen: false })}

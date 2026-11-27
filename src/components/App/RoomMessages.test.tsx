@@ -1,5 +1,5 @@
 // Room overlays and messages: joining spinner, reconnecting banner, the error card, toasts and the share modals.
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const toastMock = vi.fn();
@@ -17,7 +17,10 @@ beforeEach(() => {
   toastMock.mockClear();
   navigate.mockClear();
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function setup(over: Parameters<typeof fakeRoom>[0] = {}) {
   const room = fakeRoom({ connection: "connected" as any, ...over });
@@ -77,6 +80,10 @@ describe("RoomMessages", () => {
   });
 
   it("opens the share and subtitle modals and closes them through the store", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("[]", { status: 200 })),
+    );
     const { room } = setup({
       isScreenShareModalOpen: true,
       isFileShareModalOpen: true,
@@ -84,7 +91,21 @@ describe("RoomMessages", () => {
     });
     expect(screen.getByText("Share your screen")).toBeTruthy();
     expect(screen.getByText("Share a file")).toBeTruthy();
-    expect(screen.getByText("Room subtitles")).toBeTruthy();
+    // The OpenSubtitles file-name search; Back returns to the title search
+    expect(
+      screen.getByRole("searchbox", { name: "File or release name" }),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(
+        screen.getByRole("dialog", {
+          name: "Search OpenSubtitles by file name",
+        }),
+      ).getByRole("button", { name: "Back" }),
+    );
+    expect(room.store.set).toHaveBeenCalledWith({
+      isSubtitleModalOpen: false,
+      isSubtitleSearchOpen: true,
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start sharing" }));
     expect(room.share.startScreenShare).toHaveBeenCalled();
     expect(room.store.set).toHaveBeenCalledWith({

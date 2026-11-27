@@ -189,9 +189,27 @@
   border-radius: var(--wp-r-xs);
 }
 
+.hintIcon {
+  display: none;
+}
+
+.quota {
+  padding: var(--wp-sp-2) var(--wp-sp-3) 0;
+  color: var(--wp-text-3);
+  font-size: var(--wp-fs-xs);
+}
+
 /* The picker hides its footer on phones; ours stays when it holds the file-name search link */
 @media (max-width: 768px) {
   .foot.foot {
     display: flex;
+  }
+
+  .hintIcon {
+    display: block;
+  }
+
+  .hintText {
+    display: none;
   }
 }
