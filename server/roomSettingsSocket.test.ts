@@ -108,7 +108,7 @@ describe("Room settings", () => {
     const expected = {
       title: "Movie night",
       readyCheck: true,
-      nextEpisodeOffset: 120,
+      nextEpisodeOffset: 300,
       autoSyncSubtitles: false,
       skipIntro: 0,
     };
