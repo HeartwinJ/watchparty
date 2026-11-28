@@ -124,7 +124,8 @@ export interface ClientToServerEvents {
   "CMD:play": () => void;
   "CMD:pause": () => void;
   "CMD:seek": (time: number) => void;
-  "CMD:playbackRate": (rate: number) => void;
+  /** `hold`: a temporary change while Space is held (no chat line) */
+  "CMD:playbackRate": (rate: number, opts?: { hold?: boolean }) => void;
   "CMD:loop": (loop: boolean) => void;
   "CMD:ts": (time: number) => void;
   /** The current video's duration in seconds (watch history's finished flag) */
@@ -210,7 +211,10 @@ export function createRoomCommands(getSocket: () => RoomSocket | undefined) {
     play: () => emit("CMD:play"),
     pause: () => emit("CMD:pause"),
     seek: (time: number) => emit("CMD:seek", time),
-    setPlaybackRate: (rate: number) => emit("CMD:playbackRate", rate),
+    setPlaybackRate: (rate: number, opts?: { hold?: boolean }) =>
+      opts
+        ? emit("CMD:playbackRate", rate, opts)
+        : emit("CMD:playbackRate", rate),
     setLoop: (loop: boolean) => emit("CMD:loop", loop),
     reportTime: (time: number) => emit("CMD:ts", time),
     reportDuration: (seconds: number) => emit("CMD:duration", seconds),

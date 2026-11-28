@@ -108,6 +108,7 @@ export function createFakePlayer(media: FakeMedia) {
     roomSeek: vi.fn(),
     roomSeekBy: vi.fn(),
     roomSetLoop: vi.fn(),
+    roomSetPlaybackRate: vi.fn(),
     localSetVolume: vi.fn((v: number) => {
       media.volume = Math.min(1, Math.max(0, v));
       media.muted = false;

@@ -85,3 +85,38 @@ test("video changes, play/pause and seeks stay in sync; a late joiner lands on t
   const [ta, tc] = [(await media(a.page)).time, (await media(c.page)).time];
   expect(Math.abs(ta - tc), `A ${ta} vs C ${tc}`).toBeLessThan(3);
 });
+
+test("holding Space plays everyone at 2× and a tap still pauses", async ({
+  join,
+  baseURL,
+}) => {
+  const room = await createRoom(baseURL!);
+  const a = await join(room, "A");
+  const b = await join(room, "B");
+  await playUrl(a.page, LONG);
+  for (const v of [a, b]) {
+    await expectMedia(v.page, playing(LONG), `${v.label} plays`);
+  }
+
+  await focusPlayer(a.page);
+  await a.page.keyboard.down(" ");
+  for (const v of [a, b]) {
+    await expectMedia(v.page, (m) => m.rate >= 1.9, `${v.label} at 2×`);
+  }
+  await a.page.keyboard.up(" ");
+  for (const v of [a, b]) {
+    await expectMedia(
+      v.page,
+      (m) => !m.paused && m.rate < 1.1,
+      `${v.label} back to 1× and still playing`,
+    );
+  }
+  // The hold posts no chat lines about the speed
+  await expect(b.page.getByText(/speed|playback rate/i)).toHaveCount(0);
+
+  // A quick tap pauses everyone
+  await a.page.keyboard.press(" ");
+  for (const v of [a, b]) {
+    await expectMedia(v.page, (m) => m.paused, `${v.label} paused`);
+  }
+});

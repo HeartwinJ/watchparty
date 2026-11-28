@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Loader } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import {
-  IconArrowsMinimize,
   IconPlayerPauseFilled,
   IconPlayerPlayFilled,
   IconRewindBackward10,
@@ -15,6 +14,7 @@ import { useRoomUi } from "../ui/RoomUi";
 import { IdleTimer, LEAVE_HIDE_MS } from "../logic/autoHide";
 import { TapDetector, getTapZone, seekForZone } from "../logic/gestures";
 import { resolveShortcut } from "../logic/shortcuts";
+import { SPACE_HOLD_RATE, SpaceHold } from "../logic/spaceHold";
 import { formatOffset } from "../logic/subtitles";
 import { ControlBar, type MenuName } from "./ControlBar";
 import { NextEpisodeCard } from "../nextEpisode/NextEpisodeCard";
@@ -214,6 +214,53 @@ export const PlayerArea = ({ room }: { room: Room }) => {
     }
   }, [quickChatAllowed, panelOpen, panelChatRef, room.chatRef]);
 
+  // Space: tap = play/pause, hold = the whole room at 2× until released (logic/spaceHold.ts). Room-wide, so everyone
+  // stays in sync; the temporary rate changes post no chat line.
+  const spaceHoldRef = useRef<SpaceHold | null>(null);
+  useEffect(() => {
+    let restoreRate = 1;
+    const hold = new SpaceHold({
+      onTap: togglePlay,
+      onHoldStart: () => {
+        const s = store.get();
+        if (
+          !s.roomMedia ||
+          s.roomPaused ||
+          s.isLiveStream ||
+          !player.hasDuration() ||
+          player.isWebRTCShare()
+        ) {
+          return false;
+        }
+        restoreRate = s.roomPlaybackRate || 1;
+        player.roomSetPlaybackRate(SPACE_HOLD_RATE, { hold: true });
+        showOsd(`${SPACE_HOLD_RATE}× ▸▸`);
+        idleTimer.poke();
+        return true;
+      },
+      onHoldEnd: () => {
+        player.roomSetPlaybackRate(restoreRate, { hold: true });
+        showOsd(`${restoreRate}×`);
+      },
+    });
+    spaceHoldRef.current = hold;
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " " && hold.active) {
+        e.preventDefault();
+        hold.up();
+      }
+    };
+    const onBlur = () => hold.cancel();
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      hold.cancel();
+      spaceHoldRef.current = null;
+    };
+  }, [store, player, togglePlay, showOsd, idleTimer]);
+
   // Keyboard shortcuts (ignored while typing or in a modal; see logic/shortcuts.ts)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -287,7 +334,12 @@ export const PlayerArea = ({ room }: { room: Room }) => {
       switch (action.type) {
         case "togglePlay":
           e.preventDefault();
-          togglePlay();
+          if (e.key === " " && spaceHoldRef.current) {
+            // Decided on release (tap) or after a moment (hold); auto-repeats are ignored
+            spaceHoldRef.current.down();
+          } else if (!e.repeat) {
+            togglePlay();
+          }
           break;
         case "seekBy":
           if (player.hasDuration() && !player.isWebRTCShare()) {
@@ -503,13 +555,6 @@ export const PlayerArea = ({ room }: { room: Room }) => {
           <div className={styles.overlayTitle}>
             {room.getMediaDisplayName(state.roomMedia)}
           </div>
-          <button
-            className={styles.btn}
-            aria-label="Exit fullscreen"
-            onClick={() => player.toggleFullscreen()}
-          >
-            <IconArrowsMinimize size={22} />
-          </button>
         </div>
       )}
 

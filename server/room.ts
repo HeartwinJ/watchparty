@@ -345,8 +345,8 @@ export class Room {
       on("CMD:seek", (data: unknown) => {
         this.seekVideo(socket, data);
       });
-      on("CMD:playbackRate", (data: unknown) => {
-        this.setPlaybackRate(socket, data);
+      on("CMD:playbackRate", (data: unknown, opts: unknown) => {
+        this.setPlaybackRate(socket, data, opts);
       });
       on("CMD:loop", (data: unknown) => {
         this.setLoop(data);
@@ -920,7 +920,8 @@ export class Room {
     this.history.save(this.historySnapshot());
   };
 
-  private setPlaybackRate = (socket: Socket, data: unknown) => {
+  /** `opts.hold`: a temporary change while someone holds Space (2× and back), which posts no chat line */
+  private setPlaybackRate = (socket: Socket, data: unknown, opts?: unknown) => {
     // Browsers only support rates in roughly this range, anything else is garbage
     if (
       typeof data !== "number" ||
@@ -932,6 +933,9 @@ export class Room {
     }
     this.playbackRate = data;
     this.io.of(this.roomId).emit("REC:playbackRate", data);
+    if ((opts as { hold?: unknown } | null)?.hold === true) {
+      return;
+    }
     const chatMsg = {
       id: socket.clientId,
       cmd: "playbackRate",

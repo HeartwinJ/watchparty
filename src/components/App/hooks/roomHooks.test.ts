@@ -30,6 +30,7 @@ describe("createRoomCommands", () => {
     cmd.pause();
     cmd.seek(5);
     cmd.setPlaybackRate(1.5);
+    cmd.setPlaybackRate(2, { hold: true });
     cmd.setLoop(true);
     cmd.reportTime(3);
     cmd.reportDuration(100);
@@ -70,6 +71,7 @@ describe("createRoomCommands", () => {
       ["CMD:pause"],
       ["CMD:seek", 5],
       ["CMD:playbackRate", 1.5],
+      ["CMD:playbackRate", 2, { hold: true }],
       ["CMD:loop", true],
       ["CMD:ts", 3],
       ["CMD:duration", 100],
