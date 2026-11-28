@@ -9,8 +9,9 @@ const post = (msg: SyncWorkerMessage) => self.postMessage(msg);
 self.onmessage = async (e: MessageEvent<SyncRequest>) => {
   const req = e.data;
   const t0 = performance.now();
-  // Aligning after each window lets a clear match stop the download early
+  // Aligning after each round lets a clear match that held still since the previous round stop the download early
   let last: { result: SyncResult; windows: number } | null = null;
+  let roundsRead = 0;
   try {
     const { windows } = await readActivityWindows({
       source: req.source,
@@ -18,20 +19,23 @@ self.onmessage = async (e: MessageEvent<SyncRequest>) => {
       cues: req.cues,
       windowCount: req.windowCount,
       windowSeconds: req.windowSeconds,
+      rounds: req.rounds,
       stallTimeoutMs: req.stallTimeoutMs,
       onProgress: (fraction) => post({ type: "progress", fraction }),
-      onWindow: (sofar) => {
-        if (sofar.length < 3) {
-          return false;
-        }
+      onRound: (sofar, round) => {
+        roundsRead = round;
+        const previous = (last as { result: SyncResult } | null)?.result;
         const result = alignWithDrift(sofar, req.cues, {
           maxOffset: req.maxOffset,
         });
         last = { result, windows: sofar.length };
-        return isClearMatch(result, sofar.length);
+        return (
+          round < req.rounds &&
+          isClearMatch(result, sofar.length, previous ?? null)
+        );
       },
     });
-    // Reading stops early on a clear match (after 3 of 4 windows): show the bar complete, not stuck at ~70%
+    // Reading stops early on a clear match: show the bar complete, not stuck part-way
     post({ type: "progress", fraction: 1 });
     const t1 = performance.now();
     const done = last as { result: SyncResult; windows: number } | null;
@@ -45,6 +49,7 @@ self.onmessage = async (e: MessageEvent<SyncRequest>) => {
       timing: {
         readMs: Math.round(t1 - t0),
         alignMs: Math.round(performance.now() - t1),
+        rounds: roundsRead,
       },
     });
   } catch (err) {

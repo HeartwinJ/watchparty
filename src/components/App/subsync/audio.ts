@@ -1,5 +1,7 @@
 // Auto subtitle sync: reads a few windows of a video's audio with mediabunny and turns them into speech activity.
-// Runs inside the worker (worker.ts), so decoding never blocks playback.
+// Runs inside the worker (worker.ts), so decoding never blocks playback. The windows are read at the same time (the
+// download is the slow part, and parallel range requests use more of the connection) and in rounds that each extend
+// every window, so a clear match can stop after the first part of each window.
 import type { InputAudioTrack } from "mediabunny";
 import {
   SpeechActivityMeter,
@@ -9,6 +11,7 @@ import {
   windowSecondsForBitrate,
   type ActivityWindow,
   type Cue,
+  type WindowPlan,
 } from "./signal";
 
 export interface AudioReadOptions {
@@ -21,11 +24,13 @@ export interface AudioReadOptions {
   windowCount: number;
   /** Seconds per window; shortened for high-bitrate files (windowSecondsForBitrate) */
   windowSeconds: number;
+  /** Read each window in this many equal parts, all windows in parallel per round (default 1) */
+  rounds?: number;
   /** Give up when nothing was read for this long (ms): slow servers, ones that ignore range requests */
   stallTimeoutMs: number;
   onProgress?: (fraction: number) => void;
-  /** Called after each window with everything read so far; return true to stop reading (a clear match) */
-  onWindow?: (windows: ActivityWindow[]) => boolean;
+  /** Called after each round (the last one too) with everything read so far; return true to stop reading */
+  onRound?: (windows: ActivityWindow[], round: number) => boolean;
 }
 
 export class AudioReadError extends Error {}
@@ -124,23 +129,89 @@ async function read(
       opts.windowSeconds,
     ),
   );
+  const rounds = Math.max(1, Math.round(opts.rounds ?? 1));
   const totalSeconds = plan.reduce((s, w) => s + (w.end - w.start), 0);
-  let doneSeconds = 0;
-  const sink = new mb.AudioSampleSink(track);
-  const windows: ActivityWindow[] = [];
-  for (const w of plan) {
-    let meter: SpeechActivityMeter | undefined;
-    let start = w.start;
-    let mono = new Float32Array(0);
-    let planes: Float32Array[] = [];
-    for await (const sample of sink.samples(w.start, w.end)) {
-      try {
-        if (!meter) {
-          meter = new SpeechActivityMeter(sample.sampleRate);
-          start = Math.max(0, sample.timestamp);
-        }
-        const frames = sample.numberOfFrames;
-        const channels = sample.numberOfChannels;
+  const states: WindowState[] = plan.map((w) => ({
+    plan: w,
+    sink: new mb.AudioSampleSink(track),
+    start: w.start,
+    next: w.start,
+    readTo: w.start,
+  }));
+  const report = () =>
+    opts.onProgress?.(
+      Math.min(
+        1,
+        states.reduce((s, w) => s + (w.readTo - w.plan.start), 0) /
+          totalSeconds,
+      ),
+    );
+  let windows: ActivityWindow[] = [];
+  for (let round = 1; round <= rounds; round++) {
+    await Promise.all(
+      states.map((w) => {
+        const len = w.plan.end - w.plan.start;
+        return readPart(
+          w,
+          w.plan.start + (len * (round - 1)) / rounds,
+          w.plan.start + (len * round) / rounds,
+          () => {
+            touch();
+            report();
+          },
+        );
+      }),
+    );
+    windows = states.flatMap((w) =>
+      w.meter
+        ? [{ start: w.start, activity: speechActivity(w.meter.frames()) }]
+        : [],
+    );
+    if (opts.onRound?.(windows, round)) {
+      break;
+    }
+  }
+  return { windows, duration };
+}
+
+interface WindowState {
+  plan: WindowPlan;
+  sink: import("mediabunny").AudioSampleSink;
+  /** Created on the first sample; kept across rounds so a window's frames stay one contiguous stretch */
+  meter?: SpeechActivityMeter;
+  /** Media time of the window's first frame */
+  start: number;
+  /** Media time the meter has been fed up to */
+  next: number;
+  /** For progress: how far into the window reading got */
+  readTo: number;
+}
+
+/**
+ * Feeds the samples in [from, to) to the window's meter, continuing exactly where the previous round stopped: the
+ * first decoded chunk usually starts a little before `from`, so what was already read is skipped, and a gap (dropped
+ * audio) is filled with silence, so every frame stays at its media time.
+ */
+async function readPart(
+  w: WindowState,
+  from: number,
+  to: number,
+  onSample: () => void,
+) {
+  let mono = new Float32Array(0);
+  let planes: Float32Array[] = [];
+  for await (const sample of w.sink.samples(from, to)) {
+    try {
+      const rate = sample.sampleRate;
+      if (!w.meter) {
+        w.meter = new SpeechActivityMeter(rate);
+        w.start = Math.max(0, sample.timestamp);
+        w.next = w.start;
+      }
+      const frames = sample.numberOfFrames;
+      const channels = sample.numberOfChannels;
+      const skip = Math.max(0, Math.round((w.next - sample.timestamp) * rate));
+      if (skip < frames) {
         if (mono.length !== frames) {
           mono = new Float32Array(frames);
           planes = Array.from(
@@ -154,26 +225,21 @@ async function read(
         for (let ch = 0; ch < channels; ch++) {
           sample.copyTo(planes[ch], { planeIndex: ch, format: "f32-planar" });
         }
-        meter.push(downmix(planes.slice(0, channels), mono));
-        touch();
-        opts.onProgress?.(
-          Math.min(
-            1,
-            (doneSeconds + Math.max(0, sample.timestamp - w.start)) /
-              totalSeconds,
-          ),
-        );
-      } finally {
-        sample.close();
+        downmix(planes.slice(0, channels), mono);
+        const gap = Math.round((sample.timestamp - w.next) * rate);
+        // (bounded: a timestamp jump far past the part isn't silence worth allocating)
+        if (gap > 0 && gap <= rate * Math.max(1, to - w.next)) {
+          w.meter.push(new Float32Array(gap));
+        }
+        w.meter.push(skip ? mono.subarray(skip) : mono);
+        w.next = sample.timestamp + frames / rate;
       }
-    }
-    doneSeconds += w.end - w.start;
-    if (meter) {
-      windows.push({ start, activity: speechActivity(meter.frames()) });
-      if (opts.onWindow?.(windows)) {
-        break;
-      }
+      w.readTo = Math.min(w.plan.end, Math.max(w.readTo, w.next));
+      onSample();
+    } finally {
+      sample.close();
     }
   }
-  return { windows, duration };
+  // Ran out early (end of the media): count the part as read
+  w.readTo = Math.max(w.readTo, Math.min(to, w.plan.end));
 }

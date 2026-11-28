@@ -160,14 +160,23 @@ describe("runAutoSync", () => {
       cues,
       windowCount: 4,
       windowSeconds: 90,
+      rounds: 3,
       maxOffset: 600,
     });
     w.send({ type: "progress", fraction: 0.5 });
     expect(onProgress).toHaveBeenCalledWith(0.5);
-    w.send({ type: "result", result, timing: { readMs: 1, alignMs: 1 } });
+    w.send({
+      type: "result",
+      result,
+      timing: { readMs: 1, alignMs: 1, rounds: 2 },
+    });
     await expect(p).resolves.toEqual(result);
     expect(w.terminated).toBe(true);
-    // The source URL is never logged
+    // Logs how many rounds were read; never the source URL
+    // read ms, rounds read, rounds planned, align ms
+    expect(vi.mocked(console.info).mock.calls[0].slice(5)).toEqual([
+      1, 2, 3, 1,
+    ]);
     expect(JSON.stringify(vi.mocked(console.info).mock.calls)).not.toContain(
       "cdn.example.com",
     );

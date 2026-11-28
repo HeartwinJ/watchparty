@@ -1,4 +1,5 @@
-// The auto-sync worker's message handling: read windows → align (early stop on a clear match) → result/error.
+// The auto-sync worker's message handling: read windows in rounds → align after each (early stop on a clear match)
+// → result/error.
 // The worker script sets `self.onmessage` on import; here `self` is the test window and postMessage is spied.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityWindow, SyncResult } from "./signal";
@@ -31,6 +32,7 @@ const req: SyncRequest = {
   cues: [{ start: 1, end: 2 }],
   windowCount: 4,
   windowSeconds: 90,
+  rounds: 3,
   maxOffset: 600,
   stallTimeoutMs: 20000,
 };
@@ -60,13 +62,15 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("subtitle sync worker", () => {
-  it("passes the request on, relays progress and aligns everything that was read", async () => {
+  it("passes the request on, relays progress and aligns after every round", async () => {
     readActivityWindows.mockImplementation(async (o: any) => {
       o.onProgress(0.25);
-      expect(o.onWindow([win(0)])).toBe(false); // fewer than 3 windows: keep reading
+      expect(o.onRound([win(0), win(100)], 1)).toBe(false); // not clear: keep reading
+      expect(o.onRound([win(0), win(100)], 3)).toBe(false); // last round: nothing to stop
       return { windows: [win(0), win(100)], duration: 600 };
     });
     alignWithDrift.mockReturnValue(result(1.5));
+    isClearMatch.mockReturnValue(false);
     await send(req);
     expect(readActivityWindows).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -75,50 +79,71 @@ describe("subtitle sync worker", () => {
         cues: req.cues,
         windowCount: 4,
         windowSeconds: 90,
+        rounds: 3,
         stallTimeoutMs: 20000,
       }),
     );
     expect(alignWithDrift).toHaveBeenCalledWith([win(0), win(100)], req.cues, {
       maxOffset: 600,
     });
+    // The last round's alignment is the result: no extra pass
+    expect(alignWithDrift).toHaveBeenCalledTimes(2);
     expect(posted[0]).toEqual({ type: "progress", fraction: 0.25 });
     // Complete once reading is done (also after an early stop)
     expect(posted[1]).toEqual({ type: "progress", fraction: 1 });
     expect(posted[2]).toMatchObject({
       type: "result",
       result: result(1.5),
-      timing: { readMs: expect.any(Number), alignMs: expect.any(Number) },
+      timing: {
+        readMs: expect.any(Number),
+        alignMs: expect.any(Number),
+        rounds: 3,
+      },
     });
     expect(postSpy).toHaveBeenCalledTimes(3);
   });
 
-  it("reuses the early alignment when a clear match stopped the reading", async () => {
+  it("stops after a round with a clear match, judged against the previous round, and reuses its alignment", async () => {
+    const first = result(-3.05);
     const early = result(-3);
-    alignWithDrift.mockReturnValue(early);
-    isClearMatch.mockReturnValue(true);
+    alignWithDrift.mockReturnValueOnce(first).mockReturnValueOnce(early);
+    isClearMatch.mockImplementation((_r, _n, prev) => prev !== null);
     readActivityWindows.mockImplementation(async (o: any) => {
-      const sofar = [win(0), win(100), win(200)];
-      expect(o.onWindow(sofar)).toBe(true);
+      const sofar = [win(0), win(100), win(200), win(300)];
+      expect(o.onRound(sofar, 1)).toBe(false);
+      expect(o.onRound(sofar, 2)).toBe(true);
       return { windows: sofar, duration: 600 };
     });
     await send(req);
-    expect(alignWithDrift).toHaveBeenCalledTimes(1);
-    expect(isClearMatch).toHaveBeenCalledWith(early, 3);
-    expect(posted.at(-1)).toMatchObject({ type: "result", result: early });
+    expect(alignWithDrift).toHaveBeenCalledTimes(2);
+    expect(isClearMatch).toHaveBeenNthCalledWith(1, first, 4, null);
+    expect(isClearMatch).toHaveBeenNthCalledWith(2, early, 4, first);
+    expect(posted.at(-1)).toMatchObject({
+      type: "result",
+      result: early,
+      timing: { rounds: 2 },
+    });
   });
 
-  it("aligns again when more windows were read after the last check", async () => {
+  it("aligns again when the windows changed after the last round (or no round finished)", async () => {
     alignWithDrift
       .mockReturnValueOnce(result(5))
       .mockReturnValueOnce(result(6));
     isClearMatch.mockReturnValue(false);
     readActivityWindows.mockImplementation(async (o: any) => {
-      o.onWindow([win(0), win(1), win(2)]);
+      o.onRound([win(0), win(1), win(2)], 1);
       return { windows: [win(0), win(1), win(2), win(3)], duration: 600 };
     });
     await send(req);
     expect(alignWithDrift).toHaveBeenCalledTimes(2);
     expect(posted.at(-1)).toMatchObject({ result: result(6) });
+
+    alignWithDrift.mockReset().mockReturnValue(result(null));
+    readActivityWindows.mockResolvedValue({ windows: [], duration: 600 });
+    await send(req);
+    expect(alignWithDrift).toHaveBeenCalledWith([], req.cues, {
+      maxOffset: 600,
+    });
   });
 
   it("posts readable errors, and a generic one for anything unexpected", async () => {

@@ -593,15 +593,25 @@ function zeroMean(x: Float32Array): Float32Array {
 }
 
 /**
- * Whether a result after `windowsRead` windows is clear enough to stop reading audio early: at least 3 windows and
- * well above the normal bar (Tears of Steel: 3 of 4 windows already give peakZ 10.7, confidence 0.52).
+ * Whether a result is clear enough to stop listening early (after a round, see audio.ts): at least 3 windows and well
+ * above the normal bar, and the previous round already found the same timing (offset within 0.05 s, same scale).
+ * Calibrated on Tears of Steel and two full-length films with known shifts and frame-rate drift: no wrong result
+ * reached peakZ 8 with confidence 0.45, even after the first round (4 × 30 s), but shorter listening is less precise
+ * (0.05–0.25 s off); a result that held still across two rounds was as precise as listening to everything.
  */
-export function isClearMatch(result: SyncResult, windowsRead: number) {
+export function isClearMatch(
+  result: SyncResult,
+  windowsRead: number,
+  previous: SyncResult | null,
+) {
   return (
     result.offset !== null &&
     windowsRead >= 3 &&
-    result.peakZ >= 9 &&
-    result.confidence >= 0.45
+    result.peakZ >= 8 &&
+    result.confidence >= 0.45 &&
+    previous?.offset != null &&
+    previous.scale === result.scale &&
+    Math.abs(previous.offset - result.offset) <= 0.05 + 1e-9
   );
 }
 
@@ -637,10 +647,48 @@ export interface WindowPlan {
   end: number;
 }
 
+/** A cue start or end counts as a speech edge when at least this much silence (s) is on its other side */
+const EDGE_GAP = 0.5;
+/** Cue starts/ends without that pause count this much: they break ties, they can't outweigh real edges */
+const MINOR_EDGE = 0.1;
+/** Edges this far (s) outside a window still count for it, since the subtitles may be off by a little */
+const EDGE_PAD = 20;
+
 /**
- * Where to listen: `count` windows of `length` seconds, spread evenly over the part of the media that has dialogue
- * (first to last cue, clamped to the media), so credits and long intros don't waste the budget. Windows never overlap
- * and stay inside [0, duration]; short media gets one window over all of it.
+ * Speech edges per second of the cue timeline: cue starts after a pause and cue ends before one. That's where the
+ * subtitle signal switches on and off, which is what the alignment locks onto. Back-to-back dialogue (cues covering
+ * everything) has few edges and matches poorly, so counting cues or their coverage would pick the wrong stretches.
+ * Other cue boundaries count MINOR_EDGE (calibrated on three films with known shifts: edges alone took the old even
+ * spacing from 45 to 50 of 72 matches, with the minor ones 56, never a wrong one).
+ */
+function edgeCounts(cues: readonly Cue[], duration: number): Float64Array {
+  const counts = new Float64Array(Math.ceil(duration) + 1);
+  const sorted = cues
+    .filter((c) => c.end > c.start)
+    .sort((a, b) => a.start - b.start);
+  let lastEnd = -Infinity;
+  for (let i = 0; i < sorted.length; i++) {
+    const c = sorted[i];
+    const nextStart = i + 1 < sorted.length ? sorted[i + 1].start : Infinity;
+    if (c.start >= 0 && c.start < duration) {
+      counts[Math.floor(c.start)] +=
+        c.start - lastEnd >= EDGE_GAP ? 1 : MINOR_EDGE;
+    }
+    if (c.end >= 0 && c.end < duration) {
+      counts[Math.floor(c.end)] +=
+        nextStart - c.end >= EDGE_GAP ? 1 : MINOR_EDGE;
+    }
+    lastEnd = Math.max(lastEnd, c.end);
+  }
+  return counts;
+}
+
+/**
+ * Where to listen: `count` windows of `length` seconds over the part of the media that has dialogue (first to last
+ * cue, clamped to the media), so credits and long intros don't waste the budget. That span is cut into `count` equal
+ * parts and each window goes where its part has the most speech edges (edgeCounts; ties keep the middle), so windows
+ * stay spread out (frame-rate drift needs that) yet hear the most informative dialogue. Windows never overlap and
+ * stay inside [0, duration]; short media gets one window over all of it.
  */
 export function planWindows(
   duration: number,
@@ -670,12 +718,39 @@ export function planWindows(
     );
     to = from + length * count;
   }
-  const span = to - from;
+  const counts = edgeCounts(cues, duration);
+  const prefix = new Float64Array(counts.length + 1);
+  for (let i = 0; i < counts.length; i++) {
+    prefix[i + 1] = prefix[i] + counts[i];
+  }
+  const edgesAround = (start: number) => {
+    const lo = Math.max(0, Math.floor(start - EDGE_PAD));
+    const hi = Math.min(counts.length, Math.ceil(start + length + EDGE_PAD));
+    return prefix[hi] - prefix[lo];
+  };
+  const part = (to - from) / count;
+  const clamp = (start: number) =>
+    Math.max(0, Math.min(duration - length, start));
   const plan: WindowPlan[] = [];
   for (let i = 0; i < count; i++) {
-    const center = from + (span * (i + 0.5)) / count;
-    const start = Math.max(0, Math.min(duration - length, center - length / 2));
-    plan.push({ start, end: start + length });
+    const lo = from + part * i;
+    const middle = clamp(lo + part / 2 - length / 2);
+    let best = middle;
+    let bestEdges = edgesAround(middle);
+    // Whole seconds across the part; the window must stay inside it so neighbours can't overlap
+    for (let s = lo; s <= lo + part - length; s++) {
+      const start = clamp(s);
+      const edges = edgesAround(start);
+      if (
+        edges > bestEdges ||
+        (edges === bestEdges &&
+          Math.abs(start - middle) < Math.abs(best - middle))
+      ) {
+        best = start;
+        bestEdges = edges;
+      }
+    }
+    plan.push({ start: best, end: best + length });
   }
   return plan;
 }

@@ -1,9 +1,11 @@
 // Auto subtitle sync, main-thread side: starts the worker (worker.ts), relays progress, cancels by terminating it.
 import type { Cue, SyncResult } from "./signal";
 
-/** How much audio to listen to: 4 windows × 90 s (≈ 6 min of the video, spread over the dialogue) */
+/** How much audio to listen to at most: 4 windows × 90 s (≈ 6 min of the video, spread over the dialogue) */
 export const AUTO_SYNC_WINDOWS = 4;
 export const AUTO_SYNC_WINDOW_SECONDS = 90;
+/** Read in 3 rounds (30, 60, 90 s of every window, all windows at once); a clear match stops after any round */
+export const AUTO_SYNC_ROUNDS = 3;
 /** Search ±10 min */
 export const AUTO_SYNC_MAX_OFFSET = 600;
 /** Fail when no audio arrived for this long */
@@ -15,6 +17,7 @@ export interface SyncRequest {
   cues: Cue[];
   windowCount: number;
   windowSeconds: number;
+  rounds: number;
   maxOffset: number;
   stallTimeoutMs: number;
 }
@@ -24,7 +27,7 @@ export type SyncWorkerMessage =
   | {
       type: "result";
       result: SyncResult;
-      timing: { readMs: number; alignMs: number };
+      timing: { readMs: number; alignMs: number; rounds: number };
     }
   | { type: "error"; message: string };
 
@@ -36,6 +39,7 @@ export interface AutoSyncOptions {
   onProgress?: (fraction: number) => void;
   windowCount?: number;
   windowSeconds?: number;
+  rounds?: number;
   maxOffset?: number;
 }
 
@@ -74,6 +78,7 @@ export function runAutoSync(
   opts: AutoSyncOptions,
   createWorker: () => SyncWorker = createSyncWorker,
 ): Promise<SyncResult> {
+  const rounds = opts.rounds ?? AUTO_SYNC_ROUNDS;
   return new Promise((resolve, reject) => {
     if (opts.signal?.aborted) {
       reject(new AutoSyncError("Cancelled", true));
@@ -97,12 +102,14 @@ export function runAutoSync(
         done();
         // Never log the source: AIOStreams playback URLs carry a credential
         console.info(
-          "[subsync] offset %s (candidate %s, confidence %s, z %s) read %d ms, align %d ms",
+          "[subsync] offset %s (candidate %s, confidence %s, z %s) read %d ms (%d of %d rounds), align %d ms",
           msg.result.offset,
           msg.result.candidate,
           msg.result.confidence.toFixed(2),
           msg.result.peakZ.toFixed(1),
           msg.timing.readMs,
+          msg.timing.rounds,
+          rounds,
           msg.timing.alignMs,
         );
         resolve(msg.result);
@@ -121,6 +128,7 @@ export function runAutoSync(
       cues: opts.cues,
       windowCount: opts.windowCount ?? AUTO_SYNC_WINDOWS,
       windowSeconds: opts.windowSeconds ?? AUTO_SYNC_WINDOW_SECONDS,
+      rounds,
       maxOffset: opts.maxOffset ?? AUTO_SYNC_MAX_OFFSET,
       stallTimeoutMs: AUTO_SYNC_STALL_MS,
     });

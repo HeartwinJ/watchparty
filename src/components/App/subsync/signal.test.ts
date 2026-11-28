@@ -304,10 +304,26 @@ describe("planWindows", () => {
   it("is empty without a duration", () => {
     expect(planWindows(NaN, cues)).toEqual([]);
   });
+
+  it("puts each window where its part has the most speech edges, not the most subtitles", () => {
+    // Dialogue 0–1200 s: a steady line every 20 s, plus (in the first part, 0–600 s) 100 s of back-to-back cues
+    // around 100 s and 100 s of short lines with pauses around 400 s
+    const lines: Cue[] = [];
+    for (let t = 0; t < 1200; t += 20) lines.push({ start: t, end: t + 2 });
+    for (let t = 60; t < 160; t += 2) lines.push({ start: t, end: t + 2 });
+    for (let t = 350; t < 450; t += 4) lines.push({ start: t, end: t + 1.5 });
+    const plan = planWindows(3600, lines, 2, 90);
+    expect(plan).toHaveLength(2);
+    expect(plan[0].start).toBeGreaterThanOrEqual(330);
+    expect(plan[0].end).toBeLessThanOrEqual(470);
+    // The second part (591–1182 s) is uniform: the window stays near its middle (841.5 s)
+    expect(Math.abs(plan[1].start - 841.5)).toBeLessThanOrEqual(20);
+    expect(plan[1].start).toBeGreaterThanOrEqual(plan[0].end);
+  });
 });
 
 describe("listening budget", () => {
-  it("stops early only on a very clear match after 3 windows", () => {
+  it("stops early only on a clear match with at least 3 windows that the previous round agreed on", () => {
     const r = {
       offset: 1,
       scale: 1,
@@ -315,11 +331,19 @@ describe("listening budget", () => {
       peakZ: 10,
       candidate: 1,
     };
-    expect(isClearMatch(r, 3)).toBe(true);
-    expect(isClearMatch(r, 2)).toBe(false);
-    expect(isClearMatch({ ...r, peakZ: 7 }, 4)).toBe(false);
-    expect(isClearMatch({ ...r, confidence: 0.35 }, 4)).toBe(false);
-    expect(isClearMatch({ ...r, offset: null }, 4)).toBe(false);
+    const prev = { ...r, offset: 1.05 };
+    expect(isClearMatch(r, 3, prev)).toBe(true);
+    expect(isClearMatch(r, 2, prev)).toBe(false);
+    expect(isClearMatch({ ...r, peakZ: 8 }, 4, prev)).toBe(true);
+    expect(isClearMatch({ ...r, peakZ: 7.9 }, 4, prev)).toBe(false);
+    expect(isClearMatch({ ...r, confidence: 0.45 }, 4, prev)).toBe(true);
+    expect(isClearMatch({ ...r, confidence: 0.35 }, 4, prev)).toBe(false);
+    expect(isClearMatch({ ...r, offset: null }, 4, prev)).toBe(false);
+    // The timing has to have held still since the previous round
+    expect(isClearMatch(r, 4, null)).toBe(false);
+    expect(isClearMatch(r, 4, { ...prev, offset: null })).toBe(false);
+    expect(isClearMatch(r, 4, { ...prev, offset: 1.1 })).toBe(false);
+    expect(isClearMatch(r, 4, { ...prev, scale: 25 / 24 })).toBe(false);
   });
 
   it("shortens windows for high-bitrate files, down to 4 minutes in total", () => {

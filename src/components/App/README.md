@@ -366,10 +366,17 @@ ffsubsync-style: line the selected subtitle track up with the speech in the audi
   `syncResultToTiming()` (`logic.ts`) turns it into what the player applies. No piecewise mapping.
 - **Audio** (`audio.ts` in `worker.ts`, started by `run.ts` `runAutoSync`, cancelled by terminating the worker):
   mediabunny reads the direct link via range requests (`UrlSource`, 3 retries, 20 s stall timeout) or the sharer's
-  `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` puts 4 windows of 90 s over the dialogue
-  (first to last cue); audio is interleaved with video, so listening costs about bitrate × seconds:
-  `windowSecondsForBitrate` shortens the windows to stay near 300 MB, never below 4 × 60 s. After the 3rd window a very
-  clear match (`isClearMatch`) stops early; the worker then reports 100% ("Matching…"), so the bar never sits at ~70%.
+  `File` (`BlobSource`); AC-3/E-AC-3 via `@mediabunny/ac3`. `planWindows` cuts the dialogue (first to last cue) into 4
+  equal parts and puts a 90 s window in each where the cues have the most **speech edges** (a cue start after, or end
+  before, ≥ 0.5 s of silence): that's what the alignment locks onto, while back-to-back dialogue matches poorly. Audio
+  is interleaved with video, so listening costs about bitrate × seconds: `windowSecondsForBitrate` shortens the windows
+  to stay near 300 MB, never below 4 × 60 s. The 4 windows are read **at the same time** (the download is the slow
+  part) in `AUTO_SYNC_ROUNDS` = 3 rounds that each extend every window (30, 60, 90 s; a window stays one contiguous
+  stretch, overlap between rounds is skipped). The worker aligns after every round and stops early on a clear match
+  that the previous round already agreed on (`isClearMatch`: peakZ ≥ 8, confidence ≥ 0.45, offset within 0.05 s and
+  the same scale as the round before; shorter listening alone was 0.05–0.25 s less precise). Then it reports 100%
+  ("Matching…"), so the bar never sits part-way. The console line `[subsync] … read N ms (r of 3 rounds)` shows how much
+  was needed. Worst case it hears exactly what a single 4 × 90 s pass would.
   While converting, it listens to the converter's audio track. The URL is
   never logged (AIOStreams playback URLs carry a credential).
 - **Where:** direct links and (for the sharer only, via `ShareSession.file`) file shares. Not YouTube, screen share,
