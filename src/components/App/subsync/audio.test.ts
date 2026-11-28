@@ -93,11 +93,71 @@ describe("readActivityWindows", () => {
     expect(windows).toHaveLength(3);
   });
 
-  it("stops early when onWindow says the match is clear", async () => {
-    const onWindow = vi.fn((w: unknown[]) => w.length === 2);
-    const { windows } = await readActivityWindows({ ...base, onWindow });
-    expect(windows).toHaveLength(2);
-    expect(onWindow).toHaveBeenCalledTimes(2);
+  it("reads the windows in rounds, all windows per round, and stops when onRound says so", async () => {
+    const calls: [number, number][] = [];
+    mb.samples = (start, end) => {
+      calls.push([start, end]);
+      return tone(start, end - start);
+    };
+    const onRound = vi.fn((_w: unknown[], round: number) => round === 2);
+    const { windows } = await readActivityWindows({
+      ...base,
+      windowSeconds: 6,
+      rounds: 3,
+      onRound,
+    });
+    // Round 1 reads the first third of every window before round 2 extends them; round 3 never starts
+    expect(calls).toHaveLength(6);
+    const firsts = calls.slice(0, 3);
+    for (const [a, b] of firsts) {
+      expect(b - a).toBeCloseTo(2);
+    }
+    calls.slice(3).forEach(([a], i) => expect(a).toBeCloseTo(firsts[i][1]));
+    expect(onRound.mock.calls.map((c) => c[1])).toEqual([1, 2]);
+    // Each window is one contiguous stretch: 4 s of 10 ms frames
+    expect(windows).toHaveLength(3);
+    for (const w of windows) {
+      expect(w.activity.length).toBe(400);
+    }
+  });
+
+  it("joins the rounds exactly: overlap skipped, gaps filled with silence", async () => {
+    // Calls 0–2 are round 1 (each window's first part). Window 0's second part (call 3) arrives 0.5 s late; every
+    // other later part starts 0.5 s early, overlapping what was read already (whole 0.5 s chunks, so nothing runs past
+    // the window's end)
+    let call = 0;
+    mb.samples = (start, end) => {
+      const n = call++;
+      if (n < 3) return tone(start, end - start);
+      if (n === 3) return tone(start + 0.5, end - start - 0.5);
+      return tone(start - 0.5, end - start + 0.5);
+    };
+    const onProgress = vi.fn();
+    const { windows } = await readActivityWindows({
+      ...base,
+      windowSeconds: 6,
+      rounds: 3,
+      onProgress,
+    });
+    // 6 s of 10 ms frames each: without skipping the overlaps 650, without filling the gap 550
+    expect(windows.map((w) => w.activity.length)).toEqual([600, 600, 600]);
+    // Progress only grows and ends complete
+    const fractions = onProgress.mock.calls.map((c) => c[0]);
+    expect(fractions).toEqual([...fractions].sort((a, b) => a - b));
+    expect(fractions.at(-1)).toBeCloseTo(1);
+  });
+
+  it("counts a part that ran out of samples as read", async () => {
+    mb.samples = (start, end) =>
+      start % 1 === 0 ? tone(start, (end - start) / 2) : [];
+    const onProgress = vi.fn();
+    await readActivityWindows({
+      ...base,
+      windowSeconds: 6,
+      rounds: 3,
+      onProgress,
+    });
+    expect(onProgress.mock.calls.at(-1)?.[0]).toBeGreaterThan(0.3);
   });
 
   it("skips windows without samples", async () => {
