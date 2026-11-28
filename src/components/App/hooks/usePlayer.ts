@@ -452,7 +452,8 @@ export function usePlayer(opts: {
       updateSyncStatus,
       resync,
       onTsMap,
-      roomSetPlaybackRate: (rate: number) => cmd.setPlaybackRate(rate),
+      roomSetPlaybackRate: (rate: number, opts?: { hold?: boolean }) =>
+        cmd.setPlaybackRate(rate, opts),
       roomSetLoop: (loop: boolean) => cmd.setLoop(loop),
       onVideoEnded,
       loadYouTube,

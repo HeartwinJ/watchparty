@@ -39,6 +39,10 @@ const key = (k: string, init: KeyboardEventInit = {}) =>
   act(() => {
     fireEvent.keyDown(document.body, { key: k, ...init });
   });
+const keyUp = (k: string) =>
+  act(() => {
+    fireEvent.keyUp(document.body, { key: k });
+  });
 const osd = () => playerEl().querySelector('[role="status"]')?.textContent;
 
 function click(x = 640, pointerType = "mouse", button = 0) {
@@ -256,12 +260,69 @@ describe("PlayerArea keyboard", () => {
   it("space/k play/pause; nothing without media", () => {
     const r = setup();
     key(" ");
+    // Space toggles on release (a hold is 2× instead)
+    expect(r.player.roomTogglePlay).not.toHaveBeenCalled();
+    keyUp(" ");
     key("k");
     expect(r.player.roomTogglePlay).toHaveBeenCalledTimes(2);
+    expect(r.player.roomSetPlaybackRate).not.toHaveBeenCalled();
     cleanup();
     const e = setup({ state: { roomMedia: "" } });
     key(" ");
+    keyUp(" ");
     expect(e.player.roomTogglePlay).not.toHaveBeenCalled();
+  });
+
+  it("holding space plays the room at 2× and restores the rate on release", () => {
+    const r = setup({ state: { roomPaused: false, roomPlaybackRate: 1.25 } });
+    key(" ");
+    key(" ", { repeat: true });
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(r.player.roomSetPlaybackRate).toHaveBeenLastCalledWith(2, {
+      hold: true,
+    });
+    expect(osd()).toBe("2× ▸▸");
+    keyUp(" ");
+    expect(r.player.roomSetPlaybackRate).toHaveBeenLastCalledWith(1.25, {
+      hold: true,
+    });
+    expect(r.player.roomTogglePlay).not.toHaveBeenCalled();
+  });
+
+  it("a hold ends when the window loses focus", () => {
+    const r = setup({ state: { roomPaused: false } });
+    key(" ");
+    act(() => {
+      vi.advanceTimersByTime(400);
+      window.dispatchEvent(new Event("blur"));
+    });
+    expect(r.player.roomSetPlaybackRate).toHaveBeenLastCalledWith(1, {
+      hold: true,
+    });
+    keyUp(" ");
+    expect(r.player.roomTogglePlay).not.toHaveBeenCalled();
+  });
+
+  it("a slow space press while paused or live still toggles play", () => {
+    const r = setup({ state: { roomPaused: true } });
+    key(" ");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    keyUp(" ");
+    expect(r.player.roomSetPlaybackRate).not.toHaveBeenCalled();
+    expect(r.player.roomTogglePlay).toHaveBeenCalledTimes(1);
+    cleanup();
+    const live = setup({ state: { roomPaused: false, isLiveStream: true } });
+    key(" ");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    keyUp(" ");
+    expect(live.player.roomSetPlaybackRate).not.toHaveBeenCalled();
+    expect(live.player.roomTogglePlay).toHaveBeenCalledTimes(1);
   });
 
   it("arrows seek with an OSD that fades", () => {

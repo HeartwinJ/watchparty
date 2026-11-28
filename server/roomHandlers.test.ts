@@ -277,11 +277,14 @@ describe("playback", () => {
     alex.socket.emit("CMD:playbackRate", 17);
     alex.socket.emit("CMD:seek", 42);
     alex.socket.emit("CMD:playbackRate", 1.5);
+    // Holding Space: temporary 2× and back, without chat lines
+    alex.socket.emit("CMD:playbackRate", 2, { hold: true });
+    alex.socket.emit("CMD:playbackRate", 1.5, { hold: true });
     alex.socket.emit("CMD:loop", true);
     await barrier(alex.socket);
     await vi.waitFor(() => expect(loops).toEqual([true]));
     expect(seeks).toEqual([42]);
-    expect(rates).toEqual([1.5]);
+    expect(rates).toEqual([1.5, 2, 1.5]);
     expect(room.videoTS).toBe(42);
     expect(room.playbackRate).toBe(1.5);
     expect(room.loop).toBe(true);

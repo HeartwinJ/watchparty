@@ -224,7 +224,9 @@ url, time, duration})` every 5 s while this player is within `state.roomSettings
   `PlaybackActor`), **double-click** = fullscreen. Touch: tap = show/hide controls, double-tap left/right = ∓10 s with
   a ripple, centre = fullscreen. Speed and loop are room-wide (`CMD:playbackRate`, `CMD:loop`).
 - Keys (window listener, ignored while typing, in a modal or inside a `data-no-shortcuts` area such as the chat panel;
-  Esc always reaches it): space/k, ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c
+  Esc always reaches it): space/k (Space toggles on release; held for 300 ms while playing a video with a duration it
+  sets the room to 2× via `CMD:playbackRate (2, {hold: true})` and restores the previous rate on release or window
+  blur, `logic/spaceHold.ts`; hold changes post no chat line), ←/→, ↑/↓, m (the mic while in a voice call), v (the camera, only in a call), f, c
   (the open chat panel's input, else quick chat in fullscreen or with the sidebar collapsed, else
   `chatRef.current.focusInput()`; `chatKeyTarget`), Shift+C (the chat panel), `[`/`]`, `?` (also `wp:show-shortcuts`).
 - **Quick chat** (`QuickChat.tsx`, `c`): a one-line input over the video. Enter sends and closes it, and it closes on blur when empty; Esc closes it

@@ -136,6 +136,7 @@ export const SHORTCUT_GROUPS: { title: string; rows: [string, string[]][] }[] =
       title: "Playback",
       rows: [
         ["Play / pause", ["Space", "k"]],
+        ["2× speed for everyone while held", ["hold Space"]],
         ["Back / forward 10 s", ["←", "→"]],
         ["Volume up / down", ["↑", "↓"]],
         ["Mute", ["m"]],

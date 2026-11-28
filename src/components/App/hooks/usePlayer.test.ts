@@ -255,8 +255,10 @@ describe("usePlayer playback", () => {
   it("speed and loop are room commands", () => {
     const { api, cmd } = setup();
     api().roomSetPlaybackRate(1.5);
+    api().roomSetPlaybackRate(2, { hold: true });
     api().roomSetLoop(true);
-    expect(cmd.setPlaybackRate).toHaveBeenCalledWith(1.5);
+    expect(cmd.setPlaybackRate).toHaveBeenCalledWith(1.5, undefined);
+    expect(cmd.setPlaybackRate).toHaveBeenCalledWith(2, { hold: true });
     expect(cmd.setLoop).toHaveBeenCalledWith(true);
   });
 
